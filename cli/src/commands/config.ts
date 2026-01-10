@@ -23,19 +23,23 @@ export async function configCommand(options: ConfigOptions) {
     const spinner = ora('Validating API key...').start();
     
     try {
-      // Test the API key by calling the /auth/me endpoint
+      // Normalize and test the API key by calling the /auth/me endpoint
       const config = getConfig();
       const apiUrl = options.url || config.apiUrl || 'http://localhost:5000/api';
-      
+
+      // Accept keys entered with or without the `dd_` prefix, and strip any accidental "Bearer " prefix
+      const rawKey = options.key.replace(/^Bearer\s+/i, '').trim();
+      const normalizedKey = rawKey.startsWith('dd_') ? rawKey : `dd_${rawKey}`;
+
       const response = await axios.get(`${apiUrl}/auth/me`, {
         headers: {
-          Authorization: `Bearer ${options.key}`,
+          Authorization: `Bearer ${normalizedKey}`,
         },
         timeout: 10000,
       });
 
       if (response.status === 200 && response.data) {
-        setConfig('apiKey', options.key);
+        setConfig('apiKey', normalizedKey);
         if (options.url) {
           setConfig('apiUrl', options.url);
         }
