@@ -27,7 +27,6 @@ import {
   File,
   Download,
   Trash2,
-  MoreVertical,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';

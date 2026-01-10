@@ -18,9 +18,8 @@ import {
   DialogContent,
   DialogActions,
   TextField,
-  Chip,
 } from '@mui/material';
-import { Key, Trash2, Copy, Plus } from 'lucide-react';
+import { Trash2, Copy, Plus } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
