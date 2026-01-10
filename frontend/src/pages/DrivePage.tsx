@@ -291,7 +291,7 @@ export default function DrivePage() {
 
     try {
       await api.patch(`/files/${draggedFile.id}/move`, {
-        targetFolderId: targetFolder.id,
+        parentId: targetFolder.id,
       });
       queryClient.invalidateQueries({ queryKey: ['files'] });
       queryClient.invalidateQueries({ queryKey: ['allFolders'] });
@@ -710,31 +710,7 @@ export default function DrivePage() {
         </DialogActions>
       </Dialog>
 
-      {/* Context Menu */}
-      <Menu
-        anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
-        onClose={handleCloseMenu}
-      >
-        <MenuItem onClick={handleRenameClick}>
-          <ListItemIcon>
-            <Edit size={18} />
-          </ListItemIcon>
-          <ListItemText>Rename</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleMoveClick}>
-          <ListItemIcon>
-            <Move size={18} />
-          </ListItemIcon>
-          <ListItemText>Move</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
-          <ListItemIcon>
-            <Trash2 size={18} color="red" />
-          </ListItemIcon>
-          <ListItemText>Delete</ListItemText>
-        </MenuItem>
-      </Menu>
+      {/* old context menu removed (duplicate) */}
 
       {/* Move Dialog */}
       <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="sm" fullWidth>
