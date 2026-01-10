@@ -43,8 +43,13 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         discordId: apiKey.user.discordId,
       };
     } else {
-      // JWT authentication
-      const decoded = jwt.verify(token, JWT_SECRET) as { userId: string; discordId: string };
+      // JWT authentication - cast JWT_SECRET and verify safely
+      const decodedAny = jwt.verify(token, JWT_SECRET as string) as unknown;
+      const decoded = (decodedAny as any) as { userId: string; discordId?: string };
+
+      if (!decoded || typeof decoded !== 'object' || !decoded.userId) {
+        return res.status(401).json({ error: 'Invalid token payload' });
+      }
 
       // Check if session exists
       const session = await prisma.session.findUnique({
@@ -55,7 +60,7 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
         return res.status(401).json({ error: 'Session expired' });
       }
 
-      (req as any).user = decoded;
+      (req as any).user = { userId: decoded.userId, discordId: decoded.discordId };
     }
 
     next();
