@@ -24,7 +24,11 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       localStorage.removeItem('token');
-      window.location.href = '/login';
+      // Avoid redirecting during the OAuth callback or if already on the login page
+      const path = window.location.pathname || '';
+      if (!path.startsWith('/auth') && path !== '/login') {
+        window.location.href = '/login';
+      }
     }
     return Promise.reject(error);
   }
