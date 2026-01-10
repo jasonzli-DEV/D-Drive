@@ -791,7 +791,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
                     uploadRes = await uploadChunkToDiscord(filenameForDiscord, toSend);
                     lastErr = null;
                     break;
-                  } catch (uErr) {
+                  } catch (uErr: any) {
                     lastErr = uErr;
                     attempt += 1;
                     logger.warn(`Discord upload attempt ${attempt} failed for chunk ${chunkCounter} of file ${fileRecord.id}: ${uErr?.message || uErr}`);
