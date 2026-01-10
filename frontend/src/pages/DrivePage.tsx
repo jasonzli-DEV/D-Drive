@@ -787,7 +787,7 @@ export default function DrivePage() {
           <Button
             onClick={() => selectedFile && renameMutation.mutate({ fileId: selectedFile.id, name: newName })}
             variant="contained"
-            disabled={!newName || renameMutation.isLoading}
+            disabled={!newName || renameMutation.status === 'loading'}
           >
             Rename
           </Button>
