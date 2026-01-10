@@ -535,26 +535,16 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     // file already occupies that path. We do NOT auto-number on rename; the
     // client should handle intentional renaming when a conflict exists.
     const targetPath = parentPath ? `${parentPath}/${name}` : `/${name}`;
-    const existingAtTarget = await prisma.file.findFirst({
-      where: {
-        userId,
-        path: targetPath,
-        NOT: { id },
-      },
-    });
-    if (existingAtTarget) {
-      return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
-    }
-
+    // ATOMIC: Try to update, catch unique constraint error (P2002) and return 409
     try {
       const updatedFile = await prisma.file.update({
         where: { id },
         data: { name, path: targetPath, updatedAt: new Date() },
       });
-
       return res.json(serializeFile(updatedFile));
     } catch (e: any) {
-      if (e?.code === 'P2002') {
+      // Prisma unique constraint error
+      if (e?.code === 'P2002' || (e?.meta?.target && String(e?.meta?.target).includes('userId_path'))) {
         return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
       }
       throw e;
