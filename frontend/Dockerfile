@@ -19,7 +19,11 @@ RUN env | grep VITE
 RUN npm run build
 
 # Replace placeholder with actual Discord client ID in built files
-RUN find /app/dist -name '*.js' -exec sed -i "s/VITE_DISCORD_CLIENT_ID_PLACEHOLDER/${VITE_DISCORD_CLIENT_ID}/g" {} \;
+# This handles both the literal string and the minified undefined value
+RUN find /app/dist -name '*.js' -exec sed -i \
+  -e "s/VITE_DISCORD_CLIENT_ID_PLACEHOLDER/${VITE_DISCORD_CLIENT_ID}/g" \
+  -e "s/\"VITE_DISCORD_CLIENT_ID_PLACEHOLDER\"/\"${VITE_DISCORD_CLIENT_ID}\"/g" \
+  {} \;
 
 # Production stage with nginx
 FROM nginx:alpine
