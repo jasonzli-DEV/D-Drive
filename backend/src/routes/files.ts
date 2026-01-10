@@ -9,7 +9,18 @@ const router = Router();
 const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const CHUNK_SIZE = 24 * 1024 * 1024; // 24MB chunks (Discord limit is 25MB, leaving buffer)
+const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks (Discord limit is 25MB, but requests have overhead)
+
+// Helper to convert BigInt to string for JSON serialization
+function serializeFile(file: any): any {
+  if (!file) return file;
+  return {
+    ...file,
+    size: file.size?.toString() || '0',
+    children: file.children?.map(serializeFile),
+    chunks: file.chunks?.map((c: any) => ({ ...c, size: c.size?.toString() || '0' })),
+  };
+}
 
 // List files
 router.get('/', authenticate, async (req: Request, res: Response) => {
@@ -29,18 +40,14 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 
     const files = await prisma.file.findMany({
       where,
-      include: {
-        children: {
-          select: {
-            id: true,
-            name: true,
-            type: true,
-            size: true,
-            mimeType: true,
-            createdAt: true,
-            updatedAt: true,
-          },
-        },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        size: true,
+        mimeType: true,
+        createdAt: true,
+        updatedAt: true,
       },
       orderBy: [
         { type: 'desc' }, // Directories first
@@ -48,7 +55,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
       ],
     });
 
-    res.json(files);
+    res.json(files.map(serializeFile));
   } catch (error) {
     logger.error('Error listing files:', error);
     res.status(500).json({ error: 'Failed to list files' });
@@ -74,7 +81,7 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    res.json(file);
+    res.json(serializeFile(file));
   } catch (error) {
     logger.error('Error getting file:', error);
     res.status(500).json({ error: 'Failed to get file' });
@@ -140,7 +147,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
     logger.info(`File uploaded successfully: ${file.originalname} (${chunks.length} chunks)`);
 
     res.json({
-      file: fileRecord,
+      file: serializeFile(fileRecord),
       chunks: chunks.length,
     });
   } catch (error) {
@@ -207,7 +214,7 @@ router.post('/directory', authenticate, async (req: Request, res: Response) => {
       },
     });
 
-    res.json(directory);
+    res.json(serializeFile(directory));
   } catch (error) {
     logger.error('Error creating directory:', error);
     res.status(500).json({ error: 'Failed to create directory' });
@@ -277,7 +284,7 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
       data: { name, updatedAt: new Date() },
     });
 
-    res.json(updatedFile);
+    res.json(serializeFile(updatedFile));
   } catch (error) {
     logger.error('Error renaming file:', error);
     res.status(500).json({ error: 'Failed to rename file' });
