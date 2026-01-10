@@ -289,6 +289,9 @@ export default function DrivePage() {
     },
   });
 
+  // Support different react-query versions: status may be 'loading' or 'pending'
+  const renameIsLoading = ((renameMutation as any).status === 'loading') || ((renameMutation as any).status === 'pending');
+
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach((file) => {
       uploadMutation.mutate(file);
@@ -787,7 +790,7 @@ export default function DrivePage() {
           <Button
             onClick={() => selectedFile && renameMutation.mutate({ fileId: selectedFile.id, name: newName })}
             variant="contained"
-            disabled={!newName || renameMutation.status === 'loading'}
+            disabled={!newName || renameIsLoading}
           >
             Rename
           </Button>
