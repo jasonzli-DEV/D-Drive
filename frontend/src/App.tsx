@@ -45,7 +45,7 @@ function App() {
       />
       
       <Route
-        path="/folder/:folderId"
+        path="/drive/:folderId"
         element={
           isAuthenticated ? (
             <Layout>
