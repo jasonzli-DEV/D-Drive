@@ -89,18 +89,6 @@ function serializeFile(file: any): any {
   };
 }
 
-// Build a normalized path for a file given a parent path and a name.
-// Ensures no duplicate slashes and trims the name. Throws on invalid name.
-function buildTargetPath(parentPath: string | null, name: string) {
-  const n = String(name || '').trim();
-  if (!n) throw new Error('Invalid name');
-  // Prevent path injection via slashes
-  if (n.includes('/')) throw new Error('Invalid name');
-  if (!parentPath) return `/${n}`;
-  const combined = `${parentPath}/${n}`.replace(/\/+/g, '/');
-  return combined === '/' ? '/' : combined.replace(/\/$/, '');
-}
-
 // List files
 router.get('/', authenticate, async (req: Request, res: Response) => {
   try {
@@ -561,23 +549,27 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     const updatedFile = await prisma.file.update({
       where: { id },
       data: { name, path: targetPath, updatedAt: new Date() },
-        // Validate name and compute normalized target path. Do NOT auto-number on rename.
-        const nameSanitized = String(name || '').trim();
-        if (!nameSanitized) return res.status(400).json({ error: 'Name is required' });
-        try {
-          const targetPath = buildTargetPath(parentPath, nameSanitized);
-          const existingAtTarget = await prisma.file.findFirst({
-            where: { userId, path: targetPath, NOT: { id } },
-          });
-          if (existingAtTarget) {
-            return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
-          }
+    });
 
-          const updatedFile = await prisma.file.update({ where: { id }, data: { name: nameSanitized, path: targetPath, updatedAt: new Date() } });
-          return res.json(serializeFile(updatedFile));
-        } catch (e: any) {
-          return res.status(400).json({ error: 'Invalid name' });
-        }
+    res.json(serializeFile(updatedFile));
+  } catch (error) {
+    logger.error('Error renaming file:', error);
+    res.status(500).json({ error: 'Failed to rename file' });
+  }
+});
+
+// Move file
+router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+    const { parentId } = req.body;
+
+    const file = await prisma.file.findFirst({
+      where: { id, userId },
+    });
+
+    if (!file) {
       return res.status(404).json({ error: 'File not found' });
     }
 
@@ -609,18 +601,24 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
 
     // Ensure target path is not occupied. Do NOT auto-number on move — return
     // a conflict if the same name exists in the destination folder.
-    try {
-      const targetPath = buildTargetPath(targetParentPath, file.name);
-      const existingAtTarget = await prisma.file.findFirst({ where: { userId, path: targetPath, NOT: { id } } });
-      if (existingAtTarget) {
-        return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
-      }
-
-      const updatedFile = await prisma.file.update({ where: { id }, data: { parentId: targetParent, name: file.name, path: targetPath, updatedAt: new Date() } });
-      return res.json(serializeFile(updatedFile));
-    } catch (e: any) {
-      return res.status(400).json({ error: 'Invalid file name' });
+    const targetPath = targetParentPath ? `${targetParentPath}/${file.name}` : `/${file.name}`;
+    const existingAtTarget = await prisma.file.findFirst({
+      where: {
+        userId,
+        path: targetPath,
+        NOT: { id },
+      },
+    });
+    if (existingAtTarget) {
+      return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
     }
+
+    const updatedFile = await prisma.file.update({
+      where: { id },
+      data: { parentId: targetParent, name: file.name, path: targetPath, updatedAt: new Date() },
+    });
+
+    res.json(serializeFile(updatedFile));
   } catch (error) {
     logger.error('Error moving file:', error);
     res.status(500).json({ error: 'Failed to move file' });
