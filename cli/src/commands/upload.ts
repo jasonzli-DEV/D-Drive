@@ -111,8 +111,9 @@ async function uploadSingleFile(
 
     // Track bytes read from disk and update progress bar as fraction [0..1]
     let uploaded = 0;
-    fileStream.on('data', (chunk: Buffer) => {
-      uploaded += chunk.length;
+    fileStream.on('data', (chunk: Buffer | string) => {
+      const len = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
+      uploaded += len;
       if (progressBar) {
         const ratio = Math.min(1, uploaded / fileSize);
         progressBar.update(ratio);
