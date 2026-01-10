@@ -40,6 +40,10 @@ const upload = multer({
 
 const CHUNK_SIZE = 9 * 1024 * 1024; // 9MB chunks (Discord limit ~10MB, keep margin for overhead)
 
+// small helper for delays (used for retry backoff)
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 // Helper to split name and extension
 function splitName(name: string) {
   // Coerce to string to guard against unexpected types from multipart parsers
@@ -769,7 +773,61 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
             }
 
             const filenameForDiscord = `${fileRecord.id}_chunk_${chunkCounter}_${fileRecord.name}`;
-            logger.info(`Streaming: uploading chunk ${chunkCounter} for file ${fileRecord.id} (bytes=${toSend.length}) to Discord`);
+              logger.info(`Streaming: uploading chunk ${chunkCounter} for file ${fileRecord.id} (bytes=${toSend.length}) to Discord`);
+
+              // pause stream while uploading to reduce memory pressure
+              fileStream.pause();
+              try {
+                // Retry with exponential backoff
+                const maxAttempts = 3;
+                let attempt = 0;
+                let lastErr: any = null;
+                let uploadRes: any = null;
+                const startTs = new Date().toISOString();
+                logger.info(`Streaming: chunk ${chunkCounter} upload started at ${startTs}`);
+                let delay = 500;
+                while (attempt < maxAttempts) {
+                  try {
+                    uploadRes = await uploadChunkToDiscord(filenameForDiscord, toSend);
+                    lastErr = null;
+                    break;
+                  } catch (uErr) {
+                    lastErr = uErr;
+                    attempt += 1;
+                    logger.warn(`Discord upload attempt ${attempt} failed for chunk ${chunkCounter} of file ${fileRecord.id}: ${uErr?.message || uErr}`);
+                    if (attempt < maxAttempts) {
+                      await sleep(delay);
+                      delay *= 2;
+                    }
+                  }
+                }
+
+                if (lastErr) {
+                  logger.error(`Discord upload ultimately failed for chunk ${chunkCounter} of file ${fileRecord.id}`);
+                  throw lastErr;
+                }
+
+                const { messageId, attachmentUrl, channelId } = uploadRes;
+
+                const created = await prisma.fileChunk.create({
+                  data: {
+                    fileId: fileRecord.id,
+                    chunkIndex: chunkCounter,
+                    messageId,
+                    channelId,
+                    attachmentUrl,
+                    size: chunkBuffer.length,
+                  },
+                });
+
+                chunks.push(created);
+                const endTs = new Date().toISOString();
+                logger.info(`Streaming: chunk ${chunkCounter} stored (messageId=${messageId}) uploadEnd=${endTs}`);
+
+                chunkCounter += 1;
+              } finally {
+                fileStream.resume();
+              }
 
             // pause stream while uploading to reduce memory pressure
             fileStream.pause();
