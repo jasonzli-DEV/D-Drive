@@ -888,11 +888,12 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
     bb.on('finish', () => {
       // Defer finish handling to allow file 'end' handlers to run first.
       setImmediate(() => {
-        if (!fileProcessed && !res.headersSent) {
-          // no file processed (maybe client didn't send file)
+        // Only respond with 400 if no file was started and no file processed.
+        // Some Busboy builds fire 'finish' before async file handlers complete,
+        // so checking `fileRecord` (created early) prevents premature 400s.
+        if (!fileRecord && !fileProcessed && !res.headersSent) {
           return res.status(400).json({ error: 'No file uploaded' });
         }
-        // otherwise response already sent on file end
       });
     });
 
