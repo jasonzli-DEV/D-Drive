@@ -6,7 +6,7 @@ interface State {
   error?: Error | null;
 }
 
-export default class ErrorBoundary extends React.Component<{}, State> {
+export default class ErrorBoundary extends React.Component<React.PropsWithChildren<{}>, State> {
   constructor(props: {}) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -46,6 +46,6 @@ export default class ErrorBoundary extends React.Component<{}, State> {
       );
     }
 
-    return this.props.children as React.ReactElement;
+    return this.props.children as React.ReactNode;
   }
 }
