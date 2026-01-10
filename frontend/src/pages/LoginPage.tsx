@@ -2,7 +2,7 @@ import { Box, Container, Paper, Button, Typography } from '@mui/material';
 import { HardDrive } from 'lucide-react';
 
 const DISCORD_CLIENT_ID = '1459408684080693320';
-const REDIRECT_URI = `${window.location.origin}/auth/callback`;
+const REDIRECT_URI = 'http://pi.local/auth/callback';
 
 export default function LoginPage() {
   const handleDiscordLogin = () => {
