@@ -22,8 +22,27 @@ app.use(cors({
   origin: process.env.FRONTEND_URL || 'http://localhost:3000',
   credentials: true
 }));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+
+// Body parsers: skip for large streaming upload endpoint to avoid consuming
+// the raw multipart stream (Busboy needs the raw stream). Request bodies
+// for `/api/files/upload/stream` can be arbitrarily large and are handled
+// by the streaming parser in that route, so we bypass express body parsers
+// for that path to avoid `413 Payload Too Large` from the JSON/urlencoded
+// middleware.
+const jsonParser = express.json({ limit: '50mb' });
+const urlencParser = express.urlencoded({ extended: true, limit: '50mb' });
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path && req.path.startsWith('/api/files/upload/stream')) {
+    return next();
+  }
+  return jsonParser(req, res, next);
+});
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path && req.path.startsWith('/api/files/upload/stream')) {
+    return next();
+  }
+  return urlencParser(req, res, next);
+});
 
 // Rate limiting middleware removed entirely
 
