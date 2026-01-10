@@ -89,7 +89,7 @@ export default function DrivePage() {
   const [menuFile, setMenuFile] = useState<FileItem | null>(null);
   const [encryptFiles, setEncryptFiles] = useState(true);
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
-  const [currentFolder, setCurrentFolder] = useState<FileItem | null>(null);
+  
   const [breadcrumbs, setBreadcrumbs] = useState<FileItem[]>([]);
 
   // Fetch files
@@ -123,7 +123,6 @@ export default function DrivePage() {
         // For now, we'll just show the current folder
       }
       setBreadcrumbs(crumbs);
-      setCurrentFolder(folderDetails || null);
     };
     buildBreadcrumbs();
   }, [folderDetails]);
@@ -355,10 +354,6 @@ export default function DrivePage() {
     setMenuFile(file);
   };
 
-  const handleCloseMenu = () => {
-    setMenuAnchor(null);
-    setMenuFile(null);
-  };
 
   const handleMoveClick = () => {
     if (menuFile) {
