@@ -12,6 +12,35 @@ const upload = multer({ storage: multer.memoryStorage() });
 
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks (Discord limit is 25MB, but requests have overhead)
 
+// Helper to split name and extension
+function splitName(name: string) {
+  const lastDot = name.lastIndexOf('.');
+  if (lastDot === -1) return { base: name, ext: '' };
+  return { base: name.substring(0, lastDot), ext: name.substring(lastDot) };
+}
+
+// Compute a unique filename within a parent folder for a user by appending
+// " (1)", " (2)", ... before the extension when conflicts exist.
+async function getUniqueName(userId: string, parentId: string | null, desiredName: string, excludeId?: string) {
+  const { base, ext } = splitName(desiredName);
+  let newName = desiredName;
+  let counter = 1;
+  while (true) {
+    const existing = await prisma.file.findFirst({
+      where: {
+        userId,
+        parentId: parentId || null,
+        name: newName,
+        ...(excludeId ? { NOT: { id: excludeId } } : {}),
+      },
+    });
+    if (!existing) break;
+    newName = `${base} (${counter})${ext}`;
+    counter += 1;
+  }
+  return newName;
+}
+
 // Helper to convert BigInt to string for JSON serialization
 function serializeFile(file: any): any {
   if (!file) return file;
@@ -118,38 +147,17 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       }
     }
 
-    // Ensure filename is unique within the target parent folder by appending
-    // " (1)", " (2)", ... before the extension when duplicates exist.
+    // Ensure filename is unique within the target parent folder
     const targetParentId = parentId || null;
     const originalName = file.originalname;
 
-    // Helper to split name and extension
-    function splitName(name: string) {
-      const lastDot = name.lastIndexOf('.');
-      if (lastDot === -1) return { base: name, ext: '' };
-      return { base: name.substring(0, lastDot), ext: name.substring(lastDot) };
-    }
-
-    const { base, ext } = splitName(originalName);
-
-    // Check for existing file with same name in the same folder
-    let newName = originalName;
-    let counter = 1;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const existing = await prisma.file.findFirst({
-        where: { userId, parentId: targetParentId, name: newName },
-      });
-      if (!existing) break;
-      newName = `${base} (${counter})${ext}`;
-      counter += 1;
-    }
+    const uniqueName = await getUniqueName(userId, targetParentId, originalName);
 
     // Create file record with unique name
     const fileRecord = await prisma.file.create({
       data: {
-        name: newName,
-        path: path || `/${newName}`,
+        name: uniqueName,
+        path: path || `/${uniqueName}`,
         size: BigInt(file.size),
         mimeType: file.mimetype,
         type: 'FILE',
@@ -361,9 +369,13 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
+    // Ensure new name is unique within the same parent folder (exclude current file)
+    const parentOfFile = file.parentId || null;
+    const uniqueName = await getUniqueName(userId, parentOfFile, name, id);
+
     const updatedFile = await prisma.file.update({
       where: { id },
-      data: { name, updatedAt: new Date() },
+      data: { name: uniqueName, updatedAt: new Date() },
     });
 
     res.json(serializeFile(updatedFile));
@@ -407,9 +419,15 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
       }
     }
 
+    // If moving into same folder, nothing to do
+    const targetParent = parentId || null;
+
+    // Ensure name uniqueness in target folder (exclude the file itself)
+    const uniqueName = await getUniqueName(userId, targetParent, file.name, id);
+
     const updatedFile = await prisma.file.update({
       where: { id },
-      data: { parentId: parentId || null, updatedAt: new Date() },
+      data: { parentId: targetParent, name: uniqueName, updatedAt: new Date() },
     });
 
     res.json(serializeFile(updatedFile));
