@@ -706,14 +706,29 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
             // optionally encrypt per-chunk
             let toSend = chunkBuffer;
             if (shouldEncrypt && encryptionKey) {
-              toSend = encryptBuffer(chunkBuffer, encryptionKey);
+              try {
+                toSend = encryptBuffer(chunkBuffer, encryptionKey);
+              } catch (encErr) {
+                logger.error('Encryption failed for chunk:', encErr);
+                throw encErr;
+              }
             }
+
+            const filenameForDiscord = `${fileRecord.id}_chunk_${chunkCounter}_${fileRecord.name}`;
+            logger.info(`Streaming: uploading chunk ${chunkCounter} for file ${fileRecord.id} (bytes=${toSend.length}) to Discord`);
 
             // pause stream while uploading to reduce memory pressure
             fileStream.pause();
             try {
-              const filenameForDiscord = `${fileRecord.id}_chunk_${chunkCounter}_${fileRecord.name}`;
-              const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(filenameForDiscord, toSend);
+              let uploadRes;
+              try {
+                uploadRes = await uploadChunkToDiscord(filenameForDiscord, toSend);
+              } catch (uErr) {
+                logger.error(`Discord upload failed for chunk ${chunkCounter} of file ${fileRecord.id}:`, uErr);
+                throw uErr;
+              }
+
+              const { messageId, attachmentUrl, channelId } = uploadRes;
 
               const created = await prisma.fileChunk.create({
                 data: {
@@ -726,6 +741,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
                 },
               });
               chunks.push(created);
+              logger.info(`Streaming: chunk ${chunkCounter} stored (messageId=${messageId})`);
               chunkCounter += 1;
             } finally {
               fileStream.resume();
