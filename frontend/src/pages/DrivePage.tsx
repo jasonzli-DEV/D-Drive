@@ -353,30 +353,7 @@ export default function DrivePage() {
     setMenuAnchor(event.currentTarget);
     setMenuFile(file);
   };
-
-
-  const handleMoveClick = () => {
-    if (menuFile) {
-      setSelectedFile(menuFile);
-      setMoveDialogOpen(true);
-    }
-    handleCloseMenu();
-  };
-
-  const handleRenameClick = () => {
-    if (menuFile) {
-      setSelectedFile(menuFile);
-      setNewName(menuFile.name);
-      setRenameDialogOpen(true);
-    }
-    handleCloseMenu();
-  };
-
-  const handleDeleteClick = () => {
-    if (menuFile) {
-      deleteMutation.mutate(menuFile.id);
-    }
-  };
+  
 
   const handleFolderClick = (file: FileItem) => {
     if (file.type === 'DIRECTORY') {
