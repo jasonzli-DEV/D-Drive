@@ -4,9 +4,6 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 const api = axios.create({
   baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
 });
 
 // Add auth token to requests
@@ -15,6 +12,20 @@ api.interceptors.request.use((config) => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+
+  // Only set Content-Type for non-FormData payloads. Let the browser
+  // set the multipart boundary when sending FormData.
+  const isFormData = config.data && typeof FormData !== 'undefined' && config.data instanceof FormData;
+  if (!isFormData) {
+    if (!config.headers) config.headers = {} as any;
+    if (!config.headers['Content-Type']) {
+      config.headers['Content-Type'] = 'application/json';
+    }
+  } else {
+    // ensure multipart requests don't include a fixed Content-Type
+    if (config.headers) delete config.headers['Content-Type'];
+  }
+
   return config;
 });
 

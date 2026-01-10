@@ -460,7 +460,30 @@ export default function DrivePage() {
             <Button
               variant="contained"
               startIcon={<Upload />}
-              onClick={() => document.getElementById('file-upload')?.click()}
+              onClick={() => {
+                console.debug('[DrivePage] Upload button clicked');
+                // Create a fresh input each time to avoid stale input state
+                const inp = document.createElement('input');
+                inp.type = 'file';
+                inp.multiple = true;
+                inp.style.display = 'none';
+                inp.onchange = (e) => {
+                  const target = e.target as HTMLInputElement | null;
+                  console.debug('[DrivePage] ephemeral input onchange, files=', target?.files?.length);
+                  if (target?.files) {
+                    Array.from(target.files).forEach((file) => {
+                      console.debug('[DrivePage] mutating upload for', file.name);
+                      uploadMutation.mutate(file);
+                    });
+                  }
+                  // cleanup
+                  setTimeout(() => {
+                    if (inp.parentNode) inp.parentNode.removeChild(inp);
+                  }, 0);
+                };
+                document.body.appendChild(inp);
+                inp.click();
+              }}
               sx={{
                 px: 3,
                 py: 1,
@@ -471,19 +494,7 @@ export default function DrivePage() {
             >
               Upload Files
             </Button>
-            <input
-              id="file-upload"
-              type="file"
-              hidden
-              multiple
-              onChange={(e) => {
-                if (e.target.files) {
-                  Array.from(e.target.files).forEach((file) => {
-                    uploadMutation.mutate(file);
-                  });
-                }
-              }}
-            />
+            
             <Button
               variant="outlined"
               startIcon={<FolderPlus />}
