@@ -522,7 +522,7 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Ensure new name is unique within the same parent folder (exclude current file)
+    // Determine parent path for rename uniqueness checks
     let parentPath: string | null = null;
     if (file.parentId) {
       const parent = await prisma.file.findUnique({ where: { id: file.parentId }, select: { path: true } });
@@ -530,11 +530,25 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     } else {
       parentPath = null;
     }
-    const uniqueName = await getUniqueName(userId, parentPath, name, id);
+
+    // Compute the target path for the requested name and error if a different
+    // file already occupies that path. We do NOT auto-number on rename; the
+    // client should handle intentional renaming when a conflict exists.
+    const targetPath = parentPath ? `${parentPath}/${name}` : `/${name}`;
+    const existingAtTarget = await prisma.file.findFirst({
+      where: {
+        userId,
+        path: targetPath,
+        NOT: { id },
+      },
+    });
+    if (existingAtTarget) {
+      return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
+    }
 
     const updatedFile = await prisma.file.update({
       where: { id },
-      data: { name: uniqueName, updatedAt: new Date() },
+      data: { name, path: targetPath, updatedAt: new Date() },
     });
 
     res.json(serializeFile(updatedFile));
@@ -585,12 +599,23 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
     // Determine target parent path for uniqueness checks
     const targetParentPath = targetFolder ? targetFolder.path : null;
 
-    // Ensure name uniqueness in target folder (exclude the file itself)
-    const uniqueName = await getUniqueName(userId, targetParentPath, file.name, id);
+    // Ensure target path is not occupied. Do NOT auto-number on move — return
+    // a conflict if the same name exists in the destination folder.
+    const targetPath = targetParentPath ? `${targetParentPath}/${file.name}` : `/${file.name}`;
+    const existingAtTarget = await prisma.file.findFirst({
+      where: {
+        userId,
+        path: targetPath,
+        NOT: { id },
+      },
+    });
+    if (existingAtTarget) {
+      return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
+    }
 
     const updatedFile = await prisma.file.update({
       where: { id },
-      data: { parentId: targetParent, name: uniqueName, updatedAt: new Date() },
+      data: { parentId: targetParent, name: file.name, path: targetPath, updatedAt: new Date() },
     });
 
     res.json(serializeFile(updatedFile));
@@ -668,6 +693,17 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
     // Will hold the created file record
     let fileRecord: any = null;
     const chunks: any[] = [];
+
+    // Track if client closes the connection prematurely
+    let clientClosed = false;
+    req.on('close', () => {
+      clientClosed = true;
+      logger.warn('Client connection closed (req "close") during streaming upload');
+    });
+    req.on('aborted', () => {
+      clientClosed = true;
+      logger.warn('Client connection aborted (req "aborted") during streaming upload');
+    });
 
     // gather fields
     bb.on('field', async (fieldname: string, val: string) => {
@@ -830,35 +866,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
                 fileStream.resume();
               }
 
-            // pause stream while uploading to reduce memory pressure
-            fileStream.pause();
-            try {
-              let uploadRes;
-              try {
-                uploadRes = await uploadChunkToDiscord(filenameForDiscord, toSend);
-              } catch (uErr) {
-                logger.error(`Discord upload failed for chunk ${chunkCounter} of file ${fileRecord.id}:`, uErr);
-                throw uErr;
-              }
-
-              const { messageId, attachmentUrl, channelId } = uploadRes;
-
-              const created = await prisma.fileChunk.create({
-                data: {
-                  fileId: fileRecord.id,
-                  chunkIndex: chunkCounter,
-                  messageId,
-                  channelId,
-                  attachmentUrl,
-                  size: chunkBuffer.length,
-                },
-              });
-              chunks.push(created);
-              logger.info(`Streaming: chunk ${chunkCounter} stored (messageId=${messageId})`);
-              chunkCounter += 1;
-            } finally {
-              fileStream.resume();
-            }
+            // (deduplicated) upload logic handled above with retry/backoff
           };
 
           fileStream.on('data', (data: Buffer) => {
