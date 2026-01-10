@@ -42,6 +42,8 @@ const CHUNK_SIZE = 9 * 1024 * 1024; // 9MB chunks (Discord limit ~10MB, keep mar
 
 // Helper to split name and extension
 function splitName(name: string) {
+  // Coerce to string to guard against unexpected types from multipart parsers
+  name = String(name || '');
   const lastDot = name.lastIndexOf('.');
   if (lastDot === -1) return { base: name, ext: '' };
   return { base: name.substring(0, lastDot), ext: name.substring(lastDot) };
