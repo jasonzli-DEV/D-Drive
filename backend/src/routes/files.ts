@@ -162,6 +162,9 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       parentPath = null;
     }
 
+    // numeric/null parent id to store in DB
+    const targetParentId = parentId || null;
+
     // Try to create the file record; if unique constraint fails, retry with a new unique name.
     let fileRecord: any = null;
     let uniqueName = await getUniqueName(userId, parentPath, originalName);
