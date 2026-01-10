@@ -351,6 +351,15 @@ export default function DrivePage() {
     noClick: true,
   });
 
+  // UI debug state to help diagnose ephemeral input/onchange issues
+  const [uiDebug, setUiDebug] = useState<{
+    clicks: number;
+    lastClick?: string;
+    lastOnChange?: string;
+    lastFilesCount?: number;
+    lastFilesNames?: string[];
+  }>({ clicks: 0, lastFilesNames: [] });
+
   const handleOpenMenu = (event: React.MouseEvent<HTMLElement>, file: FileItem) => {
     const target = event.currentTarget as HTMLElement | null;
     if (!target) return;
@@ -461,7 +470,8 @@ export default function DrivePage() {
               variant="contained"
               startIcon={<Upload />}
               onClick={() => {
-                console.debug('[DrivePage] Upload button clicked');
+                const clickAt = new Date().toISOString();
+                setUiDebug(prev => ({ ...prev, clicks: prev.clicks + 1, lastClick: clickAt }));
                 // Create a fresh input each time to avoid stale input state
                 const inp = document.createElement('input');
                 inp.type = 'file';
@@ -469,10 +479,16 @@ export default function DrivePage() {
                 inp.style.display = 'none';
                 inp.onchange = (e) => {
                   const target = e.target as HTMLInputElement | null;
-                  console.debug('[DrivePage] ephemeral input onchange, files=', target?.files?.length);
+                  const onChangeAt = new Date().toISOString();
+                  const filesArr = target?.files ? Array.from(target.files) : [];
+                  setUiDebug(prev => ({
+                    ...prev,
+                    lastOnChange: onChangeAt,
+                    lastFilesCount: filesArr.length,
+                    lastFilesNames: filesArr.map(f => f.name),
+                  }));
                   if (target?.files) {
                     Array.from(target.files).forEach((file) => {
-                      console.debug('[DrivePage] mutating upload for', file.name);
                       uploadMutation.mutate(file);
                     });
                   }
@@ -811,6 +827,29 @@ export default function DrivePage() {
           ))}
         </Paper>
       )}
+      {/* Visible in-page upload debug (temporary) */}
+      <Paper
+        sx={{
+          position: 'fixed',
+          top: 16,
+          right: 16,
+          p: 1,
+          zIndex: 1100,
+          bgcolor: 'rgba(0,0,0,0.75)',
+          color: '#fff',
+          minWidth: 220,
+        }}
+        elevation={3}
+      >
+        <Typography variant="caption" sx={{ fontWeight: 700, display: 'block' }}>Upload Debug</Typography>
+        <Typography variant="body2">Clicks: {uiDebug.clicks}</Typography>
+        <Typography variant="body2">Last Click: {uiDebug.lastClick || '—'}</Typography>
+        <Typography variant="body2">Last OnChange: {uiDebug.lastOnChange || '—'}</Typography>
+        <Typography variant="body2">Files: {uiDebug.lastFilesCount ?? 0}</Typography>
+        <Typography variant="body2" sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+          {uiDebug.lastFilesNames && uiDebug.lastFilesNames.length > 0 ? uiDebug.lastFilesNames.join(', ') : ''}
+        </Typography>
+      </Paper>
     </Box>
   );
 }
