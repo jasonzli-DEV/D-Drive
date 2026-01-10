@@ -640,7 +640,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
     bb.on('field', async (fieldname: string, val: string) => {
       if (fieldname === 'parentId') parentId = val || null;
       if (fieldname === 'path') parentPath = val || null;
-      if (fieldname === 'encrypt') shouldEncrypt = val === 'true' || val === true;
+      if (fieldname === 'encrypt') shouldEncrypt = val === 'true';
     });
 
     bb.on('file', (fieldname: string, fileStream: any, filename: string, encoding: string, mimetype: string) => {
