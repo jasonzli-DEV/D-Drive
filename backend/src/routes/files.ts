@@ -886,11 +886,14 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
     });
 
     bb.on('finish', () => {
-      if (!fileProcessed) {
-        // no file processed (maybe client didn't send file)
-        return res.status(400).json({ error: 'No file uploaded' });
-      }
-      // otherwise response already sent on file end
+      // Defer finish handling to allow file 'end' handlers to run first.
+      setImmediate(() => {
+        if (!fileProcessed && !res.headersSent) {
+          // no file processed (maybe client didn't send file)
+          return res.status(400).json({ error: 'No file uploaded' });
+        }
+        // otherwise response already sent on file end
+      });
     });
 
     req.pipe(bb);
