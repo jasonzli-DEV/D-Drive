@@ -306,8 +306,10 @@ export default function DrivePage() {
   // Context menu handlers
   const handleContextMenu = (e: React.MouseEvent, file: FileItem) => {
     e.preventDefault();
+    const target = e.currentTarget as HTMLElement | null;
+    if (!target) return;
     setMenuFile(file);
-    setMenuAnchor(e.currentTarget as HTMLElement);
+    setMenuAnchor(target);
   };
 
   const handleCloseMenu = () => {
@@ -350,7 +352,9 @@ export default function DrivePage() {
   });
 
   const handleOpenMenu = (event: React.MouseEvent<HTMLElement>, file: FileItem) => {
-    setMenuAnchor(event.currentTarget);
+    const target = event.currentTarget as HTMLElement | null;
+    if (!target) return;
+    setMenuAnchor(target);
     setMenuFile(file);
   };
   
