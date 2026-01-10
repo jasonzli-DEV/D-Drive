@@ -40,9 +40,15 @@ app.use(cors({
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-// Apply rate limiting
-app.use('/api/auth', authLimiter);
-app.use('/api', generalLimiter);
+// Apply rate limiting only in production to avoid blocking local/dev workflows
+const isProduction = process.env.NODE_ENV === 'production';
+if (isProduction) {
+  app.use('/api/auth', authLimiter);
+  app.use('/api', generalLimiter);
+} else {
+  // In development / local runs we skip rate limiting to avoid accidental 429s
+  logger.info('Running in non-production mode — rate limiting disabled for /api endpoints');
+}
 
 // Request logging
 app.use((req, res, next) => {
