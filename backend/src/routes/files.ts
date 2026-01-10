@@ -177,39 +177,63 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
     // Split file into chunks and upload to Discord
     const totalChunks = Math.ceil(processedBuffer.length / CHUNK_SIZE);
     const chunks = [];
+    // Use the stored (possibly unique) name for chunk filenames
+    const uploadName = fileRecord.name;
 
-    for (let i = 0; i < totalChunks; i++) {
-      const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, processedBuffer.length);
-      const chunkBuffer = processedBuffer.slice(start, end);
-      const filename = `${fileRecord.id}_chunk_${i}_${file.originalname}`;
+    try {
+      for (let i = 0; i < totalChunks; i++) {
+        const start = i * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, processedBuffer.length);
+        const chunkBuffer = processedBuffer.slice(start, end);
+        const filename = `${fileRecord.id}_chunk_${i}_${uploadName}`;
 
-      logger.info(`Uploading chunk ${i + 1}/${totalChunks} for file ${file.originalname}`);
+        logger.info(`Uploading chunk ${i + 1}/${totalChunks} for file ${uploadName}`);
 
-      const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(
-        filename,
-        chunkBuffer
-      );
+        const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(
+          filename,
+          chunkBuffer
+        );
 
-      const chunk = await prisma.fileChunk.create({
-        data: {
-          fileId: fileRecord.id,
-          chunkIndex: i,
-          messageId,
-          channelId,
-          attachmentUrl,
-          size: chunkBuffer.length,
-        },
-      });
+        const chunk = await prisma.fileChunk.create({
+          data: {
+            fileId: fileRecord.id,
+            chunkIndex: i,
+            messageId,
+            channelId,
+            attachmentUrl,
+            size: chunkBuffer.length,
+          },
+        });
 
-      chunks.push(chunk);
+        chunks.push(chunk);
+      }
+    } catch (uploadError: any) {
+      logger.error(`Failed uploading chunks for file ${fileRecord.id}:`, uploadError);
+      // Attempt to clean up any uploaded chunks (best-effort)
+      try {
+        await prisma.fileChunk.deleteMany({ where: { fileId: fileRecord.id } });
+      } catch (cleanupErr) {
+        logger.warn('Failed to cleanup file chunks after upload error:', cleanupErr);
+      }
+
+      try {
+        await prisma.file.delete({ where: { id: fileRecord.id } });
+      } catch (cleanupErr) {
+        logger.warn('Failed to delete file record after upload error:', cleanupErr);
+      }
+
+      return res.status(500).json({ error: `Failed to upload file: ${uploadError?.message || uploadError}` });
     }
 
-    logger.info(`File uploaded successfully: ${file.originalname} (${chunks.length} chunks)`);
+    logger.info(`File uploaded successfully: ${uploadName} (${chunks.length} chunks)`);
+
+    // Return the created file (with stored name) and chunk count
+    const storedFile = await prisma.file.findUnique({ where: { id: fileRecord.id } });
 
     res.json({
-      file: serializeFile(fileRecord),
+      file: serializeFile(storedFile),
       chunks: chunks.length,
+      storedName: uploadName,
     });
   } catch (error) {
     logger.error('Error uploading file:', error);
