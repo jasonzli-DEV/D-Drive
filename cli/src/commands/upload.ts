@@ -1,5 +1,6 @@
 import fs from 'fs-extra';
 import path from 'path';
+import { PassThrough } from 'stream';
 import chalk from 'chalk';
 import ora from 'ora';
 import FormData from 'form-data';
@@ -85,7 +86,15 @@ async function uploadSingleFile(
   console.log(chalk.gray(`Size: ${formatFileSize(fileSize)}`));
 
   const formData = new FormData();
-  formData.append('file', fs.createReadStream(filePath));
+  // Create a passthrough so we can monitor bytes read from disk
+  const fileStream = fs.createReadStream(filePath);
+  const pass = new PassThrough();
+  // Pipe file stream into pass-through which is appended to form-data
+  fileStream.pipe(pass);
+  formData.append('file', pass, {
+    filename: fileName,
+    knownLength: fileSize,
+  });
   formData.append('path', destination);
   // Ensure CLI uploads follow frontend behavior and request server-side encryption by default
   formData.append('encrypt', 'true');
@@ -97,17 +106,38 @@ async function uploadSingleFile(
       complete: '█',
       incomplete: '░',
       width: 40,
-      total: fileSize,
+      total: 1,
+    });
+
+    // Track bytes read from disk and update progress bar as fraction [0..1]
+    let uploaded = 0;
+    fileStream.on('data', (chunk: Buffer) => {
+      uploaded += chunk.length;
+      if (progressBar) {
+        const ratio = Math.min(1, uploaded / fileSize);
+        progressBar.update(ratio);
+      }
     });
   }
 
+  // Ensure Content-Length is set for axios in Node
+  const headers = formData.getHeaders();
+  try {
+    const length = await new Promise<number>((resolve, reject) => {
+      formData.getLength((err: any, len: number) => {
+        if (err) return reject(err);
+        resolve(len);
+      });
+    });
+    headers['Content-Length'] = String(length);
+  } catch (err) {
+    // ignore length error
+  }
+
   await api.post('/files/upload', formData, {
-    headers: formData.getHeaders(),
-    onUploadProgress: (progressEvent: any) => {
-      if (progressBar && progressEvent.loaded) {
-        progressBar.update(progressEvent.loaded / fileSize);
-      }
-    },
+    headers,
+    maxContentLength: Infinity,
+    maxBodyLength: Infinity,
   });
 }
 
