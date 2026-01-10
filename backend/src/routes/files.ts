@@ -8,8 +8,10 @@ import multer from 'multer';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+// Import Busboy with interop guard (handles CJS vs ESM default export)
 // @ts-ignore
-const Busboy = require('busboy');
+const RawBusboy = require('busboy');
+const Busboy = (RawBusboy && (RawBusboy.default || RawBusboy)) as any;
 import crypto from 'crypto';
 
 const router = Router();
