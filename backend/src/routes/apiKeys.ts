@@ -24,7 +24,13 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    res.json(apiKeys);
+    // Mask API keys - only show prefix and last 4 characters
+    const maskedKeys = apiKeys.map(apiKey => ({
+      ...apiKey,
+      key: `${apiKey.key.substring(0, 3)}${'*'.repeat(20)}${apiKey.key.slice(-4)}`,
+    }));
+
+    res.json(maskedKeys);
   } catch (error) {
     logger.error('Error listing API keys:', error);
     res.status(500).json({ error: 'Failed to list API keys' });
