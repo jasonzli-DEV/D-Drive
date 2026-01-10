@@ -10,7 +10,7 @@ const router = Router();
 const prisma = new PrismaClient();
 const upload = multer({ storage: multer.memoryStorage() });
 
-const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks (Discord limit is 25MB, but requests have overhead)
+const CHUNK_SIZE = 9 * 1024 * 1024; // 9MB chunks (Discord limit ~10MB, keep margin for overhead)
 
 // Helper to split name and extension
 function splitName(name: string) {
@@ -21,16 +21,18 @@ function splitName(name: string) {
 
 // Compute a unique filename within a parent folder for a user by appending
 // " (1)", " (2)", ... before the extension when conflicts exist.
-async function getUniqueName(userId: string, parentId: string | null, desiredName: string, excludeId?: string) {
+// Generate a unique filename by checking the full `path` uniqueness (userId + path).
+// `parentPath` is the parent folder's full path (e.g. "/photos/2025"). If null, file will be created at root.
+async function getUniqueName(userId: string, parentPath: string | null, desiredName: string, excludeId?: string) {
   const { base, ext } = splitName(desiredName);
   let newName = desiredName;
   let counter = 1;
   while (true) {
+    const candidatePath = parentPath ? `${parentPath}/${newName}` : `/${newName}`;
     const existing = await prisma.file.findFirst({
       where: {
         userId,
-        parentId: parentId || null,
-        name: newName,
+        path: candidatePath,
         ...(excludeId ? { NOT: { id: excludeId } } : {}),
       },
     });
@@ -147,25 +149,56 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       }
     }
 
-    // Ensure filename is unique within the target parent folder
-    const targetParentId = parentId || null;
+    // Ensure filename is unique within the target parent folder.
+    // Resolve the parent path string (use explicit `path` if provided, otherwise derive it from `parentId`).
     const originalName = file.originalname;
+    let parentPath: string | null = null;
+    if (path) {
+      parentPath = path as string;
+    } else if (parentId) {
+      const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
+      parentPath = parent?.path || null;
+    } else {
+      parentPath = null;
+    }
 
-    const uniqueName = await getUniqueName(userId, targetParentId, originalName);
+    // Try to create the file record; if unique constraint fails, retry with a new unique name.
+    let fileRecord: any = null;
+    let uniqueName = await getUniqueName(userId, parentPath, originalName);
+    const maxAttempts = 5;
+    let attempt = 0;
+    while (!fileRecord && attempt < maxAttempts) {
+      try {
+        // computePath should include the current uniqueName so retries change the path too
+        const computedPath = parentPath ? `${parentPath}/${uniqueName}` : `/${uniqueName}`;
 
-    // Create file record with unique name
-    const fileRecord = await prisma.file.create({
-      data: {
-        name: uniqueName,
-        path: path || `/${uniqueName}`,
-        size: BigInt(file.size),
-        mimeType: file.mimetype,
-        type: 'FILE',
-        encrypted: shouldEncrypt,
-        userId,
-        parentId: targetParentId,
-      },
-    });
+        fileRecord = await prisma.file.create({
+          data: {
+            name: uniqueName,
+            path: computedPath,
+            size: BigInt(file.size),
+            mimeType: file.mimetype,
+            type: 'FILE',
+            encrypted: shouldEncrypt,
+            userId,
+            parentId: targetParentId,
+          },
+        });
+      } catch (createErr: any) {
+        // Prisma unique constraint on (userId, path) — generate another unique name and retry
+        if (createErr?.code === 'P2002') {
+          logger.warn('Unique constraint on file path, retrying with a different name');
+          uniqueName = await getUniqueName(userId, parentPath, originalName);
+          attempt += 1;
+          continue;
+        }
+        throw createErr;
+      }
+    }
+
+    if (!fileRecord) {
+      throw new Error('Failed to create unique file record after multiple attempts');
+    }
 
     // Process file buffer - encrypt if needed
     let processedBuffer = file.buffer;
@@ -174,20 +207,20 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       logger.info(`File encrypted: ${file.originalname}`);
     }
 
-    // Split file into chunks and upload to Discord
-    const totalChunks = Math.ceil(processedBuffer.length / CHUNK_SIZE);
-    const chunks = [];
-    // Use the stored (possibly unique) name for chunk filenames
+    // Split file into chunks and upload to Discord. Use a sequential chunkCounter
+    // so chunkIndex increases for each stored piece regardless of slicing.
+    const chunks: any[] = [];
     const uploadName = fileRecord.name;
 
     try {
-      for (let i = 0; i < totalChunks; i++) {
-        const start = i * CHUNK_SIZE;
-        const end = Math.min(start + CHUNK_SIZE, processedBuffer.length);
-        const chunkBuffer = processedBuffer.slice(start, end);
-        const filename = `${fileRecord.id}_chunk_${i}_${uploadName}`;
+      let offset = 0;
+      let chunkCounter = 0;
+      while (offset < processedBuffer.length) {
+        const end = Math.min(offset + CHUNK_SIZE, processedBuffer.length);
+        const chunkBuffer = processedBuffer.slice(offset, end);
+        const filename = `${fileRecord.id}_chunk_${chunkCounter}_${uploadName}`;
 
-        logger.info(`Uploading chunk ${i + 1}/${totalChunks} for file ${uploadName}`);
+        logger.info(`Uploading chunk ${chunkCounter + 1} for file ${uploadName} (bytes=${chunkBuffer.length})`);
 
         const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(
           filename,
@@ -197,7 +230,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         const chunk = await prisma.fileChunk.create({
           data: {
             fileId: fileRecord.id,
-            chunkIndex: i,
+            chunkIndex: chunkCounter,
             messageId,
             channelId,
             attachmentUrl,
@@ -206,6 +239,9 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         });
 
         chunks.push(chunk);
+
+        chunkCounter += 1;
+        offset = end;
       }
     } catch (uploadError: any) {
       logger.error(`Failed uploading chunks for file ${fileRecord.id}:`, uploadError);
