@@ -279,7 +279,13 @@ export default function DrivePage() {
       setNewName('');
     },
     onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Failed to rename');
+      // Ensure UI stays in sync with server when rename fails (e.g. HTTP 409)
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      if (error?.response?.status === 409) {
+        toast.error(error.response?.data?.error || 'A file with that name already exists');
+      } else {
+        toast.error(error.response?.data?.error || 'Failed to rename');
+      }
     },
   });
 
@@ -781,7 +787,7 @@ export default function DrivePage() {
           <Button
             onClick={() => selectedFile && renameMutation.mutate({ fileId: selectedFile.id, name: newName })}
             variant="contained"
-            disabled={!newName}
+            disabled={!newName || renameMutation.isLoading}
           >
             Rename
           </Button>
