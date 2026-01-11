@@ -463,8 +463,7 @@ export default function DrivePage() {
       for (const f of files) {
         const rel = (f as any).webkitRelativePath || f.name;
         const parts = rel.split('/');
-        const fileName = parts.pop() as string;
-        const folderPath = parts.join('/');
+        const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
         try {
           const targetParent = await ensureFolderPath(folderId || null, folderPath);
           // Use the File object provided by the browser (it already has the correct
