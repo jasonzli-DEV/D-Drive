@@ -516,18 +516,32 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
 
     // Gather chunks for all files to delete
     const chunks = await prisma.fileChunk.findMany({ where: { fileId: { in: filesToDelete } } });
+
+    // Attempt to delete all corresponding Discord messages first. If any
+    // non-404 deletion error occurs, abort and return an error so DB rows
+    // are not removed while messages remain on Discord (avoid orphaned messages).
     for (const chunk of chunks) {
       try {
         await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
       } catch (discordError) {
-        logger.warn(`Failed to delete chunk ${chunk.id} from Discord:`, discordError);
-        // Continue - message may already be gone
+        logger.error(`Failed to delete chunk ${chunk.id} from Discord; aborting delete:`, discordError);
+        return res.status(500).json({ error: 'Failed to delete file contents from storage (Discord). Try again.' });
       }
     }
 
-    // Delete chunk rows and file rows in DB (order: chunks -> files)
-    await prisma.fileChunk.deleteMany({ where: { fileId: { in: filesToDelete } } });
-    await prisma.file.deleteMany({ where: { id: { in: filesToDelete } } });
+    // All Discord deletions succeeded (or were already absent). Now delete
+    // DB rows in a transaction to keep DB consistent.
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.fileChunk.deleteMany({ where: { fileId: { in: filesToDelete } } });
+        await tx.file.deleteMany({ where: { id: { in: filesToDelete } } });
+      });
+    } catch (dbErr) {
+      logger.error('Failed to delete file rows from DB after removing Discord messages:', dbErr);
+      // At this point messages were removed but DB deletion failed. This
+      // is a serious issue; surface to client so operator can retry/fix.
+      return res.status(500).json({ error: 'Failed to remove file records from database after storage deletion' });
+    }
 
     res.json({ message: 'File deleted successfully' });
   } catch (error) {
