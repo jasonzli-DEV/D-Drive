@@ -377,13 +377,15 @@ export default function DrivePage() {
     // menu appears under the mouse pointer rather than a fixed element.
     const clientX = e.clientX;
     const clientY = e.clientY;
-    // Simple edge avoidance: decrement if near right/bottom edge
+    // Simple edge avoidance: only shift if the menu would overflow the viewport.
+    // Shift just enough so the menu fits, don't move it unnecessarily.
     const approxMenuWidth = 240;
     const approxMenuHeight = 220;
-    let left = clientX;
-    let top = clientY;
-    if (clientX > window.innerWidth - approxMenuWidth) left = Math.max(8, clientX - approxMenuWidth);
-    if (clientY > window.innerHeight - approxMenuHeight) top = Math.max(8, clientY - approxMenuHeight);
+    const margin = 8; // keep a small margin from edges
+    const maxLeft = Math.max(margin, window.innerWidth - approxMenuWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - approxMenuHeight - margin);
+    const left = Math.min(clientX, maxLeft);
+    const top = Math.min(clientY, maxTop);
     setMenuAnchor(null);
     setMenuPosition({ top, left });
   };
