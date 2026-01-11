@@ -69,38 +69,11 @@ export default function SettingsPage() {
     },
   });
 
-  const copyToClipboard = async (text: string) => {
-    try {
-      // Modern clipboard API
-      if (navigator.clipboard && navigator.clipboard.writeText) {
-        await navigator.clipboard.writeText(text);
-        toast.success('Copied to clipboard!');
-      } else {
-        // Fallback for older browsers or non-HTTPS
-        const textArea = document.createElement('textarea');
-        textArea.value = text;
-        textArea.style.position = 'fixed';
-        textArea.style.left = '-999999px';
-        textArea.style.top = '-999999px';
-        document.body.appendChild(textArea);
-        textArea.focus();
-        textArea.select();
-        try {
-          document.execCommand('copy');
-          toast.success('Copied to clipboard!');
-        } catch (err) {
-          toast.error('Failed to copy to clipboard');
-        }
-        document.body.removeChild(textArea);
-      }
-    } catch (err) {
-      toast.error('Failed to copy to clipboard');
-    }
-  };
+  
 
   const maskKey = (k: string) => {
     if (!k) return '';
-    const visible = 5;
+    const visible = 8; // show first 8 chars (e.g. dd_abcde)
     if (k.length <= visible) return k;
     return k.substring(0, visible) + '*'.repeat(k.length - visible);
   };
@@ -186,6 +159,8 @@ export default function SettingsPage() {
 
       {/* Create API Key Dialog */}
       <Dialog
+        fullWidth
+        maxWidth="md"
         open={newKeyOpen}
         onClose={() => {
           setNewKeyOpen(false);
@@ -196,34 +171,56 @@ export default function SettingsPage() {
         <DialogTitle>Create API Key</DialogTitle>
         <DialogContent>
               {newKey ? (
-            <Box>
-              <Typography variant="body2" color="text.secondary" gutterBottom>
-                Your API key has been created. Copy it now - you won't be able to see it again!
-              </Typography>
-              <Paper
-                sx={{
-                  p: 2,
-                  mt: 2,
-                  backgroundColor: '#f5f5f5',
-                  fontFamily: 'monospace',
-                  wordBreak: 'break-all',
-                }}
-              >
-                {newKey}
-              </Paper>
-              <Button
-                fullWidth
-                variant="contained"
+                <Box>
+                  <Typography variant="body2" color="text.secondary" gutterBottom>
+                    Your API key has been created. Copy it now - you won't be able to see it again!
+                  </Typography>
+                  {/* show the key in a readonly TextField so we can reliably select+copy */}
+                  <TextField
+                    value={newKey}
+                    inputProps={{ readOnly: true, style: { fontFamily: 'monospace' } }}
+                    fullWidth
+                    multiline
+                    minRows={1}
+                    sx={{ mt: 2 }}
+                    id="created-api-key-input"
+                  />
+                  <Button
+                    fullWidth
+                    variant="contained"
                     startIcon={<Copy />}
                     onClick={async () => {
                       if (!newKey) return;
-                      await copyToClipboard(newKey);
+                      // try Clipboard API first
+                      try {
+                        if (navigator.clipboard && navigator.clipboard.writeText) {
+                          await navigator.clipboard.writeText(newKey);
+                          toast.success('Copied to clipboard!');
+                          return;
+                        }
+                      } catch (e) {
+                        // fall through to legacy copy
+                      }
+                      // legacy fallback: select the input's text and execCommand
+                      try {
+                        const input = document.getElementById('created-api-key-input') as HTMLInputElement | null;
+                        if (input) {
+                          input.select();
+                          document.execCommand('copy');
+                          toast.success('Copied to clipboard!');
+                          // deselect
+                          window.getSelection()?.removeAllRanges();
+                          return;
+                        }
+                      } catch (err) {
+                        toast.error('Failed to copy to clipboard');
+                      }
                     }}
-                sx={{ mt: 2 }}
-              >
-                Copy to Clipboard
-              </Button>
-            </Box>
+                    sx={{ mt: 2 }}
+                  >
+                    Copy to Clipboard
+                  </Button>
+                </Box>
           ) : (
             <TextField
               autoFocus
