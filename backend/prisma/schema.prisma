@@ -115,6 +115,9 @@ model Task {
   sftpUser       String
   sftpPath       String   // remote path to pull from
   sftpPrivateKey String?  // optional, stored encrypted at rest in DB in future
+  sftpPassword    String?  // optional password auth for SFTP
+  authPassword    Boolean  @default(false) // attempt password auth
+  authPrivateKey  Boolean  @default(true)  // attempt private key auth
   destinationId  String?  // local destination folder (File.id)
   compress       CompressFormat @default(NONE)
   compressFiles  Boolean  @default(true) // compress files vs folders
