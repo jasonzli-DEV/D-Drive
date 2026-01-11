@@ -123,23 +123,42 @@ export async function deleteChunkFromDiscord(
     throw new Error('Channel not found');
   }
 
-  try {
-    const message = await channel.messages.fetch(messageId);
-    await message.delete();
-    logger.info(`Deleted message ${messageId} from Discord`);
-  } catch (error: any) {
-    // If message is already gone (Discord Unknown Message), treat as success.
-    // Discord errors sometimes surface with numeric `code` or in the message text.
-    const code = error?.code || (error?.message && String(error.message).includes('Unknown Message') ? 10008 : undefined);
-    if (code === 10008) {
-      logger.info(`Message ${messageId} already deleted on Discord, treating as success`);
+  // Retry-on-rate-limit with exponential backoff. Treat Unknown Message (10008) as success.
+  const maxAttempts = 5;
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    try {
+      const message = await channel.messages.fetch(messageId);
+      await message.delete();
+      logger.info(`Deleted message ${messageId} from Discord`);
       return;
-    }
+    } catch (error: any) {
+      // If message is already gone (Discord Unknown Message), treat as success.
+      const code = error?.code || (error?.message && String(error.message).includes('Unknown Message') ? 10008 : undefined);
+      if (code === 10008) {
+        logger.info(`Message ${messageId} already deleted on Discord, treating as success`);
+        return;
+      }
 
-    logger.warn(`Failed to delete message ${messageId}:`, error);
-    // Rethrow so callers can decide whether to abort DB deletions or retry.
-    throw error;
+      // Detect rate limit responses. discord.js may expose .status or .statusCode or include retry info.
+      const isRateLimit = error?.status === 429 || error?.statusCode === 429 || error?.retryAfter || error?.retry_after || String(error?.message || '').toLowerCase().includes('rate limited') || String(error?.message || '').toLowerCase().includes('too many requests');
+      if (isRateLimit) {
+        const retryAfterMs = (typeof error?.retryAfter === 'number' && error.retryAfter) || (typeof error?.retry_after === 'number' && error.retry_after) || 0;
+        const backoff = retryAfterMs > 0 ? retryAfterMs : Math.min(1000 * Math.pow(2, attempt), 16000);
+        const jitter = Math.floor(Math.random() * 200) - 100; // +/-100ms
+        const wait = Math.max(100, backoff + jitter);
+        logger.warn(`Rate limited deleting message ${messageId}, attempt=${attempt + 1}/${maxAttempts}, waiting ${wait}ms`);
+        await new Promise(res => setTimeout(res, wait));
+        continue; // retry
+      }
+
+      // For other errors, log and rethrow so callers can decide.
+      logger.warn(`Failed to delete message ${messageId}:`, error);
+      throw error;
+    }
   }
+
+  // If we exhausted retries, throw a generic error
+  throw new Error(`Failed to delete Discord message ${messageId} after ${maxAttempts} attempts due to rate limits`);
 }
 
 export async function getMessageAttachmentUrl(
