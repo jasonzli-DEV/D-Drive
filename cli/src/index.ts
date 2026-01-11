@@ -7,13 +7,15 @@ import { uploadCommand } from './commands/upload';
 import { downloadCommand } from './commands/download';
 import { listCommand } from './commands/list';
 import { deleteCommand } from './commands/delete';
+import { copyCommand } from './commands/copy';
+const pkg = require('../package.json');
 
 const program = new Command();
 
 program
   .name('d-drive')
   .description('D-Drive CLI - Discord-based cloud storage for developers')
-  .version('1.0.0');
+  .version(pkg.version || '0.0.0');
 
 // Config command
 program
@@ -55,6 +57,12 @@ program
   .option('-r, --recursive', 'Delete directory recursively')
   .option('-f, --force', 'Force deletion without confirmation')
   .action(deleteCommand);
+
+// Copy command
+program
+  .command('copy <path>')
+  .description('Make a copy of a file in-place (auto-numbered)')
+  .action(copyCommand);
 
 // Help command
 program.on('--help', () => {
