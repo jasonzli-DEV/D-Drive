@@ -113,17 +113,48 @@ export default function DrivePage() {
     enabled: !!folderId,
   });
 
-  // Build breadcrumbs from current folder
+  // Build breadcrumbs from current folder by traversing parentId chain
   useEffect(() => {
-    const buildBreadcrumbs = () => {
+    const buildBreadcrumbs = async () => {
       const crumbs: FileItem[] = [];
-      if (folderDetails) {
-        crumbs.push(folderDetails);
-        // In a real app, you'd fetch parent folders recursively
-        // For now, we'll just show the current folder
+      if (!folderDetails) {
+        setBreadcrumbs([]);
+        return;
       }
-      setBreadcrumbs(crumbs);
+
+      try {
+        // Walk up the parent chain collecting folders
+        let current: FileItem | null = folderDetails;
+        crumbs.push(current);
+
+        // Prevent infinite loops by limiting depth
+        const MAX_DEPTH = 50;
+        let depth = 0;
+
+        while (current?.parentId && depth < MAX_DEPTH) {
+          depth += 1;
+          try {
+            const resp = await api.get(`/files/${current.parentId}`);
+            const parent = resp.data as FileItem;
+            // break if parent is already in crumbs (cycle protection)
+            if (crumbs.find(c => c.id === parent.id)) break;
+            crumbs.push(parent);
+            current = parent;
+          } catch (err) {
+            // If fetching parent fails, stop climbing
+            break;
+          }
+        }
+
+        // We collected from current -> root, so reverse to show root -> ... -> current
+        crumbs.reverse();
+        setBreadcrumbs(crumbs);
+      } catch (err) {
+        // On any unexpected error, fallback to showing current folder only
+        setBreadcrumbs([folderDetails]);
+      }
     };
+
     buildBreadcrumbs();
   }, [folderDetails]);
 
