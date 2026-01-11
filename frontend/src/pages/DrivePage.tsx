@@ -337,6 +337,21 @@ export default function DrivePage() {
     setDraggedFile(file);
     e.dataTransfer.effectAllowed = 'move';
   };
+  // Initialize encryptFiles from user preferences
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const resp = await api.get('/me');
+        if (!mounted) return;
+        const pref = resp.data?.encryptByDefault;
+        if (typeof pref === 'boolean') setEncryptFiles(pref);
+      } catch (err) {
+        // ignore - default remains
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -586,26 +601,7 @@ export default function DrivePage() {
             >
               New Folder
             </Button>
-            <Tooltip title="Encrypt files with AES-256 before uploading"
-              sx={{ ml: 'auto' }}
-            >
-          <FormControlLabel
-            control={
-              <Checkbox
-                checked={encryptFiles}
-                onChange={(e) => setEncryptFiles(e.target.checked)}
-                icon={<Lock size={20} />}
-                checkedIcon={<Lock size={20} />}
-                sx={{
-                  color: 'text.secondary',
-                  '&.Mui-checked': { color: 'success.main' },
-                }}
-              />
-            }
-            label="Encrypt"
-            sx={{ ml: 1 }}
-          />
-        </Tooltip>
+            {/* Encryption preference moved to Settings; initialized from /me */}
           </Box>
         </CardContent>
       </Card>
