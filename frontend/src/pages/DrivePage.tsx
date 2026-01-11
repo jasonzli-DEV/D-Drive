@@ -504,37 +504,35 @@ export default function DrivePage() {
         </Box>
       )}
 
-      {/* Breadcrumb Navigation */}
-      {breadcrumbs.length > 0 && (
-        <Card sx={{ mb: 3, boxShadow: 1 }}>
-          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
-            <Breadcrumbs separator={<ChevronRight size={16} />}>
-              <Link
-                component="button"
-                variant="body2"
-                onClick={() => navigate('/')}
-                sx={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 0.5,
-                  textDecoration: 'none',
-                  color: 'primary.main',
-                  '&:hover': { textDecoration: 'underline' },
-                }}
-              >
-                <Home size={18} />
-                <Typography>Home</Typography>
-              </Link>
-              {breadcrumbs.map((crumb) => (
-                <Typography key={crumb.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                  <Folder size={18} />
-                  {crumb.name}
-                </Typography>
-              ))}
-            </Breadcrumbs>
-          </CardContent>
-        </Card>
-      )}
+      {/* Breadcrumb Navigation - always show (Home at root) */}
+      <Card sx={{ mb: 3, boxShadow: 1 }}>
+        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+          <Breadcrumbs separator={<ChevronRight size={16} />}>
+            <Link
+              component="button"
+              variant="body2"
+              onClick={() => navigate('/')}
+              sx={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5,
+                textDecoration: 'none',
+                color: 'primary.main',
+                '&:hover': { textDecoration: 'underline' },
+              }}
+            >
+              <Home size={18} />
+              <Typography>Home</Typography>
+            </Link>
+            {breadcrumbs.map((crumb) => (
+              <Typography key={crumb.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                <Folder size={18} />
+                {crumb.name}
+              </Typography>
+            ))}
+          </Breadcrumbs>
+        </CardContent>
+      </Card>
 
       <Card sx={{ mb: 3, boxShadow: 2 }}>
         <CardContent>
