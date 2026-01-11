@@ -92,6 +92,7 @@ export default function DrivePage() {
   const folderPrevProgressRef = useRef<Record<string, number>>({});
   const folderErrorShownRef = useRef<Record<string, boolean>>({});
   const folderSuccessShownRef = useRef<Record<string, boolean>>({});
+  const folderFilesRemainingRef = useRef<Record<string, number>>({});
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string>('');
@@ -250,18 +251,9 @@ export default function DrivePage() {
                   return { ...f, uploadedBytes, progress };
                 }));
 
-                const prevProg = folderPrevProgressRef.current[folderKey] || 0;
-                if (newProgressValue === 100 && prevProg < 100) {
-                  folderPrevProgressRef.current[folderKey] = 100;
-                  setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
-                  if (!folderSuccessShownRef.current[folderKey]) {
-                    folderSuccessShownRef.current[folderKey] = true;
-                    toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
-                  }
-                  setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
-                } else {
-                  folderPrevProgressRef.current[folderKey] = newProgressValue;
-                }
+                // Update previous progress; final completion will be decided
+                // when all file uploads for this folder have settled (onSuccess/onError).
+                folderPrevProgressRef.current[folderKey] = newProgressValue;
               }
             }
           },
@@ -295,18 +287,9 @@ export default function DrivePage() {
                       return { ...f, uploadedBytes, progress };
                     }));
 
-                    const prevProg = folderPrevProgressRef.current[folderKey] || 0;
-                    if (newProgressValue === 100 && prevProg < 100) {
-                          folderPrevProgressRef.current[folderKey] = 100;
-                          setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
-                          if (!folderSuccessShownRef.current[folderKey]) {
-                            folderSuccessShownRef.current[folderKey] = true;
-                            toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
-                          }
-                          setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
-                        } else {
-                          folderPrevProgressRef.current[folderKey] = newProgressValue;
-                        }
+                    // Update previous progress; final completion will be decided
+                    // when all file uploads for this folder have settled (onSuccess/onError).
+                    folderPrevProgressRef.current[folderKey] = newProgressValue;
                   }
                 }
               },
@@ -332,13 +315,17 @@ export default function DrivePage() {
           setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
         }, 3000);
       } else {
-        // For folder uploads, only mark folder as complete if not already done (handle cases with few/no progress events)
-        const prevProg = folderPrevProgressRef.current[folderKey] || 0;
-        if (prevProg < 100) {
+        // For folder uploads, decrement remaining counter and finalize only
+        // when all files have settled. This avoids marking the folder complete
+        // solely based on bytes uploaded which may precede final server-side
+        // processing.
+        const remaining = (folderFilesRemainingRef.current[folderKey] || 1) - 1;
+        folderFilesRemainingRef.current[folderKey] = remaining;
+        if (remaining <= 0) {
           folderPrevProgressRef.current[folderKey] = 100;
           setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
-          // Only show one toast per folder completion
-          if (!folderErrorShownRef.current[folderKey]) {
+          if (!folderSuccessShownRef.current[folderKey]) {
+            folderSuccessShownRef.current[folderKey] = true;
             toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
           }
           setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
@@ -362,6 +349,12 @@ export default function DrivePage() {
         if (!folderErrorShownRef.current[folderKey]) {
           folderErrorShownRef.current[folderKey] = true;
           toast.error(error.response?.data?.error || 'Folder upload failed');
+        }
+        // decrement remaining counter and finalize (remove progress UI) when all files finished
+        const remaining = (folderFilesRemainingRef.current[folderKey] || 1) - 1;
+        folderFilesRemainingRef.current[folderKey] = remaining;
+        if (remaining <= 0) {
+          setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
         }
       }
     },
@@ -616,6 +609,9 @@ export default function DrivePage() {
       folderPrevProgressRef.current[baseFolderKey] = 0;
       folderErrorShownRef.current[baseFolderKey] = false;
       folderSuccessShownRef.current[baseFolderKey] = false;
+      // track expected file count for this folder so we only finalize when
+      // all file uploads have finished (success or error)
+      folderFilesRemainingRef.current[baseFolderKey] = filtered.length;
 
       // For each file, create necessary nested folders under the newly created
       // base folder then upload the file there.
