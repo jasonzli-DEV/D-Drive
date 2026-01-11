@@ -444,12 +444,12 @@ export default function DrivePage() {
                 const confirmed = window.confirm(
                   `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`
                 );
-                if (!confirmed) break;
+                if (!confirmed) return;
               } else {
-                if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) break;
+                if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
               }
             } else {
-              if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) break;
+              if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
             }
 
             deleteMutation.mutate(menuFile.id);
