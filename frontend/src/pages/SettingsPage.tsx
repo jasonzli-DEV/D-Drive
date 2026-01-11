@@ -80,7 +80,7 @@ export default function SettingsPage() {
     },
   });
 
-  const [encryptByDefault, setEncryptByDefault] = useState<boolean | null>(null);
+  const [encryptByDefault, setEncryptByDefault] = useState<boolean>(true);
 
   // Fetch current user preferences
   useEffect(() => {
@@ -127,9 +127,8 @@ export default function SettingsPage() {
           <FormControlLabel
             control={
               <Switch
-                checked={Boolean(encryptByDefault)}
+                checked={encryptByDefault}
                 onChange={(e) => updatePref(e.target.checked)}
-                disabled={encryptByDefault === null}
               />
             }
             label="Encrypt uploads by default"
