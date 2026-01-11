@@ -93,6 +93,7 @@ export default function DrivePage() {
   const folderErrorShownRef = useRef<Record<string, boolean>>({});
   const folderSuccessShownRef = useRef<Record<string, boolean>>({});
   const folderFilesRemainingRef = useRef<Record<string, number>>({});
+  const folderToastIdRef = useRef<Record<string, string>>({});
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string>('');
@@ -326,7 +327,13 @@ export default function DrivePage() {
           setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
           if (!folderSuccessShownRef.current[folderKey]) {
             folderSuccessShownRef.current[folderKey] = true;
-            toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+            const tid = folderToastIdRef.current[folderKey];
+            if (tid) {
+              toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`, { id: tid });
+              delete folderToastIdRef.current[folderKey];
+            } else {
+              toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+            }
           }
           setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
         }
@@ -354,6 +361,11 @@ export default function DrivePage() {
         const remaining = (folderFilesRemainingRef.current[folderKey] || 1) - 1;
         folderFilesRemainingRef.current[folderKey] = remaining;
         if (remaining <= 0) {
+          const tid = folderToastIdRef.current[folderKey];
+          if (tid) {
+            toast.error('Folder upload failed', { id: tid });
+            delete folderToastIdRef.current[folderKey];
+          }
           setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
         }
       }
@@ -600,6 +612,11 @@ export default function DrivePage() {
         if (prev.find(p => p.folderKey === baseFolderKey)) return prev;
         return [...prev, { folderKey: baseFolderKey, folderName: actualBaseName || baseFolderKey || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
       });
+      // show a loading toast so the folder upload is visible
+      try {
+        const id = toast.loading(`Uploading folder: ${actualBaseName}`);
+        folderToastIdRef.current[baseFolderKey] = id;
+      } catch (e) {}
 
       // Remove any existing per-file progress entries matching files in this selection
       const selectedNames = new Set(filtered.map(f => (f as any).webkitRelativePath || f.name));
