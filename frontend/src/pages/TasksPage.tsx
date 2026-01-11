@@ -63,19 +63,19 @@ export default function TasksPage() {
 
   const createMutation = useMutation({
     mutationFn: (payload: any) => api.post('/tasks', payload),
-    onSuccess: () => { queryClient.invalidateQueries(['tasks']); toast.success('Task created'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Task created'); },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to create task'),
   });
 
   const updateMutation = useMutation({
     mutationFn: (payload: any) => api.patch(`/tasks/${payload.id}`, payload),
-    onSuccess: () => { queryClient.invalidateQueries(['tasks']); toast.success('Task updated'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Task updated'); },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to update task'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/tasks/${id}`),
-    onSuccess: () => { queryClient.invalidateQueries(['tasks']); toast.success('Task deleted'); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Task deleted'); },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to delete task'),
   });
 
@@ -123,7 +123,7 @@ export default function TasksPage() {
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
         <Typography variant="h5">Tasks</Typography>
-        <Button startIcon={<Add />} onClick={() => setOpen(true)}>New Task</Button>
+        <Button startIcon={<Plus size={16} />} onClick={() => setOpen(true)}>New Task</Button>
       </Box>
 
       {isLoading ? <CircularProgress /> : (
