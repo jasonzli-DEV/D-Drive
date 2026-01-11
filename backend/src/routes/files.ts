@@ -766,11 +766,14 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
     };
 
     // Recursive directory copy
-    const copyDirectory = async (tx: any, srcDirId: string, targetParentId: string | null, parentPath: string | null) => {
+    const copyDirectory = async (tx: any, srcDirId: string, targetParentId: string | null, parentPath: string | null, renameForTopLevel = true) => {
       const srcDir = await prisma.file.findUnique({ where: { id: srcDirId }, include: { children: true } });
       if (!srcDir) throw new Error('Source directory not found');
-
-      const dirName = await getUniqueName(userId, parentPath, `Copy of ${srcDir.name}`);
+      // For the top-level directory copy, prefix with "Copy of ...". For nested
+      // directories, preserve original names but ensure uniqueness within the
+      // new parent path.
+      const dirBaseName = renameForTopLevel ? `Copy of ${srcDir.name}` : srcDir.name;
+      const dirName = await getUniqueName(userId, parentPath, dirBaseName);
       const dirPath = parentPath ? `${parentPath}/${dirName}` : `/${dirName}`;
 
       const newDir = await tx.file.create({
@@ -787,9 +790,10 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
       const children = await prisma.file.findMany({ where: { parentId: srcDirId } });
       for (const child of children) {
         if (child.type === 'DIRECTORY') {
-          await copyDirectory(tx, child.id, newDir.id, dirPath);
+          await copyDirectory(tx, child.id, newDir.id, dirPath, false);
         } else {
-          // file: copy without renaming inner files
+          // file: copy without renaming inner files (preserve filenames,
+          // uniquify within target directory)
           const srcWithChunks = await prisma.file.findUnique({ where: { id: child.id }, include: { chunks: { orderBy: { chunkIndex: 'asc' } } } });
           if (!srcWithChunks) continue;
           await copyFile(tx, srcWithChunks, newDir.id, dirPath, false);
