@@ -578,17 +578,34 @@ export default function DrivePage() {
         return true;
       });
 
-      // Treat the selected directory as one top-level folder upload so we only
-      // show a single folder progress entry. Still create nested folders on
-      // the server for each file's path.
+      // Create a server-side base folder for this upload. The server will
+      // auto-number if a sibling with the same name exists. After creating
+      // the base folder we'll create nested folders under it for each file's
+      // relative path.
       const firstRel = (filtered[0] as any)?.webkitRelativePath || '';
-      const baseFolderKey = firstRel ? firstRel.split('/')[0] : 'root';
+      const baseFolderNameRequested = firstRel ? firstRel.split('/')[0] : '';
       const totalBytes = filtered.reduce((s, it) => s + (it.size || 0), 0);
+
+      let baseFolderId: string | null = folderId || null;
+      let actualBaseName = baseFolderNameRequested || 'Root';
+      let baseFolderKey = actualBaseName;
+      if (baseFolderNameRequested) {
+        try {
+          const resp = await api.post('/files/directory', { name: baseFolderNameRequested, parentId: folderId || null });
+          baseFolderId = resp.data.id;
+          actualBaseName = resp.data.name || baseFolderNameRequested;
+          baseFolderKey = actualBaseName;
+        } catch (e) {
+          // If create failed, fall back to parent and proceed (uploads will go into parent)
+          baseFolderId = folderId || null;
+          baseFolderKey = baseFolderNameRequested || 'root';
+        }
+      }
 
       // initialize single folder progress entry for the whole selection
       setUploadFolders(prev => {
         if (prev.find(p => p.folderKey === baseFolderKey)) return prev;
-        return [...prev, { folderKey: baseFolderKey, folderName: baseFolderKey || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
+        return [...prev, { folderKey: baseFolderKey, folderName: actualBaseName || baseFolderKey || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
       });
 
       // Remove any existing per-file progress entries matching files in this selection
@@ -598,24 +615,26 @@ export default function DrivePage() {
       // initialize refs to avoid multiple toasts and to track previous progress
       folderPrevProgressRef.current[baseFolderKey] = 0;
       folderErrorShownRef.current[baseFolderKey] = false;
+      folderSuccessShownRef.current[baseFolderKey] = false;
 
-      // For each file, create necessary nested folders then upload into that folder
-          for (const f of filtered) {
-            const rel = (f as any).webkitRelativePath || f.name;
-            const parts = rel.split('/');
-            const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-            try {
-              const targetParent = await ensureFolderPath(folderId || null, folderPath);
-              // pass the full relative path as fileKey so tracking is unique per file path
-              uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey, fileKey: rel });
-            } catch (err) {
-              console.error('Folder upload child error:', err);
-              if (!folderErrorShownRef.current[baseFolderKey]) {
-                folderErrorShownRef.current[baseFolderKey] = true;
-                toast.error('Failed to upload some folder contents');
-              }
-            }
+      // For each file, create necessary nested folders under the newly created
+      // base folder then upload the file there.
+      for (const f of filtered) {
+        const rel = (f as any).webkitRelativePath || f.name;
+        const parts = rel.split('/');
+        const nestedParts = parts.length > 1 ? parts.slice(1, -1) : [];
+        const nestedPath = nestedParts.join('/');
+        try {
+          const targetParent = nestedPath ? await ensureFolderPath(baseFolderId, nestedPath) : baseFolderId;
+          uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey, fileKey: rel });
+        } catch (err) {
+          console.error('Folder upload child error:', err);
+          if (!folderErrorShownRef.current[baseFolderKey]) {
+            folderErrorShownRef.current[baseFolderKey] = true;
+            toast.error('Failed to upload some folder contents');
           }
+        }
+      }
 
       setTimeout(() => { if (inp.parentNode) inp.parentNode.removeChild(inp); }, 0);
     };
