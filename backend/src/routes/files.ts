@@ -415,12 +415,8 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
 
     // Sanitize filename to prevent header injection
     const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
-    // RFC5987 encoding for non-ASCII and safe handling of spaces: provide both
-    // a simple filename and filename* (UTF-8 encoded) fallback for browsers.
-    const filenameStar = encodeURIComponent(sanitizedName);
-
     res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"; filename*=UTF-8''${filenameStar}`);
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
     res.setHeader('Content-Length', fileData.length.toString());
 
     res.send(fileData);
