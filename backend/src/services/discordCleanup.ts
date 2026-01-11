@@ -21,16 +21,16 @@ export async function deleteOrphanedDiscordMessages(batchSize = 200, maxBatches 
   let totalDeleted = 0;
 
   for (let batch = 0; batch < maxBatches; batch++) {
-    const fetched = await channel.messages.fetch({ limit: batchSize, before });
+    const fetched: any = await channel.messages.fetch({ limit: batchSize, before });
     if (!fetched || fetched.size === 0) break;
 
-    const messageIds = Array.from(fetched.keys());
+    const messageIds: string[] = Array.from(fetched.keys());
 
     // Query DB for referenced messageIds among these
     const referenced = await prisma.fileChunk.findMany({ where: { messageId: { in: messageIds } }, select: { messageId: true } });
     const referencedSet = new Set(referenced.map(r => r.messageId));
 
-    const orphanIds = messageIds.filter(id => !referencedSet.has(id));
+    const orphanIds = messageIds.filter((id: string) => !referencedSet.has(id));
 
     for (const mid of orphanIds) {
       try {
