@@ -48,6 +48,17 @@ import FolderSelectDialog from '../components/FolderSelectDialog';
 };
 
 export default function TasksPage() {
+  function describeCron(expr: string) {
+    if (!expr) return 'Enter a cron expression (5 fields)';
+    const parts = expr.trim().split(/\s+/);
+    if (parts.length < 5) return 'Invalid cron (needs 5 fields)';
+    // */N * * * * -> every N minutes
+    const m = parts[0].match(/^\*\/(\d+)$/);
+    if (m) return `At every ${m[1]}th minute`;
+    // 0 H * * * -> daily at H:MM
+    if (parts[0] === '0' && /^[0-2]?\d$/.test(parts[1])) return `Daily at ${parts[1].padStart(2, '0')}:00`;
+    return 'Cron expression (minute hour day month weekday)';
+  }
   const queryClient = useQueryClient();
   const { data: tasks, isLoading } = useQuery<any[]>({
     queryKey: ['tasks'],
@@ -192,7 +203,7 @@ export default function TasksPage() {
         <DialogTitle>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
         <DialogContent>
           <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText="e.g. */5 * * * * — At every 5th minute" />
+          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText={describeCron(form.cron)} />
           <FormControlLabel control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
 
           <Box sx={{ display: 'flex', gap: 2 }}>
