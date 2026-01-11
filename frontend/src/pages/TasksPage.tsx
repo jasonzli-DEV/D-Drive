@@ -114,7 +114,7 @@ export default function TasksPage() {
           // always timestamp filenames for task uploads
           // timestampNames: !!t.timestampNames,
       maxFiles: t.maxFiles || 0,
-      encrypt: !!t.encrypt,
+      
     });
     setOpen(true);
   }
@@ -157,18 +157,17 @@ export default function TasksPage() {
 
       {isLoading ? <CircularProgress /> : (
         <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Name</TableCell>
-              <TableCell>Enabled</TableCell>
-              <TableCell>Destination</TableCell>
-              <TableCell>Last Run</TableCell>
-              <TableCell>Compress</TableCell>
-              <TableCell>Encrypt</TableCell>
-              <TableCell>Max Files</TableCell>
-              <TableCell>Actions</TableCell>
-            </TableRow>
-          </TableHead>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Enabled</TableCell>
+                  <TableCell>Destination</TableCell>
+                  <TableCell>Last Run</TableCell>
+                  <TableCell>Compress</TableCell>
+                  <TableCell>Max Files</TableCell>
+                  <TableCell>Actions</TableCell>
+                </TableRow>
+              </TableHead>
           <TableBody>
             {tasks && tasks.map((t: any) => (
               <TableRow key={t.id}>
@@ -177,7 +176,6 @@ export default function TasksPage() {
                 <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '/'}</TableCell>
                 <TableCell>{t.lastRun ? new Date(t.lastRun).toLocaleString() : '-'}</TableCell>
                 <TableCell>{t.compress}</TableCell>
-                <TableCell>{t.encrypt ? 'Yes' : 'No'}</TableCell>
                 <TableCell>{t.maxFiles || 0}</TableCell>
                 <TableCell>
                   <IconButton onClick={() => runNowMutation.mutate(t.id)} title="Run now"><Play size={16} /></IconButton>
