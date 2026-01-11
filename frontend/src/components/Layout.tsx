@@ -44,7 +44,7 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
-        <Toolbar sx={{ minHeight: 72 }}>
+        <Toolbar sx={{ minHeight: 120 }}>
             {/* Logo on the left */}
             <IconButton
               color="inherit"
@@ -56,7 +56,7 @@ export default function Layout({ children }: LayoutProps) {
                 component="img"
                 src="/D-Drive.png"
                 alt="D-Drive"
-                sx={{ width: 64, height: 64, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: 128, height: 128, objectFit: 'contain', bgcolor: 'transparent' }}
               />
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
