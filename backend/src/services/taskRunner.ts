@@ -53,10 +53,41 @@ export async function runTaskNow(taskId: string) {
     if (!task.enabled) throw new Error('Task is disabled');
 
     const sftp = new SftpClient();
-    const connectConfig: any = { host: task.sftpHost, port: task.sftpPort || 22, username: task.sftpUser };
-    if (task.sftpPrivateKey) connectConfig.privateKey = task.sftpPrivateKey;
 
-    await sftp.connect(connectConfig);
+    // Attempt connections based on task auth preferences. If both methods are allowed,
+    // try password first then private key (password may be desired by some servers).
+    const baseConfig: any = { host: task.sftpHost, port: task.sftpPort || 22, username: task.sftpUser };
+
+    const tryConnectWith = async (cfg: any) => {
+      try {
+        await sftp.connect(cfg);
+        return true;
+      } catch (e) {
+        logger.warn('SFTP connect attempt failed', { err: e });
+        return false;
+      }
+    };
+
+    let connected = false;
+    // If password auth is requested and a password is provided, try it first.
+    if (task.authPassword && task.sftpPassword) {
+      const cfg = { ...baseConfig, password: task.sftpPassword };
+      connected = await tryConnectWith(cfg);
+    }
+
+    // If not connected and private-key auth is requested, try private key.
+    if (!connected && task.authPrivateKey && task.sftpPrivateKey) {
+      const cfg = { ...baseConfig, privateKey: task.sftpPrivateKey };
+      connected = await tryConnectWith(cfg);
+    }
+
+    // If still not connected, as a fallback try any single method present.
+    if (!connected) {
+      const cfg: any = { ...baseConfig };
+      if (task.sftpPrivateKey) cfg.privateKey = task.sftpPrivateKey;
+      if (task.sftpPassword) cfg.password = task.sftpPassword;
+      await sftp.connect(cfg);
+    }
 
     // List files in remote path
     const list = await sftp.list(task.sftpPath);
