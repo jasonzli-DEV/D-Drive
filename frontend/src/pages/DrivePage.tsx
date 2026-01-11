@@ -326,6 +326,7 @@ export default function DrivePage() {
           setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
           if (!folderSuccessShownRef.current[folderKey]) {
             folderSuccessShownRef.current[folderKey] = true;
+            toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
           }
           setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
         }
@@ -347,6 +348,7 @@ export default function DrivePage() {
         setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'error' } : f));
         if (!folderErrorShownRef.current[folderKey]) {
           folderErrorShownRef.current[folderKey] = true;
+          toast.error(error.response?.data?.error || 'Folder upload failed');
         }
         // decrement remaining counter and finalize (remove progress UI) when all files finished
         const remaining = (folderFilesRemainingRef.current[folderKey] || 1) - 1;
