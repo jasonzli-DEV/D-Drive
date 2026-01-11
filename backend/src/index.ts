@@ -7,6 +7,7 @@ import { Client, GatewayIntentBits } from 'discord.js';
 import routes from './routes';
 import { errorHandler } from './middleware/errorHandler';
 import { initDiscordBot } from './services/discord';
+import scheduler from './services/scheduler';
 import { logger } from './utils/logger';
 
 dotenv.config();
@@ -84,6 +85,9 @@ async function startServer() {
     // default to avoid abuse during initial headers parsing.
     server.setTimeout(0);
     logger.info('Server request timeout disabled (server.setTimeout(0))');
+
+    // Initialize task scheduler
+    await scheduler.initScheduler();
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);

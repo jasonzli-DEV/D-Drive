@@ -192,7 +192,7 @@ export default function TasksPage() {
         <DialogTitle>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
         <DialogContent>
           <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText="e.g. 0 2 * * * (daily at 02:00)" />
+          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText="e.g. */5 * * * * — At every 5th minute" />
           <FormControlLabel control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
 
           <Box sx={{ display: 'flex', gap: 2 }}>

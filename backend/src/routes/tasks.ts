@@ -3,6 +3,8 @@ import { PrismaClient, CompressFormat } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow } from '../services/taskRunner';
+import scheduler from '../services/scheduler';
+import parser from 'cron-parser';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -43,6 +45,18 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       enabled,
     } = req.body;
 
+    // Validate maxFiles
+    if (maxFiles !== undefined && Number(maxFiles) < 0) {
+      return res.status(400).json({ error: 'maxFiles must be >= 0' });
+    }
+
+    // Validate cron expression
+    try {
+      parser.parseExpression(cron || '* * * * *');
+    } catch (e) {
+      return res.status(400).json({ error: 'Invalid cron expression' });
+    }
+
     const task = await prisma.task.create({
       data: {
         userId,
@@ -66,6 +80,11 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       },
     });
 
+    // Schedule the task immediately if enabled
+    if (task.enabled) {
+      try { scheduler.scheduleTask(task.id, task.cron); } catch (e) { logger.warn('Failed to schedule new task', { err: e }); }
+    }
+
     res.status(201).json(task);
   } catch (err) {
     logger.error('Error creating task', err);
@@ -81,7 +100,24 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     const existing = await prisma.task.findUnique({ where: { id } });
     if (!existing || existing.userId !== userId) return res.status(404).json({ error: 'Not found' });
 
+    // Validate maxFiles if present
+    if (req.body.maxFiles !== undefined && Number(req.body.maxFiles) < 0) {
+      return res.status(400).json({ error: 'maxFiles must be >= 0' });
+    }
+
+    // Validate cron if present
+    if (req.body.cron) {
+      try { parser.parseExpression(req.body.cron); } catch (e) { return res.status(400).json({ error: 'Invalid cron expression' }); }
+    }
+
     const updated = await prisma.task.update({ where: { id }, data: req.body });
+
+    // Reschedule or unschedule based on enabled flag
+    try {
+      if (updated.enabled) scheduler.rescheduleTask(updated.id, updated.cron);
+      else scheduler.unscheduleTask(updated.id);
+    } catch (e) { logger.warn('Failed to (re)schedule task after update', { err: e }); }
+
     res.json(updated);
   } catch (err) {
     logger.error('Error updating task', err);
@@ -98,6 +134,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     if (!existing || existing.userId !== userId) return res.status(404).json({ error: 'Not found' });
 
     await prisma.task.delete({ where: { id } });
+    try { scheduler.unscheduleTask(id); } catch (e) { /* ignore */ }
     res.json({ ok: true });
   } catch (err) {
     logger.error('Error deleting task', err);
