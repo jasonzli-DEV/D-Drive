@@ -92,25 +92,21 @@ export default function TasksPage() {
   const createMutation = useMutation({
     mutationFn: (payload: any) => api.post('/tasks', payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Task created'); },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to create task'),
   });
 
   const updateMutation = useMutation({
     mutationFn: (payload: any) => api.patch(`/tasks/${payload.id}`, payload),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Task updated'); },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to update task'),
   });
 
   const deleteMutation = useMutation({
     mutationFn: (id: string) => api.delete(`/tasks/${id}`),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['tasks'] }); toast.success('Task deleted'); },
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to delete task'),
   });
 
   const runNowMutation = useMutation({
     mutationFn: (id: string) => api.post(`/tasks/${id}/run`),
     onSuccess: () => toast.success('Task run started'),
-    onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to run task'),
   });
 
   const [open, setOpen] = useState(false);
@@ -146,30 +142,51 @@ export default function TasksPage() {
   async function save(runNow = false) {
     const payload = { ...form, timestampNames: true };
     try {
-      let resp: any;
-      if (form.id) {
-        resp = await updateMutation.mutateAsync(payload);
-      } else {
-        resp = await createMutation.mutateAsync(payload);
+      // client-side validation to provide immediate feedback and avoid duplicate toasts
+      const validationError = validateForm(payload);
+      if (validationError) {
+        toast.error(validationError);
+        return;
       }
 
-      // resp may be axios response or direct data depending on mutationFn; normalize
-      const task = resp?.data ? resp.data : resp;
+      let resp: any;
+      if (form.id) resp = await updateMutation.mutateAsync(payload);
+      else resp = await createMutation.mutateAsync(payload);
 
+      const task = resp?.data ? resp.data : resp;
       setOpen(false);
 
       if (runNow && task?.id) {
         try {
           await runNowMutation.mutateAsync(task.id);
-          toast.success('Run started');
         } catch (err: any) {
           toast.error(err?.response?.data?.error || err?.message || 'Failed to start run');
         }
       }
     } catch (err: any) {
       const message = err?.response?.data?.error || err?.response?.data || err?.message || String(err);
-      toast.error(`Failed to save task: ${message}`);
+      toast.error(message || 'Failed to save task');
     }
+  }
+
+  function validateForm(p: any) {
+    if (!p.name || String(p.name).trim().length === 0) return 'Name is required';
+    if (!p.cron || String(p.cron).trim().length === 0) return 'Cron is required';
+    try {
+      const v = (cronValidate as any)(p.cron, { preset: 'default' });
+      const ok = typeof v.isValid === 'function' ? v.isValid() : v;
+      if (!ok) return 'Invalid cron expression';
+    } catch (e) {
+      return 'Invalid cron expression';
+    }
+
+    if (!p.sftpHost || String(p.sftpHost).trim().length === 0) return 'SFTP host is required';
+
+    const hasPasswordAuth = !!p.authPassword && !!p.sftpPassword;
+    const hasKeyAuth = !!p.authPrivateKey && !!p.sftpPrivateKey;
+    if (!hasPasswordAuth && !hasKeyAuth) return 'At least one authentication method with credentials is required';
+
+    return null;
   }
 
   return (
@@ -202,9 +219,9 @@ export default function TasksPage() {
                 <TableCell>{t.compress}</TableCell>
                 <TableCell>{t.maxFiles || 0}</TableCell>
                 <TableCell>
-                  <IconButton onClick={() => runNowMutation.mutate(t.id)} title="Run now"><Play size={16} /></IconButton>
+                  <IconButton onClick={async () => { try { await runNowMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to run task'); } }} title="Run now"><Play size={16} /></IconButton>
                   <IconButton onClick={() => openForEdit(t)} title="Edit"><Edit size={16} /></IconButton>
-                  <IconButton onClick={() => deleteMutation.mutate(t.id)} title="Delete"><Trash size={16} /></IconButton>
+                  <IconButton onClick={async () => { try { await deleteMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to delete task'); } }} title="Delete"><Trash size={16} /></IconButton>
                 </TableCell>
               </TableRow>
             ))}
