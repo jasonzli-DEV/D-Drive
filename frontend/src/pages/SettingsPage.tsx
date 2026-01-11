@@ -83,19 +83,21 @@ export default function SettingsPage() {
   const [encryptByDefault, setEncryptByDefault] = useState<boolean | null>(null);
 
   // Fetch current user preferences
-  useQuery({
-    queryKey: ['me'],
-    queryFn: async () => {
-      const resp = await api.get('/me');
-      return resp.data;
-    },
-    onSuccess: (data) => {
-      if (typeof data.encryptByDefault === 'boolean') setEncryptByDefault(data.encryptByDefault);
-    },
-    onError: () => {
-      // ignore
-    },
-  });
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const resp = await api.get('/me');
+        if (!mounted) return;
+        if (typeof resp.data?.encryptByDefault === 'boolean') {
+          setEncryptByDefault(resp.data.encryptByDefault);
+        }
+      } catch (err) {
+        // ignore
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   const updatePref = async (value: boolean) => {
     try {
