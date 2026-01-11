@@ -3,6 +3,7 @@ import { PrismaClient, CompressFormat } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow } from '../services/taskRunner';
+import { testSftpConnection } from '../services/sftp';
 import scheduler from '../services/scheduler';
 
 function isValidCronExpression(expr: string | undefined) {
@@ -50,6 +51,15 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       enabled,
     } = req.body;
 
+    // Required fields validation
+    if (!name || String(name).trim().length === 0) {
+      return res.status(400).json({ error: 'Task name is required' });
+    }
+
+    if (!cron || String(cron).trim().length === 0) {
+      return res.status(400).json({ error: 'Cron expression is required' });
+    }
+
     // Validate maxFiles
     if (maxFiles !== undefined && Number(maxFiles) < 0) {
       return res.status(400).json({ error: 'maxFiles must be >= 0' });
@@ -58,6 +68,20 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     // Validate cron expression (basic check: 5 or 6 fields)
     if (!isValidCronExpression(cron || '* * * * *')) {
       return res.status(400).json({ error: 'Invalid cron expression' });
+    }
+
+    // Require at least one authentication method with credentials
+    const hasPasswordAuth = !!authPassword && !!sftpPassword;
+    const hasKeyAuth = !!authPrivateKey && !!sftpPrivateKey;
+    if (!hasPasswordAuth && !hasKeyAuth) {
+      return res.status(400).json({ error: 'At least one authentication method with credentials is required (password or private key)' });
+    }
+
+    // Test SFTP connection before creating the task
+    try {
+      await testSftpConnection({ host: sftpHost, port: sftpPort, username: sftpUser, password: sftpPassword, privateKey: sftpPrivateKey, authPassword: !!authPassword, authPrivateKey: !!authPrivateKey });
+    } catch (err: any) {
+      return res.status(400).json({ error: `SFTP connection failed: ${err?.message || String(err)}` });
     }
 
     const task = await prisma.task.create({
@@ -111,6 +135,34 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     // Validate cron if present (basic check)
     if (req.body.cron && !isValidCronExpression(req.body.cron)) {
       return res.status(400).json({ error: 'Invalid cron expression' });
+    }
+
+    // Merge existing values with updates for validation and SFTP testing
+    const merged = { ...existing, ...req.body } as any;
+
+    if (!merged.name || String(merged.name).trim().length === 0) {
+      return res.status(400).json({ error: 'Task name is required' });
+    }
+
+    if (!merged.cron || String(merged.cron).trim().length === 0) {
+      return res.status(400).json({ error: 'Cron expression is required' });
+    }
+
+    if (!isValidCronExpression(merged.cron)) {
+      return res.status(400).json({ error: 'Invalid cron expression' });
+    }
+
+    const hasPasswordAuthUpd = !!merged.authPassword && !!merged.sftpPassword;
+    const hasKeyAuthUpd = !!merged.authPrivateKey && !!merged.sftpPrivateKey;
+    if (!hasPasswordAuthUpd && !hasKeyAuthUpd) {
+      return res.status(400).json({ error: 'At least one authentication method with credentials is required (password or private key)' });
+    }
+
+    // Test SFTP connection with merged values
+    try {
+      await testSftpConnection({ host: merged.sftpHost, port: merged.sftpPort, username: merged.sftpUser, password: merged.sftpPassword, privateKey: merged.sftpPrivateKey, authPassword: !!merged.authPassword, authPrivateKey: !!merged.authPrivateKey });
+    } catch (err: any) {
+      return res.status(400).json({ error: `SFTP connection failed: ${err?.message || String(err)}` });
     }
 
     const updated = await prisma.task.update({ where: { id }, data: req.body });
