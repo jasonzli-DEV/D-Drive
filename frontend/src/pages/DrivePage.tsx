@@ -91,6 +91,7 @@ export default function DrivePage() {
   const fileLoadedRef = useRef<Record<string, number>>({});
   const folderPrevProgressRef = useRef<Record<string, number>>({});
   const folderErrorShownRef = useRef<Record<string, boolean>>({});
+  const folderSuccessShownRef = useRef<Record<string, boolean>>({});
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string>('');
@@ -253,7 +254,10 @@ export default function DrivePage() {
                 if (newProgressValue === 100 && prevProg < 100) {
                   folderPrevProgressRef.current[folderKey] = 100;
                   setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
-                  toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+                  if (!folderSuccessShownRef.current[folderKey]) {
+                    folderSuccessShownRef.current[folderKey] = true;
+                    toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+                  }
                   setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
                 } else {
                   folderPrevProgressRef.current[folderKey] = newProgressValue;
@@ -293,13 +297,16 @@ export default function DrivePage() {
 
                     const prevProg = folderPrevProgressRef.current[folderKey] || 0;
                     if (newProgressValue === 100 && prevProg < 100) {
-                      folderPrevProgressRef.current[folderKey] = 100;
-                      setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
-                      toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
-                      setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
-                    } else {
-                      folderPrevProgressRef.current[folderKey] = newProgressValue;
-                    }
+                          folderPrevProgressRef.current[folderKey] = 100;
+                          setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
+                          if (!folderSuccessShownRef.current[folderKey]) {
+                            folderSuccessShownRef.current[folderKey] = true;
+                            toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+                          }
+                          setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
+                        } else {
+                          folderPrevProgressRef.current[folderKey] = newProgressValue;
+                        }
                   }
                 }
               },
