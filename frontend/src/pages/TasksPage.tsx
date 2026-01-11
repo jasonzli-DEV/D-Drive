@@ -111,6 +111,7 @@ export default function TasksPage() {
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [destDialogOpen, setDestDialogOpen] = useState(false);
 
   useEffect(() => { if (!open) setForm(defaultForm); }, [open]);
@@ -170,23 +171,31 @@ export default function TasksPage() {
   }
 
   function validateForm(p: any) {
-    if (!p.name || String(p.name).trim().length === 0) return 'Name is required';
-    if (!p.cron || String(p.cron).trim().length === 0) return 'Cron is required';
-    try {
-      const v = (cronValidate as any)(p.cron, { preset: 'default' });
-      const ok = typeof v.isValid === 'function' ? v.isValid() : v;
-      if (!ok) return 'Invalid cron expression';
-    } catch (e) {
-      return 'Invalid cron expression';
+    const e: Record<string, string | null> = {};
+    if (!p.name || String(p.name).trim().length === 0) e.name = 'Name is required';
+    else e.name = null;
+
+    if (!p.cron || String(p.cron).trim().length === 0) e.cron = 'Cron is required';
+    else {
+      try {
+        const v = (cronValidate as any)(p.cron, { preset: 'default' });
+        const ok = typeof v.isValid === 'function' ? v.isValid() : v;
+        if (!ok) e.cron = 'Invalid cron expression';
+        else e.cron = null;
+      } catch (err) { e.cron = 'Invalid cron expression'; }
     }
 
-    if (!p.sftpHost || String(p.sftpHost).trim().length === 0) return 'SFTP host is required';
+    if (!p.sftpHost || String(p.sftpHost).trim().length === 0) e.sftpHost = 'SFTP host is required';
+    else e.sftpHost = null;
 
     const hasPasswordAuth = !!p.authPassword && !!p.sftpPassword;
     const hasKeyAuth = !!p.authPrivateKey && !!p.sftpPrivateKey;
-    if (!hasPasswordAuth && !hasKeyAuth) return 'At least one authentication method with credentials is required';
+    if (!hasPasswordAuth && !hasKeyAuth) e.auth = 'At least one authentication method with credentials is required';
+    else e.auth = null;
 
-    return null;
+    setErrors(e);
+
+    return Object.values(e).every((v) => v === null);
   }
 
   return (
@@ -232,12 +241,12 @@ export default function TasksPage() {
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
         <DialogTitle>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
         <DialogContent>
-          <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText={describeCron(form.cron)} />
+          <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} error={!!errors.name} helperText={errors.name || ''} />
+          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText={errors.cron || describeCron(form.cron)} error={!!errors.cron} />
           <FormControlLabel control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="SFTP Host" value={form.sftpHost} onChange={(e) => setForm({ ...form, sftpHost: e.target.value })} fullWidth />
+            <Box sx={{ display: 'flex', gap: 2 }}>
+            <TextField label="SFTP Host" value={form.sftpHost} onChange={(e) => setForm({ ...form, sftpHost: e.target.value })} fullWidth error={!!errors.sftpHost} helperText={errors.sftpHost || ''} />
             <TextField label="Port" type="number" value={form.sftpPort} onChange={(e) => setForm({ ...form, sftpPort: Number(e.target.value) })} sx={{ width: 120 }} />
           </Box>
 
@@ -267,16 +276,17 @@ export default function TasksPage() {
             </Select>
           </FormControl>
 
-          <Box sx={{ mt: 2 }}>
+            <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2">Authentication methods</Typography>
             <FormControlLabel control={<Checkbox checked={form.authPassword} onChange={(e) => setForm({ ...form, authPassword: e.target.checked })} />} label="Attempt password" />
             <FormControlLabel control={<Checkbox checked={form.authPrivateKey} onChange={(e) => setForm({ ...form, authPrivateKey: e.target.checked })} />} label="Attempt private key" />
             {form.authPassword && (
-              <TextField label="SFTP Password" type="password" fullWidth margin="normal" value={form.sftpPassword} onChange={(e) => setForm({ ...form, sftpPassword: e.target.value })} />
+              <TextField label="SFTP Password" type="password" fullWidth margin="normal" value={form.sftpPassword} onChange={(e) => setForm({ ...form, sftpPassword: e.target.value })} error={!!errors.auth} />
             )}
             {form.authPrivateKey && (
-              <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} />
+              <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} error={!!errors.auth} />
             )}
+            {errors.auth && <Typography color="error" variant="body2">{errors.auth}</Typography>}
           </Box>
 
           <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} />
