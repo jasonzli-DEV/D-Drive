@@ -61,13 +61,13 @@ export default function Layout({ children }: LayoutProps) {
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
-          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 56, height: 56 }}>
-            <Settings size={24} />
+          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 48, height: 48 }}>
+            <Settings size={20} />
           </IconButton>
 
-          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 56, height: 56 }}>
+          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 48, height: 48 }}>
             <Avatar
-              sx={{ width: 56, height: 56 }}
+              sx={{ width: 48, height: 48 }}
               src={
                 user?.avatarUrl ? user.avatarUrl :
                 user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined
