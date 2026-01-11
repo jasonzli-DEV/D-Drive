@@ -44,7 +44,7 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
-        <Toolbar>
+        <Toolbar sx={{ minHeight: 72 }}>
             {/* Logo on the left */}
             <IconButton
               color="inherit"
@@ -56,7 +56,7 @@ export default function Layout({ children }: LayoutProps) {
                 component="img"
                 src="/D-Drive.png"
                 alt="D-Drive"
-                sx={{ width: 36, height: 36, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: 64, height: 64, objectFit: 'contain', bgcolor: 'transparent' }}
               />
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
@@ -96,20 +96,7 @@ export default function Layout({ children }: LayoutProps) {
               Logout
             </MenuItem>
           </Menu>
-            {/* D-Drive logo on the top-right. Placed last so it appears at the far right. */}
-            <IconButton
-              color="inherit"
-              onClick={() => navigate('/')}
-              sx={{ ml: 1, p: 0 }}
-              aria-label="Home"
-            >
-              <Box
-                component="img"
-                src="/D-Drive.png"
-                alt="D-Drive"
-                sx={{ width: 36, height: 36, objectFit: 'contain', bgcolor: 'transparent' }}
-              />
-            </IconButton>
+            {/* right-side logo removed to avoid duplication */}
         </Toolbar>
       </AppBar>
       
