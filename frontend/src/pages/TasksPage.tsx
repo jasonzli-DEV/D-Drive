@@ -119,14 +119,33 @@ export default function TasksPage() {
     setOpen(true);
   }
 
-  async function save() {
+  async function save(runNow = false) {
     const payload = { ...form, timestampNames: true };
-    if (form.id) {
-      await updateMutation.mutateAsync(payload);
-    } else {
-      await createMutation.mutateAsync(payload);
+    try {
+      let resp: any;
+      if (form.id) {
+        resp = await updateMutation.mutateAsync(payload);
+      } else {
+        resp = await createMutation.mutateAsync(payload);
+      }
+
+      // resp may be axios response or direct data depending on mutationFn; normalize
+      const task = resp?.data ? resp.data : resp;
+
+      setOpen(false);
+
+      if (runNow && task?.id) {
+        try {
+          await runNowMutation.mutateAsync(task.id);
+          toast.success('Run started');
+        } catch (err: any) {
+          toast.error(err?.response?.data?.error || err?.message || 'Failed to start run');
+        }
+      }
+    } catch (err: any) {
+      const message = err?.response?.data?.error || err?.response?.data || err?.message || String(err);
+      toast.error(`Failed to save task: ${message}`);
     }
-    setOpen(false);
   }
 
   return (
@@ -225,7 +244,8 @@ export default function TasksPage() {
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
-          <Button variant="contained" onClick={save}>Save</Button>
+          <Button color="secondary" onClick={() => save(true)}>Save & Run</Button>
+          <Button variant="contained" onClick={() => save(false)}>Save</Button>
         </DialogActions>
       </Dialog>
     </Box>
