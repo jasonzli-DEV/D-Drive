@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Button,
@@ -22,7 +22,7 @@ import {
   TableBody,
   CircularProgress,
 } from '@mui/material';
-import { Add, Play, Trash } from 'lucide-react';
+import { Plus, Play, Trash, Edit } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
@@ -45,32 +45,42 @@ const defaultForm = {
 
 export default function TasksPage() {
   const queryClient = useQueryClient();
-  const { data: tasks, isLoading } = useQuery(['tasks'], async () => {
-    const resp = await api.get('/tasks');
-    return resp.data as any[];
+  const { data: tasks, isLoading } = useQuery<any[]>({
+    queryKey: ['tasks'],
+    queryFn: async () => {
+      const resp = await api.get('/tasks');
+      return resp.data as any[];
+    },
   });
 
-  const { data: allFolders } = useQuery(['allFoldersForTasks'], async () => {
-    const resp = await api.get('/files/folders/all');
-    return resp.data as any[];
+  const { data: allFolders } = useQuery<any[]>({
+    queryKey: ['allFoldersForTasks'],
+    queryFn: async () => {
+      const resp = await api.get('/files/folders/all');
+      return resp.data as any[];
+    },
   });
 
-  const createMutation = useMutation((payload: any) => api.post('/tasks', payload), {
+  const createMutation = useMutation({
+    mutationFn: (payload: any) => api.post('/tasks', payload),
     onSuccess: () => { queryClient.invalidateQueries(['tasks']); toast.success('Task created'); },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to create task'),
   });
 
-  const updateMutation = useMutation((payload: any) => api.patch(`/tasks/${payload.id}`, payload), {
+  const updateMutation = useMutation({
+    mutationFn: (payload: any) => api.patch(`/tasks/${payload.id}`, payload),
     onSuccess: () => { queryClient.invalidateQueries(['tasks']); toast.success('Task updated'); },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to update task'),
   });
 
-  const deleteMutation = useMutation((id: string) => api.delete(`/tasks/${id}`), {
+  const deleteMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/tasks/${id}`),
     onSuccess: () => { queryClient.invalidateQueries(['tasks']); toast.success('Task deleted'); },
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to delete task'),
   });
 
-  const runNowMutation = useMutation((id: string) => api.post(`/tasks/${id}/run`), {
+  const runNowMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/tasks/${id}/run`),
     onSuccess: () => toast.success('Task run started'),
     onError: (e: any) => toast.error(e?.response?.data?.error || 'Failed to run task'),
   });
@@ -130,7 +140,7 @@ export default function TasksPage() {
             </TableRow>
           </TableHead>
           <TableBody>
-            {tasks?.map((t: any) => (
+            {tasks && tasks.map((t: any) => (
               <TableRow key={t.id}>
                 <TableCell>{t.name}</TableCell>
                 <TableCell>{t.enabled ? 'Yes' : 'No'}</TableCell>
@@ -140,7 +150,7 @@ export default function TasksPage() {
                 <TableCell>{t.maxFiles || 0}</TableCell>
                 <TableCell>
                   <IconButton onClick={() => runNowMutation.mutate(t.id)} title="Run now"><Play size={16} /></IconButton>
-                  <IconButton onClick={() => openForEdit(t)} title="Edit"><Add size={16} /></IconButton>
+                  <IconButton onClick={() => openForEdit(t)} title="Edit"><Edit size={16} /></IconButton>
                   <IconButton onClick={() => deleteMutation.mutate(t.id)} title="Delete"><Trash size={16} /></IconButton>
                 </TableCell>
               </TableRow>

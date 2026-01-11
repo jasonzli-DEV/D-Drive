@@ -14,8 +14,7 @@ import {
   ListItemText,
 } from '@mui/material';
 import { Settings, LogOut } from 'lucide-react';
-import { Home } from 'lucide-react';
-import { Plus } from 'lucide-react';
+import { Home, Play, Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
