@@ -187,7 +187,6 @@ export default function DrivePage() {
       if (folderId) {
         formData.append('parentId', folderId);
       }
-      formData.append('path', `/${file.name}`);
       formData.append('encrypt', encryptFiles.toString());
       formData.append('file', file);
 
@@ -259,7 +258,6 @@ export default function DrivePage() {
       const response = await api.post('/files/directory', {
         name,
         parentId: folderId || null,
-        path: `/${name}`,
       });
       return response.data;
     },
