@@ -181,7 +181,8 @@ export default function DrivePage() {
   });
 
   // Upload file mutation
-  const uploadMutation = useMutation({
+  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null }>(
+    {
     // accepts { file: File, parentId?: string | null }
     mutationFn: async ({ file, parentId }: { file: File; parentId?: string | null }) => {
       const formData = new FormData();
@@ -255,7 +256,8 @@ export default function DrivePage() {
       );
       toast.error(error.response?.data?.error || 'Upload failed');
     },
-  });
+  }
+  );
 
   // Create folder mutation
   const createFolderMutation = useMutation({
@@ -465,9 +467,10 @@ export default function DrivePage() {
         const folderPath = parts.join('/');
         try {
           const targetParent = await ensureFolderPath(folderId || null, folderPath);
-          // create a new File object with correct name (some browsers include full path)
-          const blob = new File([f], fileName, { type: f.type });
-          uploadMutation.mutate({ file: blob, parentId: targetParent || null });
+          // Use the File object provided by the browser (it already has the correct
+          // name in most browsers). Avoid constructing `new File(...)` to keep
+          // TypeScript/Node build environments happy.
+          uploadMutation.mutate({ file: f as File, parentId: targetParent || null });
         } catch (err) {
           toast.error('Failed to upload folder contents');
         }
