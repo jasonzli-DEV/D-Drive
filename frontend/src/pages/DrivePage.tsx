@@ -434,9 +434,29 @@ export default function DrivePage() {
         setMoveDialogOpen(true);
         break;
       case 'delete':
-        if (window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) {
-          deleteMutation.mutate(menuFile.id);
-        }
+        (async () => {
+          try {
+            if (menuFile.type === 'DIRECTORY') {
+              // Check whether the folder has children before deleting
+              const resp = await api.get(`/files?parentId=${menuFile.id}`);
+              const children = resp.data as FileItem[];
+              if (children && children.length > 0) {
+                const confirmed = window.confirm(
+                  `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`
+                );
+                if (!confirmed) break;
+              } else {
+                if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) break;
+              }
+            } else {
+              if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) break;
+            }
+
+            deleteMutation.mutate(menuFile.id);
+          } catch (err) {
+            toast.error('Failed to verify folder contents');
+          }
+        })();
         break;
       case 'download':
         if (menuFile.type === 'FILE') {
