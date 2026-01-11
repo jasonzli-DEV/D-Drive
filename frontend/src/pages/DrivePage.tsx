@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -24,9 +24,7 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  Select,
-  FormControl,
-  InputLabel,
+  
   Breadcrumbs,
   Link,
   Chip,
@@ -46,6 +44,7 @@ import {
   Edit,
   Home,
   ChevronRight,
+  ChevronDown,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -272,6 +271,27 @@ export default function DrivePage() {
     },
   });
 
+  // Create folder mutation used from the Move dialog (allows specifying parent)
+  const createFolderInDialog = useMutation({
+    mutationFn: async ({ name, parentId }: { name: string; parentId: string | null }) => {
+      const response = await api.post('/files/directory', {
+        name,
+        parentId,
+      });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['allFolders'] });
+      toast.success('Folder created successfully!');
+      setNewFolderOpen(false);
+      setFolderName('');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to create folder');
+    },
+  });
+
   // Delete file mutation
   const deleteMutation = useMutation({
     mutationFn: async ({ id, recursive }: { id: string; recursive?: boolean }) => {
@@ -431,6 +451,8 @@ export default function DrivePage() {
         break;
       case 'move':
         setSelectedFile(menuFile);
+        // Open move dialog starting at root
+        setTargetFolderId('');
         setMoveDialogOpen(true);
         break;
       case 'delete':
@@ -514,6 +536,63 @@ export default function DrivePage() {
     if (file.type === 'DIRECTORY') {
       navigate(`/drive/${file.id}`);
     }
+  };
+
+  // Build folder tree map for Move dialog
+  const folderChildrenMap = useMemo(() => {
+    const map: Record<string, FileItem[]> = {};
+    (allFolders || []).forEach((f) => {
+      const parent = f.parentId || '';
+      if (!map[parent]) map[parent] = [];
+      map[parent].push(f);
+    });
+    // sort children by name
+    Object.keys(map).forEach((k) => map[k].sort((a, b) => a.name.localeCompare(b.name)));
+    return map;
+  }, [allFolders]);
+
+  const [expandedFolders, setExpandedFolders] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (id: string) => {
+    setExpandedFolders((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const renderFolderNode = (folder: FileItem, level = 0) => {
+    const children = folderChildrenMap[folder.id] || [];
+    const isExpanded = !!expandedFolders[folder.id];
+    const isSelectedTarget = targetFolderId === folder.id;
+    const isCurrentLocation = selectedFile?.parentId === folder.id;
+
+    return (
+      <Box key={folder.id} sx={{ pl: level * 2, display: 'flex', alignItems: 'center', py: 0.5 }}>
+        {children.length > 0 ? (
+          <IconButton size="small" onClick={() => toggleExpand(folder.id)}>
+            {isExpanded ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+          </IconButton>
+        ) : (
+          <Box sx={{ width: 32 }} />
+        )}
+        <Button
+          size="small"
+          onClick={() => setTargetFolderId(folder.id)}
+          sx={{
+            textTransform: 'none',
+            justifyContent: 'flex-start',
+            color: isSelectedTarget ? 'primary.main' : 'text.primary',
+            fontWeight: isCurrentLocation ? 700 : 400,
+            width: '100%',
+          }}
+        >
+          📁 {folder.name}
+        </Button>
+        {/* Render children */}
+        {isExpanded && (
+          <Box sx={{ width: '100%' }}>
+            {children.map((c) => renderFolderNode(c, level + 1))}
+          </Box>
+        )}
+      </Box>
+    );
   };
 
   const handleDownload = async (file: FileItem) => {
@@ -850,7 +929,11 @@ export default function DrivePage() {
             onChange={(e) => setFolderName(e.target.value)}
             onKeyPress={(e) => {
               if (e.key === 'Enter' && folderName) {
-                createFolderMutation.mutate(folderName);
+                if (moveDialogOpen) {
+                  createFolderInDialog.mutate({ name: folderName, parentId: targetFolderId || null });
+                } else {
+                  createFolderMutation.mutate(folderName);
+                }
               }
             }}
           />
@@ -858,7 +941,13 @@ export default function DrivePage() {
         <DialogActions>
           <Button onClick={() => setNewFolderOpen(false)}>Cancel</Button>
           <Button
-            onClick={() => createFolderMutation.mutate(folderName)}
+            onClick={() => {
+              if (moveDialogOpen) {
+                createFolderInDialog.mutate({ name: folderName, parentId: targetFolderId || null });
+              } else {
+                createFolderMutation.mutate(folderName);
+              }
+            }}
             variant="contained"
             disabled={!folderName}
           >
@@ -873,21 +962,40 @@ export default function DrivePage() {
       <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Move "{selectedFile?.name}"</DialogTitle>
         <DialogContent>
-          <FormControl fullWidth sx={{ mt: 2 }}>
-            <InputLabel>Destination Folder</InputLabel>
-            <Select
-              value={targetFolderId}
-              label="Destination Folder"
-              onChange={(e) => setTargetFolderId(e.target.value)}
-            >
-              <MenuItem value="">Root (My Drive)</MenuItem>
-              {allFolders?.filter(f => f.id !== selectedFile?.id).map((folder) => (
-                <MenuItem key={folder.id} value={folder.id}>
-                  📁 {folder.name}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Box sx={{ mt: 1 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>Select destination folder (My Drive):</Typography>
+
+            {/* Root option */}
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+              <Box sx={{ pl: 0, width: '100%' }}>
+                <Button
+                  size="small"
+                  onClick={() => setTargetFolderId('')}
+                  sx={{ textTransform: 'none', justifyContent: 'flex-start', color: targetFolderId === '' ? 'primary.main' : 'text.primary', fontWeight: selectedFile?.parentId ? 400 : 700, width: '100%' }}
+                >
+                  🏠 My Drive (Root)
+                </Button>
+              </Box>
+            </Box>
+
+            {/* Folder tree */}
+            <Box sx={{ maxHeight: 320, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
+              {(folderChildrenMap[''] || []).map((f) => renderFolderNode(f, 0))}
+              { (folderChildrenMap[''] || []).length === 0 && (
+                <Typography variant="body2" color="text.secondary">No folders</Typography>
+              )}
+            </Box>
+
+            <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'center' }}>
+              <Button onClick={() => setNewFolderOpen(true)} size="small">New folder</Button>
+              <TextField
+                placeholder="Search folders"
+                size="small"
+                sx={{ flex: 1 }}
+                onChange={() => { /* no-op for now */ }}
+              />
+            </Box>
+          </Box>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMoveDialogOpen(false)}>Cancel</Button>
