@@ -9,7 +9,7 @@ import {
   MenuItem,
   Avatar
 } from '@mui/material';
-import { Settings, LogOut, HardDrive } from 'lucide-react';
+import { Settings, LogOut } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
