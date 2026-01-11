@@ -44,30 +44,30 @@ export default function Layout({ children }: LayoutProps) {
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
-        <Toolbar sx={{ minHeight: 120 }}>
+        <Toolbar sx={{ minHeight: 96, alignItems: 'center' }}>
             {/* Logo on the left */}
             <IconButton
               color="inherit"
               onClick={() => navigate('/')}
-              sx={{ mr: 1, p: 0 }}
+              sx={{ mr: 1, p: 0, width: 96, height: 96 }}
               aria-label="Home"
             >
               <Box
                 component="img"
                 src="/D-Drive.png"
                 alt="D-Drive"
-                sx={{ width: 128, height: 128, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: 96, height: 96, objectFit: 'contain', bgcolor: 'transparent' }}
               />
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
-          <IconButton color="inherit" onClick={handleSettings}>
-            <Settings />
+          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 96, height: 96 }}>
+            <Settings size={36} />
           </IconButton>
-          
-          <IconButton color="inherit" onClick={handleMenuOpen}>
+
+          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 96, height: 96 }}>
             <Avatar
-              sx={{ width: 32, height: 32 }}
+              sx={{ width: 96, height: 96 }}
               src={
                 user?.avatarUrl ? user.avatarUrl :
                 user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined
