@@ -185,10 +185,21 @@ export default function TasksPage() {
     if (!p.sftpHost || String(p.sftpHost).trim().length === 0) e.sftpHost = 'SFTP host is required';
     else e.sftpHost = null;
 
+    if (!p.sftpUser || String(p.sftpUser).trim().length === 0) e.sftpUser = 'SFTP user is required';
+    else e.sftpUser = null;
+
+    if (!p.sftpPath || String(p.sftpPath).trim().length === 0) e.sftpPath = 'Remote path is required';
+    else e.sftpPath = null;
+
     const hasPasswordAuth = !!p.authPassword && !!p.sftpPassword;
     const hasKeyAuth = !!p.authPrivateKey && !!p.sftpPrivateKey;
     if (!hasPasswordAuth && !hasKeyAuth) e.auth = 'At least one authentication method with credentials is required';
     else e.auth = null;
+
+    // maxFiles must be 0 or greater (0 = unlimited)
+    if (p.maxFiles === undefined || p.maxFiles === null) e.maxFiles = null;
+    else if (Number(p.maxFiles) < 0) e.maxFiles = 'Max files must be 0 or greater';
+    else e.maxFiles = null;
 
     setErrors(e);
 
@@ -248,8 +259,8 @@ export default function TasksPage() {
           </Box>
 
           <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="SFTP User" value={form.sftpUser} onChange={(e) => setForm({ ...form, sftpUser: e.target.value })} fullWidth />
-            <TextField label="Remote Path" value={form.sftpPath} onChange={(e) => setForm({ ...form, sftpPath: e.target.value })} fullWidth />
+            <TextField label="SFTP User" value={form.sftpUser} onChange={(e) => setForm({ ...form, sftpUser: e.target.value })} fullWidth error={!!errors.sftpUser} helperText={errors.sftpUser || ''} />
+            <TextField label="Remote Path" value={form.sftpPath} onChange={(e) => setForm({ ...form, sftpPath: e.target.value })} fullWidth error={!!errors.sftpPath} helperText={errors.sftpPath || ''} />
           </Box>
 
           {/* SFTP private key input moved into authentication section below */}
@@ -286,7 +297,7 @@ export default function TasksPage() {
             {errors.auth && <Typography color="error" variant="body2">{errors.auth}</Typography>}
           </Box>
 
-          <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} />
+          <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} error={!!errors.maxFiles} helperText={errors.maxFiles || ''} />
 
           {/* Encrypt override removed: tasks will follow user's default encryption setting */}
         </DialogContent>
