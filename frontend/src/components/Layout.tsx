@@ -45,17 +45,8 @@ export default function Layout({ children }: LayoutProps) {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
-          <IconButton
-            edge="start"
-            color="inherit"
-            onClick={() => navigate('/')}
-            sx={{ mr: 2 }}
-          >
-            <HardDrive />
-          </IconButton>
-          <Typography variant="h6" component="div" sx={{ flexGrow: 1 }}>
-            D-Drive
-          </Typography>
+            {/* Left side intentionally empty (logo moved to top-right) */}
+            <Box sx={{ flexGrow: 1 }} />
           
           <IconButton color="inherit" onClick={handleSettings}>
             <Settings />
@@ -92,6 +83,20 @@ export default function Layout({ children }: LayoutProps) {
               Logout
             </MenuItem>
           </Menu>
+            {/* D-Drive logo on the top-right. Placed last so it appears at the far right. */}
+            <IconButton
+              color="inherit"
+              onClick={() => navigate('/')}
+              sx={{ ml: 1, p: 0 }}
+              aria-label="Home"
+            >
+              <Box
+                component="img"
+                src="/D-Drive.png"
+                alt="D-Drive"
+                sx={{ width: 36, height: 36, objectFit: 'contain', bgcolor: 'transparent' }}
+              />
+            </IconButton>
         </Toolbar>
       </AppBar>
       
