@@ -96,10 +96,13 @@ export async function runTaskNow(taskId: string) {
       uploadEntries = [{ name: path.basename(archivePath), buffer: buf }];
     }
 
+    // Determine encryption preference: task explicit OR user's default
+    const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
+
     // For each upload entry, store it using storage helper
     for (const entry of uploadEntries) {
       const timestampedName = task.timestampNames ? `${new Date().toISOString()}_${entry.name}` : entry.name;
-      await storeBufferAsFile(task.userId, task.destinationId || null, timestampedName, entry.buffer, undefined, task.encrypt);
+      await storeBufferAsFile(task.userId, task.destinationId || null, timestampedName, entry.buffer, undefined, shouldEncrypt);
     }
 
     // Prune according to maxFiles
