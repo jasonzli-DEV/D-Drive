@@ -67,6 +67,7 @@ interface UploadProgress {
   fileName: string;
   progress: number;
   status: 'uploading' | 'success' | 'error';
+  id?: string;
 }
 
 interface FolderUploadProgress {
@@ -88,6 +89,7 @@ export default function DrivePage() {
   const [folderName, setFolderName] = useState('');
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [uploadFolders, setUploadFolders] = useState<FolderUploadProgress[]>([]);
+  const [deleteProgress, setDeleteProgress] = useState<UploadProgress[]>([]);
   const fileLoadedRef = useRef<Record<string, number>>({});
   const folderPrevProgressRef = useRef<Record<string, number>>({});
   const folderErrorShownRef = useRef<Record<string, boolean>>({});
@@ -225,7 +227,7 @@ export default function DrivePage() {
       let response;
       try {
         response = await api.post('/files/upload/stream', formData, {
-          onUploadProgress: (progressEvent) => {
+            onUploadProgress: (progressEvent) => {
             const percentCompleted = Math.round(
               (progressEvent.loaded * 100) / (progressEvent.total || 1)
             );
@@ -417,6 +419,78 @@ export default function DrivePage() {
       toast.error(error.response?.data?.error || 'Delete failed');
     },
   });
+
+  // Helper: collect all files and directories under a directory (BFS)
+  const collectFilesAndDirs = async (rootId: string) => {
+    const files: FileItem[] = [];
+    const dirs: FileItem[] = [];
+    const queue: string[] = [rootId];
+
+    while (queue.length > 0) {
+      const current = queue.shift()!;
+      try {
+        const resp = await api.get(`/files?parentId=${current}`);
+        const children = resp.data as FileItem[];
+        for (const c of children) {
+          if (c.type === 'FILE') files.push(c);
+          else if (c.type === 'DIRECTORY') {
+            dirs.push(c);
+            queue.push(c.id);
+          }
+        }
+      } catch (err) {
+        // ignore and continue; caller will surface error
+      }
+    }
+
+    return { files, dirs };
+  };
+
+  // Perform recursive delete by deleting files then directories sequentially,
+  // updating a progress entry so the user sees progress.
+  const performRecursiveDelete = async (root: FileItem) => {
+    // create progress entry (use id so updates are deterministic)
+    setDeleteProgress(prev => [...prev, { id: root.id, fileName: root.name, progress: 0, status: 'uploading' }]);
+    const entryId = root.id;
+
+    try {
+      const { files, dirs } = await collectFilesAndDirs(root.id);
+      const total = files.length + dirs.length + 1; // include root dir deletion
+      let completed = 0;
+
+      // delete files sequentially
+      for (const f of files) {
+        await api.delete(`/files/${f.id}`, { data: { recursive: false } });
+        completed++;
+        const pct = Math.round((completed / total) * 100);
+        setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: pct } : p));
+      }
+
+      // delete directories from leaves up (reverse collected order)
+      for (const d of dirs.slice().reverse()) {
+        await api.delete(`/files/${d.id}`, { data: { recursive: false } });
+        completed++;
+        const pct = Math.round((completed / total) * 100);
+        setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: pct } : p));
+      }
+
+      // delete the root directory itself
+      await api.delete(`/files/${root.id}`, { data: { recursive: false } });
+      completed++;
+      setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: 100, status: 'success' } : p));
+
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      toast.success('Deleted successfully!');
+    } catch (err) {
+      setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, status: 'error' } : p));
+      toast.error('Delete failed');
+    } finally {
+      // remove the progress entry after a short delay so user can see result
+      setTimeout(() => {
+        setDeleteProgress(prev => prev.filter(p => p.id !== entryId));
+      }, 1500);
+    }
+  };
 
   // Move file mutation
   const moveMutation = useMutation({
@@ -716,43 +790,24 @@ export default function DrivePage() {
         (async () => {
           try {
             if (menuFile.type === 'DIRECTORY') {
-              // Check whether the folder has children before deleting
+              // Check whether the folder has children before deleting and prompt once
               const resp = await api.get(`/files?parentId=${menuFile.id}`);
               const children = resp.data as FileItem[];
               if (children && children.length > 0) {
-                const confirmed = window.confirm(
+                if (!window.confirm(
                   `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`
-                );
-                if (!confirmed) return;
-              } else {
-                if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
+                )) return;
+                await performRecursiveDelete(menuFile);
+                return;
               }
+
+              // empty directory: single confirm, then delete non-recursively
+              if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
+              deleteMutation.mutate({ id: menuFile.id, recursive: false });
             } else {
               if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
+              deleteMutation.mutate({ id: menuFile.id, recursive: false });
             }
-
-            (async () => {
-              try {
-                if (menuFile.type === 'DIRECTORY') {
-                  // Check whether the folder has children before deleting
-                  const resp = await api.get(`/files?parentId=${menuFile.id}`);
-                  const children = resp.data as FileItem[];
-                  if (children && children.length > 0) {
-                    const confirmed = window.confirm(
-                      `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`
-                    );
-                    if (!confirmed) return;
-                    deleteMutation.mutate({ id: menuFile.id, recursive: true });
-                    return;
-                  }
-                }
-
-                // Default: delete non-directory or empty directory
-                deleteMutation.mutate({ id: menuFile.id, recursive: false });
-              } catch (err) {
-                toast.error('Failed to verify folder contents');
-              }
-            })();
           } catch (err) {
             toast.error('Failed to verify folder contents');
           }
@@ -1337,6 +1392,47 @@ export default function DrivePage() {
               </Box>
             ))
           )}
+        </Paper>
+      )}
+      {/* Delete Progress Panel */}
+      {deleteProgress.length > 0 && (
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16 + 380,
+            width: 350,
+            p: 2,
+            zIndex: 1000,
+          }}
+          elevation={6}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            Deleting
+          </Typography>
+          {deleteProgress.map((item) => (
+            <Box key={item.id || item.fileName} sx={{ mb: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                  {item.fileName}
+                </Typography>
+                <Typography variant="body2" color={
+                  item.status === 'success' ? 'success.main' :
+                  item.status === 'error' ? 'error.main' : 'text.secondary'
+                }>
+                  {item.status === 'success' ? '✓' : item.status === 'error' ? '✗' : `${item.progress}%`}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={item.progress}
+                color={
+                  item.status === 'success' ? 'success' :
+                  item.status === 'error' ? 'error' : 'primary'
+                }
+              />
+            </Box>
+          ))}
         </Paper>
       )}
       
