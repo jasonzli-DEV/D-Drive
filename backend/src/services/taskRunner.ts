@@ -130,10 +130,39 @@ export async function runTaskNow(taskId: string) {
     // Determine encryption preference: task explicit OR user's default
     const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
 
-    // For each upload entry, store it using storage helper
+    // If not compressing, create a directory for this run and place files inside it.
+    let targetParentId: string | null = task.destinationId || null;
+
+    if (task.compress === 'NONE' || task.compress === null) {
+      const baseFolderName = task.name || 'backup';
+      const folderBase = task.timestampNames ? `${new Date().toISOString()}_${baseFolderName}` : baseFolderName;
+
+      const parentPath = task.destinationId ? (await prisma.file.findUnique({ where: { id: task.destinationId }, select: { path: true } }))?.path : null;
+      let candidateName = folderBase;
+      let candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
+      let counter = 1;
+      while (await prisma.file.findFirst({ where: { userId: task.userId, path: candidatePath } })) {
+        candidateName = `${folderBase} (${counter++})`;
+        candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
+      }
+
+      const folder = await prisma.file.create({
+        data: {
+          name: candidateName,
+          path: candidatePath,
+          type: 'DIRECTORY',
+          userId: task.userId,
+          parentId: task.destinationId || null,
+        },
+      });
+
+      targetParentId = folder.id;
+    }
+
+    // For each upload entry, store it using storage helper into the chosen parent (folder or destination)
     for (const entry of uploadEntries) {
-      const timestampedName = task.timestampNames ? `${new Date().toISOString()}_${entry.name}` : entry.name;
-      await storeBufferAsFile(task.userId, task.destinationId || null, timestampedName, entry.buffer, undefined, shouldEncrypt);
+      const nameToUse = (task.compress === 'NONE' || task.compress === null) ? entry.name : (task.timestampNames ? `${new Date().toISOString()}_${entry.name}` : entry.name);
+      await storeBufferAsFile(task.userId, targetParentId, nameToUse, entry.buffer, undefined, shouldEncrypt);
     }
 
     // Prune according to maxFiles

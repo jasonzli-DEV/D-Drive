@@ -205,7 +205,7 @@ export default function TasksPage() {
             <TextField label="Remote Path" value={form.sftpPath} onChange={(e) => setForm({ ...form, sftpPath: e.target.value })} fullWidth />
           </Box>
 
-          <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} />
+          {/* SFTP private key input moved into authentication section below */}
 
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
