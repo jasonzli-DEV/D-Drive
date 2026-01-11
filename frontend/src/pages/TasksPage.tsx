@@ -26,8 +26,9 @@ import { Plus, Play, Trash, Edit } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
+import FolderSelectDialog from '../components/FolderSelectDialog';
 
-const defaultForm = {
+  const defaultForm = {
   id: undefined as string | undefined,
   name: '',
   enabled: true,
@@ -36,6 +37,9 @@ const defaultForm = {
   sftpUser: '',
   sftpPath: '/',
   sftpPrivateKey: '',
+  sftpPassword: '',
+  authPassword: false,
+  authPrivateKey: true,
   destinationId: '' as string | null,
   compress: 'NONE',
   timestampNames: true,
@@ -87,6 +91,7 @@ export default function TasksPage() {
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
+  const [destDialogOpen, setDestDialogOpen] = useState(false);
 
   useEffect(() => { if (!open) setForm(defaultForm); }, [open]);
 
@@ -100,6 +105,9 @@ export default function TasksPage() {
       sftpUser: t.sftpUser || '',
       sftpPath: t.sftpPath || '/',
       sftpPrivateKey: t.sftpPrivateKey || '',
+      sftpPassword: t.sftpPassword || '',
+      authPassword: !!t.authPassword,
+      authPrivateKey: t.authPrivateKey === undefined ? true : !!t.authPrivateKey,
       destinationId: t.destinationId || '',
       compress: t.compress || 'NONE',
       timestampNames: !!t.timestampNames,
@@ -177,15 +185,15 @@ export default function TasksPage() {
 
           <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} />
 
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="dest-label">Destination Folder</InputLabel>
-            <Select labelId="dest-label" value={form.destinationId || ''} label="Destination Folder" onChange={(e) => setForm({ ...form, destinationId: e.target.value as string })}>
-              <MenuItem value="">(root)</MenuItem>
-              {allFolders?.map((f: any) => (
-                <MenuItem key={f.id} value={f.id}>{f.path}</MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
+            <Button variant="outlined" onClick={() => setDestDialogOpen(true)} sx={{ mb: 1 }}>
+              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || 'Selected folder') : '(root)'}
+            </Button>
+          </Box>
+
+          {/* Destination folder selector dialog (reuses Move dialog style) */}
+          <FolderSelectDialog open={destDialogOpen} value={form.destinationId || null} onClose={() => setDestDialogOpen(false)} onSelect={(id) => setForm({ ...form, destinationId: id })} title="Select destination folder" />
 
           <FormControl fullWidth margin="normal">
             <InputLabel id="compress-label">Compress</InputLabel>
@@ -195,6 +203,18 @@ export default function TasksPage() {
               <MenuItem value={'TAR_GZ'}>TAR.GZ</MenuItem>
             </Select>
           </FormControl>
+
+          <Box sx={{ mt: 2 }}>
+            <Typography variant="subtitle2">Authentication methods</Typography>
+            <FormControlLabel control={<Checkbox checked={form.authPassword} onChange={(e) => setForm({ ...form, authPassword: e.target.checked })} />} label="Attempt password" />
+            <FormControlLabel control={<Checkbox checked={form.authPrivateKey} onChange={(e) => setForm({ ...form, authPrivateKey: e.target.checked })} />} label="Attempt private key" />
+            {form.authPassword && (
+              <TextField label="SFTP Password" type="password" fullWidth margin="normal" value={form.sftpPassword} onChange={(e) => setForm({ ...form, sftpPassword: e.target.value })} />
+            )}
+            {form.authPrivateKey && (
+              <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} />
+            )}
+          </Box>
 
           <FormControlLabel control={<Checkbox checked={form.timestampNames} onChange={(e) => setForm({ ...form, timestampNames: e.target.checked })} />} label="Timestamp filenames" />
 
