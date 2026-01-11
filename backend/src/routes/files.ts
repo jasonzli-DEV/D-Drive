@@ -185,18 +185,16 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
     }
 
     // Ensure filename is unique within the target parent folder.
-    // Resolve the parent path string (use explicit `path` if provided, otherwise derive it from `parentId`).
+    // Resolve the parent path string. Only derive a parentPath from `parentId`
+    // (server-authoritative). Do NOT trust a client-supplied `path` value when
+    // `parentId` is not provided — that can create inconsistent `path` vs
+    // `parentId` state (e.g. paths that claim a file is inside a folder while
+    // `parentId` is null). If client omitted `parentId`, create at root.
     const originalName = file.originalname;
     let parentPath: string | null = null;
-    // Prefer the explicit parentId (server-side source of truth) when provided.
-    // If parentId is present, derive the parentPath from the DB and ignore any
-    // client-supplied `path` value to avoid mismatches that can lead to
-    // duplicate-name anomalies.
     if (parentId) {
       const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
       parentPath = parent?.path || null;
-    } else if (path) {
-      parentPath = path as string;
     } else {
       parentPath = null;
     }
@@ -719,11 +717,14 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
     bb.on('file', (fieldname: string, fileStream: any, filename: any, encoding: string, mimetype: string) => {
       (async () => {
         try {
-          // Resolve parentPath from DB if parentId provided (server authoritative)
-          if (parentId) {
-            const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
-            parentPath = parent?.path || null;
-          }
+                // Resolve parentPath from DB if parentId provided (server authoritative).
+                // Do NOT honor a client-supplied `path` when `parentId` is absent.
+                if (parentId) {
+                  const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
+                  parentPath = parent?.path || null;
+                } else {
+                  parentPath = null;
+                }
 
           // Prepare encryption key if requested
           if (shouldEncrypt) {
