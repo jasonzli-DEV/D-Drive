@@ -15,6 +15,7 @@ import {
 } from '@mui/material';
 import { Settings, LogOut } from 'lucide-react';
 import { Home } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -125,12 +126,26 @@ export default function Layout({ children }: LayoutProps) {
             }}
           >
             <List disablePadding>
-              <ListItemButton onClick={() => navigate('/') }>
-                <ListItemIcon>
-                  <Home size={18} />
-                </ListItemIcon>
-                <ListItemText primary={"Home"} />
-              </ListItemButton>
+                <ListItemButton
+                  onClick={(e) => {
+                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+                    // dispatch a global event with approximate anchor coordinates
+                    window.dispatchEvent(new CustomEvent('ddrive:new', { detail: { x: Math.round(rect.left + 8), y: Math.round(rect.top + 40) } }));
+                  }}
+                  sx={{ mb: 1 }}
+                >
+                  <ListItemIcon>
+                    <Plus size={18} />
+                  </ListItemIcon>
+                  <ListItemText primary={"+ New"} />
+                </ListItemButton>
+
+                <ListItemButton onClick={() => navigate('/') }>
+                  <ListItemIcon>
+                    <Home size={18} />
+                  </ListItemIcon>
+                  <ListItemText primary={"Home"} />
+                </ListItemButton>
             </List>
           </Box>
         )}
