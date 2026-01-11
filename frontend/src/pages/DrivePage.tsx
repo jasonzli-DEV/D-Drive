@@ -274,7 +274,7 @@ export default function DrivePage() {
 
   // Delete file mutation
   const deleteMutation = useMutation({
-    mutationFn: async (id: string) => {
+    mutationFn: async ({ id, recursive }: { id: string; recursive?: boolean }) => {
       await api.delete(`/files/${id}`);
       return id;
     },
@@ -452,7 +452,28 @@ export default function DrivePage() {
               if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
             }
 
-            deleteMutation.mutate(menuFile.id);
+            (async () => {
+              try {
+                if (menuFile.type === 'DIRECTORY') {
+                  // Check whether the folder has children before deleting
+                  const resp = await api.get(`/files?parentId=${menuFile.id}`);
+                  const children = resp.data as FileItem[];
+                  if (children && children.length > 0) {
+                    const confirmed = window.confirm(
+                      `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`
+                    );
+                    if (!confirmed) return;
+                    deleteMutation.mutate({ id: menuFile.id, recursive: true });
+                    return;
+                  }
+                }
+
+                // Default: delete non-directory or empty directory
+                deleteMutation.mutate({ id: menuFile.id, recursive: false });
+              } catch (err) {
+                toast.error('Failed to verify folder contents');
+              }
+            })();
           } catch (err) {
             toast.error('Failed to verify folder contents');
           }
