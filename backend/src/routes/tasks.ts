@@ -3,7 +3,6 @@ import { PrismaClient, CompressFormat } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow } from '../services/taskRunner';
-import { deleteOrphanedDiscordMessages } from '../services/discordCleanup';
 import scheduler from '../services/scheduler';
 
 function isValidCronExpression(expr: string | undefined) {
@@ -163,20 +162,5 @@ router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// Orphan cleanup trigger (gated). No admin role required; this route is
-// only active when ENABLE_ORPHAN_CLEANUP is set to 'true' in the environment.
-router.post('/admin/cleanup-orphans', authenticate, async (req: Request, res: Response) => {
-  try {
-    if (process.env.ENABLE_ORPHAN_CLEANUP !== 'true') {
-      return res.status(403).json({ error: 'Orphan cleanup is disabled on this server' });
-    }
-
-    const result = await deleteOrphanedDiscordMessages(200, 10);
-    res.json({ message: 'Orphan cleanup complete', deleted: result.totalDeleted });
-  } catch (err) {
-    logger.error('Orphan cleanup failed', err);
-    res.status(500).json({ error: 'Failed to cleanup orphans', details: String(err) });
-  }
-});
 
 export default router;
