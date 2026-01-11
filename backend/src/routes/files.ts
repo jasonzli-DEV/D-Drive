@@ -543,7 +543,7 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     } catch (e: any) {
       // Prisma unique constraint error
       if (e?.code === 'P2002' || (e?.meta?.target && String(e?.meta?.target).includes('userId_path'))) {
-        return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
+        return res.status(409).json({ error: 'A file with that name already exists in the same directory' });
       }
       throw e;
     }
@@ -605,7 +605,7 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
       },
     });
     if (existingAtTarget) {
-      return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
+      return res.status(409).json({ error: 'A file with the same name already exists in the target directory' });
     }
 
     try {
@@ -617,7 +617,7 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
       return res.json(serializeFile(updatedFile));
     } catch (e: any) {
       if (e?.code === 'P2002') {
-        return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
+        return res.status(409).json({ error: 'A file with the same name already exists in the target directory' });
       }
       throw e;
     }
