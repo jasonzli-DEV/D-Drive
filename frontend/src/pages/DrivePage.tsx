@@ -275,7 +275,7 @@ export default function DrivePage() {
   // Delete file mutation
   const deleteMutation = useMutation({
     mutationFn: async ({ id, recursive }: { id: string; recursive?: boolean }) => {
-      await api.delete(`/files/${id}`);
+      await api.delete(`/files/${id}`, { data: { recursive: !!recursive } });
       return id;
     },
     onSuccess: () => {
