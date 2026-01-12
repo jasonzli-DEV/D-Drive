@@ -129,8 +129,14 @@ export default function DrivePage() {
     return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'heic'].includes(ext);
   };
 
+  const isVideoFile = (f: FileItem) => {
+    if (f.mimeType && f.mimeType.startsWith('video/')) return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ['mp4', 'mov', 'webm', 'ogg', 'mkv', 'avi', 'm4v'].includes(ext);
+  };
+
   const openImageViewer = (file: FileItem) => {
-    const imgs = (files || []).filter(isImageFile);
+    const imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f));
     const idx = imgs.findIndex(i => i.id === file.id);
     setImageList(imgs);
     setImageViewerIndex(Math.max(0, idx));
@@ -1480,7 +1486,7 @@ export default function DrivePage() {
                         }}
                       />
                     </TableCell>
-                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); else if (file.type === 'FILE' && isImageFile(file)) openImageViewer(file); }}>
+                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); else if (file.type === 'FILE' && (isImageFile(file) || isVideoFile(file))) openImageViewer(file); }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {file.type === 'DIRECTORY' ? (
                           <Folder size={22} color="#FFA000" />
@@ -1605,11 +1611,19 @@ export default function DrivePage() {
               ) : imageError ? (
                 <Typography color="error">{imageError}</Typography>
               ) : imageBlobUrl ? (
-                <img
-                  src={imageBlobUrl}
-                  alt={imageList[imageViewerIndex].name}
-                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                />
+                (imageList[imageViewerIndex].mimeType && imageList[imageViewerIndex].mimeType.startsWith('video/')) || isVideoFile(imageList[imageViewerIndex]) ? (
+                  <video
+                    src={imageBlobUrl}
+                    controls
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
+                ) : (
+                  <img
+                    src={imageBlobUrl}
+                    alt={imageList[imageViewerIndex].name}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
+                )
               ) : null
             ) : null}
           </Box>
