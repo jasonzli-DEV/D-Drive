@@ -122,6 +122,7 @@ export default function DrivePage() {
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [textContent, setTextContent] = useState<string | null>(null);
 
   const isImageFile = (f: FileItem) => {
     if (f.mimeType && f.mimeType.startsWith('image/')) return true;
@@ -135,8 +136,14 @@ export default function DrivePage() {
     return ['mp4', 'mov', 'webm', 'ogg', 'mkv', 'avi', 'm4v'].includes(ext);
   };
 
+  const isTextFile = (f: FileItem) => {
+    if (f.mimeType && f.mimeType.startsWith('text/')) return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ['txt', 'json', 'md', 'csv', 'log', 'xml', 'yaml', 'yml', 'ini'].includes(ext);
+  };
+
   const openImageViewer = (file: FileItem) => {
-    const imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f));
+    const imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f) || isTextFile(f));
     const idx = imgs.findIndex(i => i.id === file.id);
     setImageList(imgs);
     setImageViewerIndex(Math.max(0, idx));
@@ -166,12 +173,23 @@ export default function DrivePage() {
           signal: controller.signal as any,
         });
         if (!active) return;
-        localUrl = URL.createObjectURL(res.data as Blob);
-        setImageBlobUrl(localUrl);
+        const blob = res.data as Blob;
+        // If text file, read text and set; otherwise create object URL for image/video
+        if (isTextFile(current)) {
+          try {
+            const txt = await blob.text();
+            setTextContent(txt);
+          } catch (e) {
+            setImageError('Failed to read text file');
+          }
+        } else {
+          localUrl = URL.createObjectURL(blob);
+          setImageBlobUrl(localUrl);
+        }
       } catch (err: any) {
         if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
-        console.error('failed to fetch image', err);
-        setImageError('Failed to load image');
+        console.error('failed to fetch media', err);
+        setImageError('Failed to load media');
       } finally {
         if (active) setImageLoading(false);
       }
@@ -187,6 +205,7 @@ export default function DrivePage() {
         localUrl = null;
       }
       setImageBlobUrl(null);
+      setTextContent(null);
     };
   }, [imageViewerOpen, imageViewerIndex, imageList]);
 
@@ -1610,6 +1629,12 @@ export default function DrivePage() {
                 <CircularProgress />
               ) : imageError ? (
                 <Typography color="error">{imageError}</Typography>
+              ) : isTextFile(imageList[imageViewerIndex]) ? (
+                textContent !== null ? (
+                  <Box sx={{ width: '100%', maxHeight: '80%', overflow: 'auto', bgcolor: '#fff', p: 2, borderRadius: 1 }}>
+                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{textContent}</pre>
+                  </Box>
+                ) : null
               ) : imageBlobUrl ? (
                 (imageList[imageViewerIndex].mimeType && imageList[imageViewerIndex].mimeType.startsWith('video/')) || isVideoFile(imageList[imageViewerIndex]) ? (
                   <video
