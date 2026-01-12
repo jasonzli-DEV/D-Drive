@@ -126,30 +126,33 @@ export default function DrivePage() {
   });
 
   const copyMutation = useMutation({
-    mutationFn: async (id: string) => {
-      const resp = await api.post(`/files/${id}/copy`);
+    mutationFn: async (vars: string | { id: string; encrypt?: boolean }) => {
+      const id = typeof vars === 'string' ? vars : vars.id;
+      const body = typeof vars === 'object' && typeof vars.encrypt !== 'undefined' ? { encrypt: vars.encrypt } : {};
+      const resp = await api.post(`/files/${id}/copy`, body);
       return resp.data;
     },
-    onSuccess: (data, id) => {
+    onSuccess: (data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
       // If API returned the new file id, poll its metadata and show chunk-level progress
       (async () => {
         try {
-          const origMeta = await api.get(`/files/${id}`);
-          const origChunks = Array.isArray(origMeta.data.chunks) ? origMeta.data.chunks.length : (origMeta.data.chunkCount || 1);
+          const origId = typeof vars === 'string' ? vars : vars.id;
+          const origMeta = await api.get(`/files/${origId}`);
+          const origChunks = Array.isArray(origMeta.data.chunks) ? origMeta.data.chunks.length : (origMeta.data.chunkCount || origMeta.data._count?.chunks || 1);
           const newId = data?.id;
           if (!newId) {
             toast.success('Copy created');
             return;
           }
           // create progress entry
-          setCopyProgress(prev => [...prev, { id: newId, fileName: origMeta.data.name || `Copy of ${id}`, progress: 0, status: 'uploading' }]);
+          setCopyProgress(prev => [...prev, { id: newId, fileName: origMeta.data.name || `Copy of ${origId}`, progress: 0, status: 'uploading' }]);
           let lastSeen = 0;
           // poll until chunks reach origChunks
           while (lastSeen < origChunks) {
             // eslint-disable-next-line no-await-in-loop
             const m = await api.get(`/files/${newId}`);
-            const seen = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 0);
+            const seen = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || m.data._count?.chunks || 0);
             const delta = Math.max(0, seen - lastSeen);
             if (delta > 0) {
               lastSeen = seen;
@@ -607,7 +610,7 @@ export default function DrivePage() {
     await Promise.all(selectedIds.map(async (id) => {
       try {
         const m = await api.get(`/files/${id}`);
-        origCounts[id] = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 1);
+        origCounts[id] = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || m.data.chunksCount || m.data._count?.chunks || 1);
       } catch (err) {
         origCounts[id] = 1;
       }
@@ -623,7 +626,7 @@ export default function DrivePage() {
       const file = files?.find(f => f.id === id);
       setBulkProgress(prev => prev ? { ...prev, currentName: file?.name || id } : prev);
       try {
-        const resp = await api.post(`/files/${id}/copy`);
+        const resp = await api.post(`/files/${id}/copy`, { encrypt: encryptFiles });
         const newId = resp.data?.id;
         const expect = origCounts[id] || 1;
         if (!newId) {
@@ -1107,8 +1110,8 @@ export default function DrivePage() {
         }
         break;
       case 'copy':
-        // create a copy of the file
-        copyMutation.mutate(menuFile.id);
+        // create a copy of the file (respect user's encrypt setting)
+        copyMutation.mutate({ id: menuFile.id, encrypt: encryptFiles });
         break;
     }
     
