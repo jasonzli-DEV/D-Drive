@@ -1352,7 +1352,7 @@ export default function DrivePage() {
                     f.status === 'success' ? 'success.main' :
                     f.status === 'error' ? 'error.main' : 'text.secondary'
                   }>
-                    {f.status === 'success' ? '✓' : f.status === 'error' ? '✗' : `${f.progress}%`}
+                    {f.status === 'success' ? '✓' : f.status === 'error' ? '✗' : (f.progress === 100 ? 'Processing' : `${f.progress}%`)}
                   </Typography>
                 </Box>
                 <LinearProgress
@@ -1378,7 +1378,7 @@ export default function DrivePage() {
                   }>
                     {item.status === 'success' ? '✓' : 
                      item.status === 'error' ? '✗' : 
-                     `${item.progress}%`}
+                     (item.progress === 100 ? 'Processing' : `${item.progress}%`)}
                   </Typography>
                 </Box>
                 <LinearProgress
