@@ -200,7 +200,12 @@ export default function DrivePage() {
 
     const fetchImage = async () => {
       try {
-        const downloadUrl = isPdfFile(current) ? `/files/${current.id}/download?inline=1` : `/files/${current.id}/download`;
+        // For PDFs, add a cache-busting param to avoid 304 cached responses
+        // which can result in empty blobs when fetched via XHR. Use inline=1
+        // so the backend returns inline Content-Disposition.
+        const downloadUrl = isPdfFile(current)
+          ? `/files/${current.id}/download?inline=1&cacheBust=${Date.now()}`
+          : `/files/${current.id}/download`;
         const res = await api.get(downloadUrl, {
           responseType: 'blob',
           signal: controller.signal as any,
@@ -1654,8 +1659,9 @@ export default function DrivePage() {
                 <Typography color="error">{imageError}</Typography>
               ) : isPdfFile(imageList[imageViewerIndex]) ? (
                 imageBlobUrl ? (
-                  <iframe
+                  <embed
                     src={imageBlobUrl}
+                    type="application/pdf"
                     title={imageList[imageViewerIndex].name}
                     style={{ width: '100%', height: '80vh', border: 0 }}
                   />
