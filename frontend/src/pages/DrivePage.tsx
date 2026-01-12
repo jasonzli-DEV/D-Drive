@@ -102,6 +102,9 @@ export default function DrivePage() {
   const [targetFolderId, setTargetFolderId] = useState<string>('');
   const [renameDialogOpen, setRenameDialogOpen] = useState(false);
   const [newName, setNewName] = useState('');
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState<null | { action: 'copy'|'delete'|'move', total: number, completed: number, currentName?: string, failed: number }>(null);
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuFile, setMenuFile] = useState<FileItem | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
@@ -547,12 +550,34 @@ export default function DrivePage() {
   const handleBulkCopy = async () => {
     if (selectedIds.length === 0) return;
     setBulkProcessing(true);
-    const results = await Promise.allSettled(selectedIds.map(id => api.post(`/files/${id}/copy`)));
-    const success = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.length - success;
-    toast.success(`${success} copied, ${failed} failed`);
+    setBulkProgress({ action: 'copy', total: selectedIds.length, completed: 0, failed: 0 });
+    let failed = 0;
+    for (let i = 0; i < selectedIds.length; i++) {
+      const id = selectedIds[i];
+      const file = files?.find(f => f.id === id);
+      setBulkProgress(prev => prev ? { ...prev, completed: i, currentName: file?.name || id } : prev);
+      try {
+        await api.post(`/files/${id}/copy`);
+      } catch (err) {
+        failed += 1;
+        setBulkProgress(prev => prev ? { ...prev, failed: (prev.failed || 0) + 1 } : prev);
+      }
+    }
+    // finalize
+    setBulkProgress(prev => prev ? { ...prev, completed: prev.total } : prev);
+    const success = selectedIds.length - failed;
+    if (failed === 0) {
+      toast.success(`${success} copied`);
+    } else {
+      toast.success(`${success} copied, ${failed} failed`);
+      toast.error(`${failed} items failed to copy`);
+    }
     setSelectedIds([]);
-    setBulkProcessing(false);
+    // keep panel briefly then hide (match upload timing)
+    setTimeout(() => {
+      setBulkProcessing(false);
+      setBulkProgress(null);
+    }, 1500);
     queryClient.invalidateQueries({ queryKey: ['files'] });
   };
 
@@ -560,12 +585,32 @@ export default function DrivePage() {
     if (selectedIds.length === 0) return;
     if (!window.confirm(`Delete ${selectedIds.length} selected items? This is irreversible.`)) return;
     setBulkProcessing(true);
-    const results = await Promise.allSettled(selectedIds.map(id => api.delete(`/files/${id}`, { data: { recursive: true } })));
-    const success = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.length - success;
-    toast.success(`${success} deleted, ${failed} failed`);
+    setBulkProgress({ action: 'delete', total: selectedIds.length, completed: 0, failed: 0 });
+    let failed = 0;
+    for (let i = 0; i < selectedIds.length; i++) {
+      const id = selectedIds[i];
+      const file = files?.find(f => f.id === id);
+      setBulkProgress(prev => prev ? { ...prev, completed: i, currentName: file?.name || id } : prev);
+      try {
+        await api.delete(`/files/${id}`, { data: { recursive: true } });
+      } catch (err) {
+        failed += 1;
+        setBulkProgress(prev => prev ? { ...prev, failed: (prev.failed || 0) + 1 } : prev);
+      }
+    }
+    setBulkProgress(prev => prev ? { ...prev, completed: prev.total } : prev);
+    const success = selectedIds.length - failed;
+    if (failed === 0) {
+      toast.success(`${success} deleted`);
+    } else {
+      toast.success(`${success} deleted, ${failed} failed`);
+      toast.error(`${failed} items failed to delete`);
+    }
     setSelectedIds([]);
-    setBulkProcessing(false);
+    setTimeout(() => {
+      setBulkProcessing(false);
+      setBulkProgress(null);
+    }, 1500);
     queryClient.invalidateQueries({ queryKey: ['files'] });
   };
 
@@ -578,12 +623,32 @@ export default function DrivePage() {
     setBulkMoveOpen(false);
     if (!selectedIds.length) return;
     setBulkProcessing(true);
-    const results = await Promise.allSettled(selectedIds.map(id => api.patch(`/files/${id}/move`, { parentId: newParentId })));
-    const success = results.filter(r => r.status === 'fulfilled').length;
-    const failed = results.length - success;
-    toast.success(`${success} moved, ${failed} failed`);
+    setBulkProgress({ action: 'move', total: selectedIds.length, completed: 0, failed: 0 });
+    let failed = 0;
+    for (let i = 0; i < selectedIds.length; i++) {
+      const id = selectedIds[i];
+      const file = files?.find(f => f.id === id);
+      setBulkProgress(prev => prev ? { ...prev, completed: i, currentName: file?.name || id } : prev);
+      try {
+        await api.patch(`/files/${id}/move`, { parentId: newParentId });
+      } catch (err) {
+        failed += 1;
+        setBulkProgress(prev => prev ? { ...prev, failed: (prev.failed || 0) + 1 } : prev);
+      }
+    }
+    setBulkProgress(prev => prev ? { ...prev, completed: prev.total } : prev);
+    const success = selectedIds.length - failed;
+    if (failed === 0) {
+      toast.success(`${success} moved`);
+    } else {
+      toast.success(`${success} moved, ${failed} failed`);
+      toast.error(`${failed} items failed to move`);
+    }
     setSelectedIds([]);
-    setBulkProcessing(false);
+    setTimeout(() => {
+      setBulkProcessing(false);
+      setBulkProgress(null);
+    }, 1500);
     queryClient.invalidateQueries({ queryKey: ['files'] });
   };
 
@@ -1468,6 +1533,39 @@ export default function DrivePage() {
               </Box>
             ))
           )}
+        </Paper>
+      )}
+      {/* Bulk action progress (matches Uploads panel styling) */}
+      {bulkProgress && (
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            width: 350,
+            p: 2,
+            zIndex: 1003,
+          }}
+          elevation={6}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            {bulkProgress.action === 'copy' ? 'Copying' : bulkProgress.action === 'move' ? 'Moving' : 'Deleting'}
+          </Typography>
+          <Box sx={{ mb: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                {bulkProgress.currentName || `${bulkProgress.completed}/${bulkProgress.total}`}
+              </Typography>
+              <Typography variant="body2" color={bulkProgress.failed > 0 ? 'error.main' : 'text.secondary'}>
+                {bulkProgress.failed > 0 ? `${bulkProgress.failed} failed` : (bulkProgress.completed === bulkProgress.total ? '✓' : `${Math.round((bulkProgress.completed / Math.max(1, bulkProgress.total)) * 100)}%`)}
+              </Typography>
+            </Box>
+            <LinearProgress
+              variant="determinate"
+              value={Math.round((bulkProgress.completed / Math.max(1, bulkProgress.total)) * 100)}
+              color={bulkProgress.failed > 0 ? 'error' : 'primary'}
+            />
+          </Box>
         </Paper>
       )}
       {/* Delete Progress Panel */}
