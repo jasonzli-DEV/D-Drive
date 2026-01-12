@@ -1169,7 +1169,7 @@ export default function DrivePage() {
                         }}
                       />
                     </TableCell>
-                    <TableCell onClick={(e) => { if (file.type === 'DIRECTORY') handleFolderClick(file); }}>
+                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {file.type === 'DIRECTORY' ? (
                           <Folder size={22} color="#FFA000" />
