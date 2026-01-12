@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
   Button,
+  Checkbox,
   IconButton,
   Table,
   TableBody,
@@ -50,6 +51,7 @@ import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
+import FolderSelectDialog from '../components/FolderSelectDialog';
 
 interface FileItem {
   id: string;
@@ -103,6 +105,9 @@ export default function DrivePage() {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuFile, setMenuFile] = useState<FileItem | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
+  const [bulkProcessing, setBulkProcessing] = useState(false);
   const [encryptFiles, setEncryptFiles] = useState(true);
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
   
@@ -537,6 +542,50 @@ export default function DrivePage() {
 
   // Support different react-query versions: status may be 'loading' or 'pending'
   const renameIsLoading = ((renameMutation as any).status === 'loading') || ((renameMutation as any).status === 'pending');
+
+  // Bulk actions
+  const handleBulkCopy = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkProcessing(true);
+    const results = await Promise.allSettled(selectedIds.map(id => api.post(`/files/${id}/copy`)));
+    const success = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - success;
+    toast.success(`${success} copied, ${failed} failed`);
+    setSelectedIds([]);
+    setBulkProcessing(false);
+    queryClient.invalidateQueries({ queryKey: ['files'] });
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    if (!window.confirm(`Delete ${selectedIds.length} selected items? This is irreversible.`)) return;
+    setBulkProcessing(true);
+    const results = await Promise.allSettled(selectedIds.map(id => api.delete(`/files/${id}`, { data: { recursive: true } })));
+    const success = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - success;
+    toast.success(`${success} deleted, ${failed} failed`);
+    setSelectedIds([]);
+    setBulkProcessing(false);
+    queryClient.invalidateQueries({ queryKey: ['files'] });
+  };
+
+  const handleOpenBulkMove = () => {
+    if (selectedIds.length === 0) return;
+    setBulkMoveOpen(true);
+  };
+
+  const handleBulkMoveSelect = async (newParentId: string | null) => {
+    setBulkMoveOpen(false);
+    if (!selectedIds.length) return;
+    setBulkProcessing(true);
+    const results = await Promise.allSettled(selectedIds.map(id => api.patch(`/files/${id}/move`, { parentId: newParentId })));
+    const success = results.filter(r => r.status === 'fulfilled').length;
+    const failed = results.length - success;
+    toast.success(`${success} moved, ${failed} failed`);
+    setSelectedIds([]);
+    setBulkProcessing(false);
+    queryClient.invalidateQueries({ queryKey: ['files'] });
+  };
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach((file) => {
@@ -1061,10 +1110,27 @@ export default function DrivePage() {
         </Card>
       ) : (
         <Card sx={{ boxShadow: 2 }}>
+          {selectedIds.length > 0 && (
+            <Box sx={{ display: 'flex', gap: 1, p: 1, alignItems: 'center' }}>
+              <Button variant="outlined" size="small" onClick={handleBulkCopy} disabled={bulkProcessing}>Copy ({selectedIds.length})</Button>
+              <Button variant="outlined" size="small" onClick={handleOpenBulkMove} disabled={bulkProcessing}>Move ({selectedIds.length})</Button>
+              <Button variant="contained" color="error" size="small" onClick={handleBulkDelete} disabled={bulkProcessing}>Delete ({selectedIds.length})</Button>
+            </Box>
+          )}
           <TableContainer>
             <Table>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#fafbfc' }}>
+                  <TableCell sx={{ width: 48 }}>
+                    <Checkbox
+                      size="small"
+                      checked={files && files.length > 0 && selectedIds.length === files.length}
+                      indeterminate={selectedIds.length > 0 && files && selectedIds.length < files.length}
+                      onChange={(e) => {
+                        if (e.target.checked && files) setSelectedIds(files.map(f => f.id)); else setSelectedIds([]);
+                      }}
+                    />
+                  </TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Modified</TableCell>
@@ -1093,7 +1159,17 @@ export default function DrivePage() {
                       },
                     }}
                   >
-                    <TableCell>
+                    <TableCell sx={{ width: 48 }} onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        size="small"
+                        checked={selectedIds.includes(file.id)}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          setSelectedIds(prev => e.target.checked ? [...prev, file.id] : prev.filter(id => id !== file.id));
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell onClick={(e) => { if (file.type === 'DIRECTORY') handleFolderClick(file); }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {file.type === 'DIRECTORY' ? (
                           <Folder size={22} color="#FFA000" />
@@ -1435,6 +1511,7 @@ export default function DrivePage() {
           ))}
         </Paper>
       )}
+      <FolderSelectDialog open={bulkMoveOpen} value={null} onClose={() => setBulkMoveOpen(false)} onSelect={(id) => handleBulkMoveSelect(id)} title="Move selected items" />
       
     </Box>
   );
