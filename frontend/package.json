@@ -34,6 +34,8 @@
     "eslint-plugin-react-refresh": "^0.4.5",
     "typescript": "^5.3.3",
     "vite": "^5.0.10"
+    ,
+    "react-syntax-highlighter": "^15.5.0"
   }
   ,
   "dependencies": {
