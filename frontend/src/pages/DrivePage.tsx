@@ -47,7 +47,7 @@ import {
   ChevronRight,
   ChevronLeft,
   ChevronDown,
-  Close,
+  X,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -1566,7 +1566,7 @@ export default function DrivePage() {
             <ChevronRight />
           </IconButton>
           <IconButton onClick={closeImageViewer} sx={{ position: 'absolute', right: 8, top: 8 }}>
-            <Close />
+            <X />
           </IconButton>
         </Box>
       </Dialog>
