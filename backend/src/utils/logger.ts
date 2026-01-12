@@ -15,11 +15,11 @@ export const logger = createLogger({
   ],
 });
 
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new transports.Console({
-    format: format.combine(
-      format.colorize(),
-      format.simple()
-    ),
-  }));
-}
+// Always log to console as well so container stdout/stderr capture logs
+// (docker logs) in all environments. File transports remain for persistent logs.
+logger.add(new transports.Console({
+  format: format.combine(
+    format.colorize(),
+    format.simple()
+  ),
+}));
