@@ -461,13 +461,31 @@ export default function DrivePage() {
 
     try {
       const { files, dirs } = await collectFilesAndDirs(root.id);
-      const total = files.length + dirs.length + 1; // include root dir deletion
+      // Try to get per-file chunk counts so progress can be shown at chunk granularity.
+      const fileChunkCounts: Record<string, number> = {};
+      try {
+        await Promise.all(files.map(async (f) => {
+          try {
+            const meta = await api.get(`/files/${f.id}`);
+            const data = meta.data || {};
+            const cnt = Array.isArray(data.chunks) ? data.chunks.length : (data.chunkCount || data.chunksCount || 1);
+            fileChunkCounts[f.id] = Math.max(1, Number(cnt) || 1);
+          } catch (err) {
+            fileChunkCounts[f.id] = 1;
+          }
+        }));
+      } catch (err) {
+        // ignore - fallback to 1 per file
+      }
+
+      const total = (dirs.length) + 1 + files.reduce((s, f) => s + (fileChunkCounts[f.id] || 1), 0);
       let completed = 0;
 
-      // delete files sequentially
+      // delete files sequentially, accounting for chunk counts
       for (const f of files) {
+        const chunkCount = fileChunkCounts[f.id] || 1;
         await api.delete(`/files/${f.id}`, { data: { recursive: false } });
-        completed++;
+        completed += chunkCount;
         const pct = Math.round((completed / total) * 100);
         setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: pct } : p));
       }
