@@ -190,6 +190,8 @@ export async function runTaskNow(taskId: string) {
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
     const downloadedEntries = await walkRemote(task.sftpPath);
 
+    // (moved) Determine encryption preference and create run folder later in flow
+
     // If compression requested, create single archive buffer
     let uploadEntries: { name: string; buffer: Buffer }[] = [];
     if (task.compress === 'NONE' || task.compress === null) {
