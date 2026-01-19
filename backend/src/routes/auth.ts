@@ -20,6 +20,10 @@ const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
 const AVATAR_DIR = process.env.AVATAR_DIR || path.join(process.cwd(), 'data', 'avatars');
 
+if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+  logger.warn('DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET not set - OAuth will fail');
+}
+
 // Ensure avatar directory exists
 try {
   fs.mkdirSync(AVATAR_DIR, { recursive: true });
@@ -64,6 +68,10 @@ router.get('/discord/callback', async (req, res) => {
 
     const discordUser = userResponse.data;
 
+    // Handle discriminator - Discord removed discriminators for new users
+    // Default to "0" if not provided
+    const discriminator = discordUser.discriminator || '0';
+
     // Create or update user in database
     let user = await prisma.user.findUnique({
       where: { discordId: discordUser.id },
@@ -74,7 +82,7 @@ router.get('/discord/callback', async (req, res) => {
         data: {
           discordId: discordUser.id,
           username: discordUser.username,
-          discriminator: discordUser.discriminator,
+          discriminator: discriminator,
           avatar: discordUser.avatar,
           email: discordUser.email,
         },
@@ -85,7 +93,7 @@ router.get('/discord/callback', async (req, res) => {
         where: { discordId: discordUser.id },
         data: {
           username: discordUser.username,
-          discriminator: discordUser.discriminator,
+          discriminator: discriminator,
           avatar: discordUser.avatar,
           email: discordUser.email,
         },
