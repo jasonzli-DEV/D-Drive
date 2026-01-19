@@ -433,11 +433,44 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
     const inlineParam = String(req.query.inline || '').toLowerCase();
     const preferInline = inlineParam === '1' || inlineParam === 'true';
     const isPdf = (file.mimeType && file.mimeType.includes('pdf')) || (sanitizedName.toLowerCase().endsWith('.pdf'));
+    const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
+                    sanitizedName.match(/\.(mp4|webm|ogg|mov|avi|mkv|flv|wmv|m4v)$/i);
     const contentType = (preferInline && isPdf) ? 'application/pdf' : (file.mimeType || 'application/octet-stream');
+    
+    // Support HTTP Range requests for video streaming (required for browser video playback)
+    const rangeHeader = req.headers.range;
+    const fileSize = fileData.length;
+    
+    // Set headers
     res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    
+    // Handle Range requests (essential for video streaming)
+    if (rangeHeader && isVideo) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+      const chunkSize = (end - start) + 1;
+      
+      if (start >= fileSize || end >= fileSize) {
+        res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
+        return res.end();
+      }
+      
+      res.status(206); // Partial Content
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
+      res.setHeader('Content-Length', chunkSize.toString());
+      
+      const disposition = preferInline ? 'inline' : 'attachment';
+      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
+      
+      return res.send(fileData.slice(start, end + 1));
+    }
+    
+    // Non-range request - send full file
     const disposition = preferInline ? 'inline' : 'attachment';
     res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
-    res.setHeader('Content-Length', fileData.length.toString());
+    res.setHeader('Content-Length', fileSize.toString());
 
     res.send(fileData);
   } catch (error) {
