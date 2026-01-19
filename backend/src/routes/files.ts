@@ -487,8 +487,9 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
     // beginning for proper progressive playback. If the client asks from the
     // start (Range header present and start === 0) and this is a video, we
     // assemble the full file on disk (decrypting per-chunk where applicable)
-    // and stream the complete file. This increases latency for the first
-    // request but avoids black/blank players for problematic files.
+    // and stream the complete file. To avoid browsers making redundant
+    // follow-up range requests we honor the incoming Range header and return
+    // a proper 206 Partial Content response when a Range was requested.
     const tryVideoFullstream = async () => {
       if (!rangeHeader) return false;
       const parts = String(rangeHeader).replace(/bytes=/, '').split('-');
@@ -517,13 +518,31 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
 
       const finalBuffer = Buffer.concat(assembledParts);
 
-      // Stream the assembled file as a single response (200 OK)
+      // If the client requested a Range, honor it and return a 206 with a
+      // matching Content-Range header. This prevents some players from
+      // issuing extra requests after receiving a 200 with the full body.
+      const rangeParts = String(rangeHeader).replace(/bytes=/, '').split('-');
+      const reqStart = parseInt(rangeParts[0] || '0', 10) || 0;
+      const reqEnd = rangeParts[1] ? parseInt(rangeParts[1], 10) : finalBuffer.length - 1;
+      const safeEnd = Math.min(reqEnd, finalBuffer.length - 1);
+      const slice = finalBuffer.slice(reqStart, safeEnd + 1);
+
       res.setHeader('Content-Type', contentType);
       const disposition = preferInline ? 'inline' : 'attachment';
       res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
-      res.setHeader('Content-Length', String(finalBuffer.length));
       res.setHeader('Accept-Ranges', 'bytes');
-      res.send(finalBuffer);
+
+      if (rangeHeader) {
+        const actualEnd = reqStart + slice.length - 1;
+        res.status(206);
+        res.setHeader('Content-Range', `bytes ${reqStart}-${actualEnd}/${finalBuffer.length}`);
+        res.setHeader('Content-Length', String(slice.length));
+        res.send(slice);
+      } else {
+        res.setHeader('Content-Length', String(finalBuffer.length));
+        res.send(finalBuffer);
+      }
+
       return true;
     };
 
