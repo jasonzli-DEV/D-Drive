@@ -1,6 +1,7 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
+import jwt from 'jsonwebtoken';
 import { uploadChunkToDiscord, downloadChunkFromDiscord, deleteChunkFromDiscord, DISCORD_MAX } from '../services/discord';
 import { logger } from '../utils/logger';
 import { encryptBuffer, decryptBuffer, generateEncryptionKey } from '../utils/crypto';
@@ -382,8 +383,71 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
   }
 });
 
-// Download file
-router.get('/:id/download', authenticate, async (req: Request, res: Response) => {
+// Helper to authenticate from header or query parameter (for video elements)
+async function authenticateDownload(req: Request, res: Response, next: NextFunction) {
+  const queryToken = req.query.token as string | undefined;
+  
+  if (queryToken) {
+    // Authenticate using query token (for video elements that can't send headers)
+    try {
+      // Check if it's a JWT token or API key
+      if (queryToken.startsWith('dd_')) {
+        // API Key authentication
+        const apiKey = await prisma.apiKey.findUnique({
+          where: { key: queryToken },
+          include: { user: true },
+        });
+
+        if (!apiKey) {
+          return res.status(401).json({ error: 'Invalid API key' });
+        }
+
+        await prisma.apiKey.update({
+          where: { id: apiKey.id },
+          data: { lastUsed: new Date() },
+        });
+
+        (req as any).user = {
+          userId: apiKey.userId,
+          discordId: apiKey.user.discordId,
+        };
+        return next();
+      } else {
+        // JWT authentication
+        const JWT_SECRET = process.env.JWT_SECRET;
+        if (!JWT_SECRET) {
+          return res.status(500).json({ error: 'Server configuration error' });
+        }
+        
+        const decodedAny = jwt.verify(queryToken, JWT_SECRET as string) as unknown;
+        const decoded = (decodedAny as any) as { userId: string; discordId?: string };
+
+        if (!decoded || typeof decoded !== 'object' || !decoded.userId) {
+          return res.status(401).json({ error: 'Invalid token payload' });
+        }
+
+        const session = await prisma.session.findUnique({
+          where: { token: queryToken },
+        });
+
+        if (!session || session.expiresAt < new Date()) {
+          return res.status(401).json({ error: 'Session expired' });
+        }
+
+        (req as any).user = { userId: decoded.userId, discordId: decoded.discordId };
+        return next();
+      }
+    } catch (error) {
+      return res.status(401).json({ error: 'Invalid authentication' });
+    }
+  } else {
+    // Use normal header authentication
+    return authenticate(req, res, next);
+  }
+}
+
+// Download file - supports both header auth and query param token (for video elements)
+router.get('/:id/download', authenticateDownload, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
