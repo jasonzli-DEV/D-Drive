@@ -468,7 +468,120 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Collect all chunks
+    // Sanitize filename to prevent header injection
+    const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
+    const inlineParam = String(req.query.inline || '').toLowerCase();
+    const preferInline = inlineParam === '1' || inlineParam === 'true';
+    const isPdf = (file.mimeType && file.mimeType.includes('pdf')) || (sanitizedName.toLowerCase().endsWith('.pdf'));
+    const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
+                    sanitizedName.match(/\.(mp4|webm|ogg|mov|avi|mkv|flv|wmv|m4v)$/i);
+    const contentType = (preferInline && isPdf) ? 'application/pdf' : (file.mimeType || 'application/octet-stream');
+    
+    // Calculate total file size (decrypted size)
+    const totalFileSize = Number(file.size);
+    
+    // Support HTTP Range requests for efficient streaming
+    const rangeHeader = req.headers.range;
+    
+    // Set headers
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    
+    // Handle Range requests - only download needed chunks for efficient streaming
+    if (rangeHeader) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalFileSize - 1;
+      
+      if (start >= totalFileSize || end >= totalFileSize) {
+        res.status(416).setHeader('Content-Range', `bytes */${totalFileSize}`);
+        return res.end();
+      }
+      
+      // Calculate cumulative sizes to find which chunks contain the requested range
+      // chunk.size is the decrypted size of each chunk
+      let cumulativeSize = 0;
+      let startChunkIndex = -1;
+      let endChunkIndex = -1;
+      let startOffsetInChunk = 0;
+      
+      for (let i = 0; i < file.chunks.length; i++) {
+        const chunk = file.chunks[i];
+        const chunkDecryptedSize = chunk.size; // This is the decrypted size
+        
+        if (startChunkIndex === -1) {
+          if (start < cumulativeSize + chunkDecryptedSize) {
+            startChunkIndex = i;
+            startOffsetInChunk = start - cumulativeSize;
+          }
+        }
+        
+        if (end < cumulativeSize + chunkDecryptedSize) {
+          endChunkIndex = i;
+          break;
+        }
+        
+        cumulativeSize += chunkDecryptedSize;
+      }
+      
+      // If end is beyond all chunks, use last chunk
+      if (endChunkIndex === -1) {
+        endChunkIndex = file.chunks.length - 1;
+      }
+      
+      // Get the chunks we need
+      const neededChunks = file.chunks.slice(startChunkIndex, endChunkIndex + 1);
+      
+      if (neededChunks.length === 0) {
+        return res.status(404).json({ error: 'Chunks not found' });
+      }
+      
+      // Download chunks in parallel for speed
+      const chunkPromises = neededChunks.map(chunk => 
+        downloadChunkFromDiscord(chunk.messageId, chunk.channelId)
+      );
+      const encryptedChunkBuffers = await Promise.all(chunkPromises);
+      
+      // Decrypt chunks if needed
+      let decryptedChunks: Buffer[] = encryptedChunkBuffers;
+      if (file.encrypted && file.user.encryptionKey) {
+        try {
+          decryptedChunks = encryptedChunkBuffers.map((encrypted, idx) => {
+            try {
+              return decryptBuffer(encrypted, file.user.encryptionKey!);
+            } catch (decErr) {
+              logger.error(`Failed to decrypt chunk ${neededChunks[idx].chunkIndex}:`, decErr);
+              throw decErr;
+            }
+          });
+        } catch (decryptError) {
+          logger.error('Decryption failed:', decryptError);
+          return res.status(500).json({ error: 'Failed to decrypt file' });
+        }
+      }
+      
+      // Concatenate decrypted chunks
+      const fullData = Buffer.concat(decryptedChunks);
+      
+      // Calculate the range within the concatenated chunks
+      // startOffsetInChunk is the offset within the first chunk
+      const endOffsetInData = Math.min(end - (start - startOffsetInChunk), fullData.length - 1);
+      const rangeData = fullData.slice(startOffsetInChunk, endOffsetInData + 1);
+      
+      // Calculate actual end byte (may be less than requested if near end of file)
+      const actualEnd = Math.min(start + rangeData.length - 1, totalFileSize - 1);
+      
+      res.status(206); // Partial Content
+      res.setHeader('Content-Range', `bytes ${start}-${actualEnd}/${totalFileSize}`);
+      res.setHeader('Content-Length', rangeData.length.toString());
+      
+      const disposition = preferInline ? 'inline' : 'attachment';
+      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
+      
+      return res.send(rangeData);
+    }
+    
+    // Non-range request - download all chunks (for small files or non-streaming requests)
     const chunkBuffers: Buffer[] = [];
     for (const chunk of file.chunks) {
       const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
@@ -488,53 +601,11 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
         return res.status(500).json({ error: 'Failed to decrypt file' });
       }
     }
-
-    // Sanitize filename to prevent header injection
-    const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
-    // Choose an appropriate Content-Type. If the client requested inline display
-    // and the file appears to be a PDF (by mimeType or filename), force
-    // `application/pdf` so browsers render it instead of downloading.
-    const inlineParam = String(req.query.inline || '').toLowerCase();
-    const preferInline = inlineParam === '1' || inlineParam === 'true';
-    const isPdf = (file.mimeType && file.mimeType.includes('pdf')) || (sanitizedName.toLowerCase().endsWith('.pdf'));
-    const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
-                    sanitizedName.match(/\.(mp4|webm|ogg|mov|avi|mkv|flv|wmv|m4v)$/i);
-    const contentType = (preferInline && isPdf) ? 'application/pdf' : (file.mimeType || 'application/octet-stream');
     
-    // Support HTTP Range requests for video streaming (required for browser video playback)
-    const rangeHeader = req.headers.range;
-    const fileSize = fileData.length;
-    
-    // Set headers
-    res.setHeader('Content-Type', contentType);
-    res.setHeader('Accept-Ranges', 'bytes');
-    
-    // Handle Range requests (essential for video streaming)
-    if (rangeHeader && isVideo) {
-      const parts = rangeHeader.replace(/bytes=/, '').split('-');
-      const start = parseInt(parts[0], 10);
-      const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
-      const chunkSize = (end - start) + 1;
-      
-      if (start >= fileSize || end >= fileSize) {
-        res.status(416).setHeader('Content-Range', `bytes */${fileSize}`);
-        return res.end();
-      }
-      
-      res.status(206); // Partial Content
-      res.setHeader('Content-Range', `bytes ${start}-${end}/${fileSize}`);
-      res.setHeader('Content-Length', chunkSize.toString());
-      
-      const disposition = preferInline ? 'inline' : 'attachment';
-      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
-      
-      return res.send(fileData.slice(start, end + 1));
-    }
-    
-    // Non-range request - send full file
+    // Send full file
     const disposition = preferInline ? 'inline' : 'attachment';
     res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
-    res.setHeader('Content-Length', fileSize.toString());
+    res.setHeader('Content-Length', fileData.length.toString());
 
     res.send(fileData);
   } catch (error) {
