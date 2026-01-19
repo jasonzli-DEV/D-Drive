@@ -482,6 +482,54 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
     
     // Support HTTP Range requests for efficient streaming
     const rangeHeader = req.headers.range;
+
+    // Quick video fallback: some MOV/MP4 files require the 'moov' atom at the
+    // beginning for proper progressive playback. If the client asks from the
+    // start (Range header present and start === 0) and this is a video, we
+    // assemble the full file on disk (decrypting per-chunk where applicable)
+    // and stream the complete file. This increases latency for the first
+    // request but avoids black/blank players for problematic files.
+    const tryVideoFullstream = async () => {
+      if (!rangeHeader) return false;
+      const parts = String(rangeHeader).replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0] || '0', 10) || 0;
+      if (start !== 0) return false;
+      if (!isVideo) return false;
+
+      // Download all chunk buffers
+      const allBuffers = await Promise.all(file.chunks.map(c => downloadChunkFromDiscord(c.messageId, c.channelId)));
+
+      // Try to decrypt per-chunk when possible; otherwise use raw chunk bytes
+      const assembledParts: Buffer[] = [];
+      if (file.encrypted && file.user.encryptionKey) {
+        for (let i = 0; i < allBuffers.length; i++) {
+          const buf = allBuffers[i];
+          try {
+            const dec = decryptBuffer(buf, file.user.encryptionKey!);
+            assembledParts.push(dec);
+          } catch (e) {
+            assembledParts.push(buf);
+          }
+        }
+      } else {
+        assembledParts.push(...allBuffers);
+      }
+
+      const finalBuffer = Buffer.concat(assembledParts);
+
+      // Stream the assembled file as a single response (200 OK)
+      res.setHeader('Content-Type', contentType);
+      const disposition = preferInline ? 'inline' : 'attachment';
+      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
+      res.setHeader('Content-Length', String(finalBuffer.length));
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.send(finalBuffer);
+      return true;
+    };
+
+    if (await tryVideoFullstream()) {
+      return; // already responded
+    }
     
     // Set headers
     res.setHeader('Content-Type', contentType);
