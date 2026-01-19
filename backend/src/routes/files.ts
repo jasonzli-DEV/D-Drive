@@ -552,9 +552,6 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       let decryptedChunks: Buffer[] = encryptedChunkBuffers;
       if (file.encrypted && file.user.encryptionKey) {
         try {
-      let decryptedChunks: Buffer[] = encryptedChunkBuffers;
-      if (file.encrypted && file.user.encryptionKey) {
-        try {
           // Try to decrypt all chunks
           decryptedChunks = encryptedChunkBuffers.map((b) => decryptBuffer(b, file.user.encryptionKey!));
         } catch (decErr: any) {
@@ -568,37 +565,20 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
           decryptedChunks = encryptedChunkBuffers;
         }
       }
-    const chunkBuffers: Buffer[] = [];
-    for (const chunk of file.chunks) {
-      const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
-      chunkBuffers.push(buffer);
-    }
-    
-    // Buffer.concat may produce Buffer<ArrayBufferLike> depending on lib types; cast to plain Buffer
-    let fileData = Buffer.concat(chunkBuffers) as unknown as Buffer;
 
-    // Decrypt if encrypted; if decryption fails, mark unencrypted and serve raw bytes
-    if (file.encrypted && file.user.encryptionKey) {
-      try {
-        fileData = decryptBuffer(fileData, file.user.encryptionKey);
-        logger.info(`File decrypted: ${file.name}`);
-      } catch (decryptError: any) {
-        logger.warn('Decryption failed for full download; marking file as unencrypted and serving raw bytes', { fileId: file.id, err: decryptError?.message });
-        try {
-          await prisma.file.update({ where: { id: file.id }, data: { encrypted: false } });
-        } catch (updateErr) {
-          logger.error('Failed to update file.encrypted flag after decryption failure', { fileId: file.id, err: updateErr });
-        }
-        // leave fileData as the raw stored bytes
-      }
-    }
-    
-    // Send full file
-    const disposition = preferInline ? 'inline' : 'attachment';
-    res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
-    res.setHeader('Content-Length', fileData.length.toString());
+      // Concatenate the decrypted chunks we downloaded and slice the requested range
+      const combined = Buffer.concat(decryptedChunks);
+      const requestedLength = end - start + 1;
+      const rangeStartInCombined = startOffsetInChunk;
+      const rangeBuffer = combined.slice(rangeStartInCombined, rangeStartInCombined + requestedLength);
 
-    res.send(fileData);
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${totalFileSize}`);
+      res.setHeader('Content-Length', rangeBuffer.length.toString());
+      const disposition = preferInline ? 'inline' : 'attachment';
+      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
+
+      return res.send(rangeBuffer);
   } catch (error) {
     logger.error('Error downloading file:', error);
     if (!res.headersSent) {
