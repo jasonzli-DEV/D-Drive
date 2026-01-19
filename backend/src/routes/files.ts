@@ -553,14 +553,42 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       if (file.encrypted && file.user.encryptionKey) {
         try {
           decryptedChunks = [];
+          const MIN_ENCRYPTED_SIZE = 16 + 12 + 16; // salt + iv + authTag minimum
+          
           for (let idx = 0; idx < encryptedChunkBuffers.length; idx++) {
+            const encryptedBuffer = encryptedChunkBuffers[idx];
+            const expectedDecryptedSize = neededChunks[idx].size;
+            
+            // Check if buffer looks encrypted (has salt/iv/authTag header)
+            if (encryptedBuffer.length < MIN_ENCRYPTED_SIZE) {
+              logger.warn(`Chunk ${neededChunks[idx].chunkIndex} is too small to be encrypted (${encryptedBuffer.length} bytes), using as-is`);
+              decryptedChunks.push(encryptedBuffer);
+              continue;
+            }
+            
+            // If encrypted size matches decrypted size exactly, chunk might not be encrypted
+            if (encryptedBuffer.length === expectedDecryptedSize) {
+              logger.warn(`Chunk ${neededChunks[idx].chunkIndex} size matches decrypted size, might not be encrypted`);
+              // Try decryption first, if it fails use as-is
+              try {
+                const decrypted = decryptBuffer(encryptedBuffer, file.user.encryptionKey!);
+                decryptedChunks.push(decrypted);
+              } catch (decErr) {
+                logger.warn(`Decryption failed for chunk ${neededChunks[idx].chunkIndex}, using as-is:`, decErr);
+                decryptedChunks.push(encryptedBuffer);
+              }
+              continue;
+            }
+            
             try {
-              const decrypted = decryptBuffer(encryptedChunkBuffers[idx], file.user.encryptionKey!);
+              const decrypted = decryptBuffer(encryptedBuffer, file.user.encryptionKey!);
+              // Verify decrypted size matches expected
+              if (decrypted.length !== expectedDecryptedSize) {
+                logger.warn(`Chunk ${neededChunks[idx].chunkIndex} decrypted size mismatch: got ${decrypted.length}, expected ${expectedDecryptedSize}`);
+              }
               decryptedChunks.push(decrypted);
             } catch (decErr: any) {
-              logger.error(`Failed to decrypt chunk ${neededChunks[idx].chunkIndex} (encrypted size: ${encryptedChunkBuffers[idx].length}, expected decrypted: ${neededChunks[idx].size}):`, decErr);
-              // If decryption fails, it might be because the chunk wasn't actually encrypted
-              // Try using the encrypted buffer as-is (though this shouldn't happen)
+              logger.error(`Failed to decrypt chunk ${neededChunks[idx].chunkIndex} (encrypted: ${encryptedBuffer.length} bytes, expected decrypted: ${expectedDecryptedSize} bytes):`, decErr);
               throw new Error(`Decryption failed for chunk ${neededChunks[idx].chunkIndex}: ${decErr.message}`);
             }
           }
