@@ -122,6 +122,8 @@ export default function DrivePage() {
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  // Track which file ID we've loaded to prevent redundant fetches
+  const loadedImageIdRef = useRef<string | null>(null);
 
   const isImageFile = (f: FileItem) => {
     if (f.mimeType && f.mimeType.startsWith('image/')) return true;
@@ -181,16 +183,35 @@ export default function DrivePage() {
     setImageViewerOpen(true);
   };
 
-  const closeImageViewer = () => setImageViewerOpen(false);
+  const closeImageViewer = () => {
+    loadedImageIdRef.current = null;
+    setImageViewerOpen(false);
+  };
 
-  const showPrevImage = () => setImageViewerIndex(i => Math.max(0, i - 1));
-  const showNextImage = () => setImageViewerIndex(i => Math.min(imageList.length - 1, i + 1));
+  const showPrevImage = () => {
+    loadedImageIdRef.current = null; // Reset to allow loading new image
+    setImageViewerIndex(i => Math.max(0, i - 1));
+  };
+  const showNextImage = () => {
+    loadedImageIdRef.current = null; // Reset to allow loading new image
+    setImageViewerIndex(i => Math.min(imageList.length - 1, i + 1));
+  };
 
   useEffect(() => {
-    if (!imageViewerOpen) return;
+    if (!imageViewerOpen) {
+      // Cleanup when closing
+      loadedImageIdRef.current = null;
+      return;
+    }
     const current = imageList[imageViewerIndex];
 
     if (!current) return;
+    
+    // Skip if we already loaded this image
+    if (loadedImageIdRef.current === current.id && imageBlobUrl) {
+      return;
+    }
+    
     let active = true;
     setImageError(null);
     setImageLoading(true);
@@ -209,8 +230,11 @@ export default function DrivePage() {
           const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
           // Use direct URL with auth token in query string for video element
           const videoUrl = `${baseUrl}/files/${current.id}/download?inline=1${token ? `&token=${encodeURIComponent(token)}` : ''}`;
-          setImageBlobUrl(videoUrl);
-          setImageLoading(false);
+          if (active) {
+            loadedImageIdRef.current = current.id;
+            setImageBlobUrl(videoUrl);
+            setImageLoading(false);
+          }
           return;
         }
         
@@ -228,11 +252,12 @@ export default function DrivePage() {
         const blob = res.data as Blob;
         // Create object URL for images and PDFs
         localUrl = URL.createObjectURL(blob);
+        loadedImageIdRef.current = current.id;
         setImageBlobUrl(localUrl);
       } catch (err: any) {
         if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
         console.error('failed to fetch media', err);
-        setImageError('Failed to load media');
+        if (active) setImageError('Failed to load media');
       } finally {
         if (active) setImageLoading(false);
       }
@@ -251,7 +276,7 @@ export default function DrivePage() {
     };
   }, [imageViewerOpen, imageViewerIndex, imageList]);
 
-  // Fetch files
+  // Fetch files with optimized caching
   const { data: files, isLoading } = useQuery({
     queryKey: ['files', folderId],
     queryFn: async () => {
@@ -259,6 +284,8 @@ export default function DrivePage() {
       const response = await api.get(`/files${params}`);
       return response.data as FileItem[];
     },
+    staleTime: 30000, // Consider data fresh for 30 seconds
+    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes (formerly cacheTime)
   });
 
   const copyMutation = useMutation({
@@ -322,6 +349,8 @@ export default function DrivePage() {
       return response.data as FileItem;
     },
     enabled: !!folderId,
+    staleTime: 60000, // Folder details rarely change
+    gcTime: 10 * 60 * 1000,
   });
 
   // Build breadcrumbs from current folder by traversing parentId chain
@@ -369,13 +398,15 @@ export default function DrivePage() {
     buildBreadcrumbs();
   }, [folderDetails]);
 
-  // Fetch all folders for move dialog
+  // Fetch all folders for move dialog (cached)
   const { data: allFolders } = useQuery({
     queryKey: ['allFolders'],
     queryFn: async () => {
       const response = await api.get('/files/folders/all');
       return response.data as FileItem[];
     },
+    staleTime: 60000, // Folder structure rarely changes
+    gcTime: 10 * 60 * 1000,
   });
 
   // Upload file mutation

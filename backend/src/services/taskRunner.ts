@@ -10,6 +10,79 @@ import { deleteChunkFromDiscord } from './discord';
 
 const prisma = new PrismaClient();
 
+// Helper to ensure a directory path exists, creating it recursively if needed
+async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise<string | null> {
+  if (pathParts.length === 0) return null;
+  
+  let currentParentId: string | null = null;
+  let currentPath = '';
+  
+  for (const part of pathParts) {
+    currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
+    
+    // Check if this folder already exists
+    let folder = await prisma.file.findFirst({
+      where: { userId, path: currentPath, type: 'DIRECTORY' }
+    });
+    
+    if (!folder) {
+      // Create the folder
+      folder = await prisma.file.create({
+        data: {
+          name: part,
+          path: currentPath,
+          type: 'DIRECTORY',
+          userId,
+          parentId: currentParentId,
+        },
+      });
+      logger.info('Auto-created directory for task', { path: currentPath, folderId: folder.id });
+    }
+    
+    currentParentId = folder.id;
+  }
+  
+  return currentParentId;
+}
+
+// Ensure task destination folder exists, recreating the path if needed
+async function ensureTaskDestination(task: any): Promise<string | null> {
+  if (!task.destinationId) return null;
+  
+  // Check if destination folder still exists
+  const dest = await prisma.file.findUnique({
+    where: { id: task.destinationId },
+    select: { id: true, path: true }
+  });
+  
+  if (dest) return dest.id;
+  
+  // Destination was deleted/moved, try to recreate it from the stored path
+  // We need to find the original path from task history or use a default
+  logger.warn('Task destination folder missing, attempting to recreate', { taskId: task.id, destId: task.destinationId });
+  
+  // For now, create a folder with the task name at root level
+  const folderName = `backups-${task.name || 'task'}`;
+  const newFolder = await prisma.file.create({
+    data: {
+      name: folderName,
+      path: `/${folderName}`,
+      type: 'DIRECTORY',
+      userId: task.userId,
+      parentId: null,
+    },
+  });
+  
+  // Update the task to point to new destination
+  await prisma.task.update({
+    where: { id: task.id },
+    data: { destinationId: newFolder.id }
+  });
+  
+  logger.info('Recreated task destination folder', { taskId: task.id, newDestId: newFolder.id, path: newFolder.path });
+  return newFolder.id;
+}
+
 // Prune oldest files in a destination folder to enforce maxFiles retention.
 export async function pruneOldBackups(userId: string, destinationId: string, maxFiles: number) {
   if (maxFiles <= 0) return;
@@ -113,11 +186,22 @@ function looksLikeTimestampPrefix(name: string) {
 
 // Run task now: connect to SFTP, download entries, optionally compress, encrypt, and store
 export async function runTaskNow(taskId: string) {
+  const startTime = new Date();
+  
   try {
     const task = await prisma.task.findUnique({ where: { id: taskId }, include: { user: true } });
     if (!task) throw new Error('Task not found');
     if (!task.enabled) throw new Error('Task is disabled');
 
+    // Mark task as started
+    await prisma.task.update({ 
+      where: { id: taskId }, 
+      data: { lastStarted: startTime } 
+    });
+
+    // Ensure destination folder exists (recreate if deleted)
+    const destinationId = await ensureTaskDestination(task);
+    
     const sftp = new SftpClient();
 
     // Attempt connections based on task auth preferences. If both methods are allowed,
@@ -194,13 +278,13 @@ export async function runTaskNow(taskId: string) {
     const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
 
     // If not compressing, create a directory for this run and place files inside it.
-    let targetParentId: string | null = task.destinationId || null;
+    let targetParentId: string | null = destinationId || null;
 
     if (task.compress === 'NONE' || task.compress === null) {
       const baseFolderName = task.name || 'backup';
       const folderBase = task.timestampNames ? `${formatTimestamp(new Date())}.${baseFolderName}` : baseFolderName;
 
-      const parentPath = task.destinationId ? (await prisma.file.findUnique({ where: { id: task.destinationId }, select: { path: true } }))?.path : null;
+      const parentPath = destinationId ? (await prisma.file.findUnique({ where: { id: destinationId }, select: { path: true } }))?.path : null;
       let candidateName = folderBase;
       let candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
       let counter = 1;
@@ -215,7 +299,7 @@ export async function runTaskNow(taskId: string) {
           path: candidatePath,
           type: 'DIRECTORY',
           userId: task.userId,
-          parentId: task.destinationId || null,
+          parentId: destinationId || null,
         },
       });
 
@@ -289,15 +373,42 @@ export async function runTaskNow(taskId: string) {
     }
 
     // Prune according to maxFiles
-    if (task.maxFiles && task.destinationId) {
-      await pruneOldBackups(task.userId, task.destinationId, task.maxFiles);
+    if (task.maxFiles && destinationId) {
+      await pruneOldBackups(task.userId, destinationId, task.maxFiles);
     }
 
     await sftp.end();
-    await prisma.task.update({ where: { id: taskId }, data: { lastRun: new Date() } });
-    logger.info('Task run complete', { taskId });
+    
+    // Calculate runtime in seconds
+    const endTime = new Date();
+    const runtimeSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+    
+    await prisma.task.update({ 
+      where: { id: taskId }, 
+      data: { 
+        lastRun: endTime,
+        lastRuntime: runtimeSeconds
+      } 
+    });
+    logger.info('Task run complete', { taskId, runtimeSeconds });
   } catch (err) {
     logger.error('Task run failed', err);
+    
+    // Still update lastRun on failure to show when it was attempted
+    const endTime = new Date();
+    const runtimeSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
+    try {
+      await prisma.task.update({
+        where: { id: taskId },
+        data: {
+          lastRun: endTime,
+          lastRuntime: runtimeSeconds
+        }
+      });
+    } catch (updateErr) {
+      logger.error('Failed to update task after error', updateErr);
+    }
+    
     throw err;
   }
 }

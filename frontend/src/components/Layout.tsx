@@ -50,21 +50,25 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static">
-        <Toolbar sx={{ minHeight: 96, alignItems: 'center' }}>
+      <AppBar position="static" elevation={0} sx={{ bgcolor: '#5865F2', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+        <Toolbar sx={{ minHeight: 72, alignItems: 'center' }}>
             {/* Logo on the left */}
             <IconButton
               color="inherit"
               onClick={() => navigate('/')}
-              sx={{ mr: 1, p: 0, width: 96, height: 96 }}
-              aria-label="Home"
+              sx={{ mr: 2, p: 0.5, borderRadius: 2, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+              aria-label="Go to root drive"
+              title="Go to root drive"
             >
               <Box
                 component="img"
                 src="/D-Drive.png"
                 alt="D-Drive"
-                sx={{ width: 96, height: 96, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: 48, height: 48, objectFit: 'contain', bgcolor: 'transparent' }}
               />
+              <Typography variant="h6" fontWeight={700} sx={{ ml: 1.5, display: { xs: 'none', sm: 'block' } }}>
+                D-Drive
+              </Typography>
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
