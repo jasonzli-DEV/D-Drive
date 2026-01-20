@@ -692,20 +692,51 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
       chunkBuffers.push(buffer);
     }
-    
-    // Buffer.concat may produce Buffer<ArrayBufferLike> depending on lib types; cast to plain Buffer
-    let fileData = Buffer.concat(chunkBuffers) as unknown as Buffer;
 
-    // Decrypt if encrypted
+    // Decrypt per-chunk if encrypted (file is encrypted per-chunk, not as a whole)
+    let decryptedChunks: Buffer[] = chunkBuffers;
     if (file.encrypted && file.user.encryptionKey) {
-      try {
-        fileData = decryptBuffer(fileData, file.user.encryptionKey);
-        logger.info(`File decrypted: ${file.name}`);
-      } catch (decryptError) {
-        logger.error('Decryption failed:', decryptError);
-        return res.status(500).json({ error: 'Failed to decrypt file' });
+      decryptedChunks = [];
+      const MIN_ENCRYPTED_SIZE = 16 + 12 + 16; // salt + iv + authTag minimum
+      
+      for (let idx = 0; idx < chunkBuffers.length; idx++) {
+        const encryptedBuffer = chunkBuffers[idx];
+        const expectedDecryptedSize = file.chunks[idx].size;
+        
+        // Check if buffer looks encrypted (has salt/iv/authTag header)
+        if (encryptedBuffer.length < MIN_ENCRYPTED_SIZE) {
+          logger.warn(`Chunk ${file.chunks[idx].chunkIndex} is too small to be encrypted (${encryptedBuffer.length} bytes), using as-is`);
+          decryptedChunks.push(encryptedBuffer);
+          continue;
+        }
+        
+        // If encrypted size matches decrypted size exactly, chunk might not be encrypted
+        if (encryptedBuffer.length === expectedDecryptedSize) {
+          logger.warn(`Chunk ${file.chunks[idx].chunkIndex} size matches decrypted size, might not be encrypted`);
+          try {
+            const decrypted = decryptBuffer(encryptedBuffer, file.user.encryptionKey!);
+            decryptedChunks.push(decrypted);
+          } catch (decErr) {
+            logger.warn(`Decryption failed for chunk ${file.chunks[idx].chunkIndex}, using as-is:`, decErr);
+            decryptedChunks.push(encryptedBuffer);
+          }
+          continue;
+        }
+        
+        try {
+          const decrypted = decryptBuffer(encryptedBuffer, file.user.encryptionKey!);
+          decryptedChunks.push(decrypted);
+          logger.info(`Chunk ${file.chunks[idx].chunkIndex} decrypted successfully`);
+        } catch (decErr: any) {
+          logger.error(`Failed to decrypt chunk ${file.chunks[idx].chunkIndex}:`, decErr);
+          // Fallback: use raw buffer if decryption fails (may be legacy unencrypted data)
+          decryptedChunks.push(encryptedBuffer);
+        }
       }
     }
+    
+    // Buffer.concat may produce Buffer<ArrayBufferLike> depending on lib types; cast to plain Buffer
+    let fileData = Buffer.concat(decryptedChunks) as unknown as Buffer;
     
     // Send full file
     const disposition = preferInline ? 'inline' : 'attachment';
