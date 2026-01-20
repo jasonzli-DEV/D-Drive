@@ -5,7 +5,7 @@ import archiver from 'archiver';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
-import { storeBufferAsFile } from './storage';
+import { storeFileFromPath, storeBufferAsFile } from './storage';
 import { deleteChunkFromDiscord } from './discord';
 
 const prisma = new PrismaClient();
@@ -185,8 +185,10 @@ function looksLikeTimestampPrefix(name: string) {
 }
 
 // Run task now: connect to SFTP, download entries, optionally compress, encrypt, and store
+// Uses STREAMING to handle large servers (60GB+) without running out of memory
 export async function runTaskNow(taskId: string) {
   const startTime = new Date();
+  let tmpDir: string | null = null;
   
   try {
     const task = await prisma.task.findUnique({ where: { id: taskId }, include: { user: true } });
@@ -239,48 +241,136 @@ export async function runTaskNow(taskId: string) {
       await sftp.connect(cfg);
     }
 
-    // Recursively walk remote path and collect files (preserve relative paths)
-    async function walkRemote(remoteBase: string) {
-      const results: { relPath: string; buffer: Buffer }[] = [];
-
-      async function walk(dir: string, prefix: string) {
-        const list = await sftp.list(dir);
-        for (const it of list) {
-          // skip special entries
-          if (it.name === '.' || it.name === '..') continue;
-          const remoteFull = path.posix.join(dir, it.name);
-          const rel = prefix ? `${prefix}/${it.name}` : it.name;
-          if (it.type === 'd') {
-            // directory -> recurse
-            await walk(remoteFull, rel);
-          } else if (it.type === '-') {
-            // regular file -> fetch buffer
-            const streamOrBuffer = await sftp.get(remoteFull);
-            let buf: Buffer;
-            if (Buffer.isBuffer(streamOrBuffer)) buf = streamOrBuffer as Buffer;
-            else buf = await bufferFromStream(streamOrBuffer as any);
-            results.push({ relPath: rel, buffer: buf });
-          } else {
-            // ignore other types (links, etc.)
-            logger.info('Skipping remote entry (unsupported type)', { path: remoteFull, type: it.type });
-          }
-        }
-      }
-
-      await walk(remoteBase, '');
-      return results;
-    }
-
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
-    const downloadedEntries = await walkRemote(task.sftpPath);
+    // Create temp directory for this task run
+    tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
+    logger.info('Created temp directory for task', { taskId, tmpDir });
 
     // Determine encryption preference: task explicit OR user's default
     const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
 
-    // If not compressing, create a directory for this run and place files inside it.
-    let targetParentId: string | null = destinationId || null;
+    // For compressed archives: stream download directly to archive file
+    if (task.compress === 'ZIP' || task.compress === 'TAR_GZ') {
+      const timestamp = formatTimestamp(new Date());
+      const archiveName = `${timestamp}.${(task.name || 'backup')}${task.compress === 'ZIP' ? '.zip' : '.tar.gz'}`;
+      const archivePath = path.join(tmpDir, archiveName);
 
-    if (task.compress === 'NONE' || task.compress === null) {
+      logger.info('Starting streaming archive creation', { taskId, archivePath, remotePath: task.sftpPath });
+
+      // Create archive stream to file
+      const output = fs.createWriteStream(archivePath);
+      const archive = archiver(task.compress === 'ZIP' ? 'zip' : 'tar', task.compress === 'TAR_GZ' ? { gzip: true } : {});
+      
+      // Track progress
+      let filesAdded = 0;
+      let totalBytes = 0;
+
+      // Pipe archive to file
+      archive.pipe(output);
+
+      // Recursively walk and STREAM files directly into the archive (no memory buffering)
+      async function streamRemoteToArchive(remoteBase: string) {
+        async function walk(dir: string, prefix: string) {
+          let list;
+          try {
+            list = await sftp.list(dir);
+          } catch (listErr) {
+            logger.warn('Failed to list directory, skipping', { dir, err: listErr });
+            return;
+          }
+          
+          for (const it of list) {
+            // skip special entries
+            if (it.name === '.' || it.name === '..') continue;
+            const remoteFull = path.posix.join(dir, it.name);
+            const rel = prefix ? `${prefix}/${it.name}` : it.name;
+            
+            if (it.type === 'd') {
+              // directory -> recurse
+              await walk(remoteFull, rel);
+            } else if (it.type === '-') {
+              // regular file -> stream directly to archive
+              try {
+                // Download to temp file first (for large files this prevents memory issues)
+                const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+                
+                // Use sftp.fastGet for efficient streaming download
+                await sftp.fastGet(remoteFull, tempFilePath);
+                
+                // Get file size
+                const stat = await fs.promises.stat(tempFilePath);
+                totalBytes += stat.size;
+                
+                // Stream the temp file into the archive
+                const fileStream = fs.createReadStream(tempFilePath);
+                archive.append(fileStream, { name: rel });
+                
+                filesAdded++;
+                
+                // Log progress every 100 files
+                if (filesAdded % 100 === 0) {
+                  logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes) });
+                }
+                
+                // Clean up temp file after it's been added to archive
+                // Note: archive.append is async, so we clean up after a short delay
+                setTimeout(async () => {
+                  try {
+                    await fs.promises.unlink(tempFilePath);
+                  } catch (e) {
+                    // Ignore cleanup errors
+                  }
+                }, 5000);
+                
+              } catch (fileErr) {
+                logger.warn('Failed to download file, skipping', { remoteFull, err: fileErr });
+              }
+            } else {
+              // ignore other types (links, etc.)
+              logger.info('Skipping remote entry (unsupported type)', { path: remoteFull, type: it.type });
+            }
+          }
+        }
+
+        await walk(remoteBase, '');
+      }
+
+      // Stream all files into archive
+      await streamRemoteToArchive(task.sftpPath);
+      
+      logger.info('Finalizing archive', { taskId, filesAdded, totalBytes: formatBytes(totalBytes) });
+      
+      // Finalize the archive
+      await archive.finalize();
+      
+      // Wait for output stream to finish writing
+      await new Promise<void>((resolve, reject) => {
+        output.on('close', () => resolve());
+        output.on('error', (e) => reject(e));
+      });
+      
+      // Get final archive size
+      const archiveStat = await fs.promises.stat(archivePath);
+      logger.info('Archive created', { 
+        taskId, 
+        archivePath, 
+        archiveSize: formatBytes(archiveStat.size), 
+        filesAdded,
+        originalSize: formatBytes(totalBytes)
+      });
+
+      // Now stream upload the archive to Discord (using file path, not loading into memory)
+      const finalName = task.timestampNames && !looksLikeTimestampPrefix(archiveName) 
+        ? `${formatTimestamp(new Date())}.${archiveName}` 
+        : archiveName;
+      
+      await storeFileFromPath(task.userId, destinationId, finalName, archivePath, undefined, shouldEncrypt);
+      
+      logger.info('Archive uploaded to Discord', { taskId, finalName });
+
+    } else {
+      // Non-compressed: download each file to disk, then upload individually
+      // This also uses streaming to handle large individual files
+      
       const baseFolderName = task.name || 'backup';
       const folderBase = task.timestampNames ? `${formatTimestamp(new Date())}.${baseFolderName}` : baseFolderName;
 
@@ -303,73 +393,80 @@ export async function runTaskNow(taskId: string) {
         },
       });
 
-      targetParentId = folder.id;
-    }
+      const targetParentId = folder.id;
+      const baseParentPath = folder.path;
+      
+      let filesUploaded = 0;
+      let totalBytes = 0;
 
-    // Build upload entries for compressed runs; for uncompressed runs we'll store files directly
-    let uploadEntries: { name: string; buffer: Buffer }[] = [];
-    if (task.compress === 'NONE' || task.compress === null) {
-      // non-compressed: preserve directory structure by creating folders under the
-      // run folder and storing files into their relative paths
-      const baseParentPath = (await prisma.file.findUnique({ where: { id: targetParentId! }, select: { path: true } }))?.path || null;
-      for (const d of downloadedEntries) {
-        const relDir = path.posix.dirname(d.relPath);
-        let destParent = targetParentId!;
-        let currentPath = baseParentPath;
-        if (relDir && relDir !== '.' && relDir !== '') {
-          const parts = relDir.split('/');
-          for (const part of parts) {
-            let child = await prisma.file.findFirst({ where: { userId: task.userId, parentId: destParent, name: part, type: 'DIRECTORY' } });
-            if (!child) {
-              const childPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-              child = await prisma.file.create({
-                data: {
-                  name: part,
-                  path: childPath,
-                  type: 'DIRECTORY',
-                  userId: task.userId,
-                  parentId: destParent,
-                },
+      // Recursively walk and stream each file
+      async function streamRemoteFiles(remoteBase: string) {
+        async function walk(dir: string, prefix: string, currentParentId: string, currentPath: string) {
+          let list;
+          try {
+            list = await sftp.list(dir);
+          } catch (listErr) {
+            logger.warn('Failed to list directory, skipping', { dir, err: listErr });
+            return;
+          }
+          
+          for (const it of list) {
+            if (it.name === '.' || it.name === '..') continue;
+            const remoteFull = path.posix.join(dir, it.name);
+            const rel = prefix ? `${prefix}/${it.name}` : it.name;
+            
+            if (it.type === 'd') {
+              // Create directory in D-Drive
+              let child = await prisma.file.findFirst({ 
+                where: { userId: task.userId, parentId: currentParentId, name: it.name, type: 'DIRECTORY' } 
               });
+              if (!child) {
+                const childPath = currentPath ? `${currentPath}/${it.name}` : `/${it.name}`;
+                child = await prisma.file.create({
+                  data: {
+                    name: it.name,
+                    path: childPath,
+                    type: 'DIRECTORY',
+                    userId: task.userId,
+                    parentId: currentParentId,
+                  },
+                });
+              }
+              // Recurse into subdirectory
+              await walk(remoteFull, rel, child.id, child.path);
+            } else if (it.type === '-') {
+              // Download file to temp, then upload
+              try {
+                const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+                await sftp.fastGet(remoteFull, tempFilePath);
+                
+                const stat = await fs.promises.stat(tempFilePath);
+                totalBytes += stat.size;
+                
+                // Upload to Discord using file path (streaming)
+                await storeFileFromPath(task.userId, currentParentId, it.name, tempFilePath, undefined, shouldEncrypt);
+                
+                filesUploaded++;
+                
+                if (filesUploaded % 50 === 0) {
+                  logger.info('Upload progress', { taskId, filesUploaded, totalBytes: formatBytes(totalBytes) });
+                }
+                
+                // Clean up temp file
+                await fs.promises.unlink(tempFilePath).catch(() => {});
+                
+              } catch (fileErr) {
+                logger.warn('Failed to upload file, skipping', { remoteFull, err: fileErr });
+              }
             }
-            destParent = child.id;
-            currentPath = child.path;
           }
         }
-        // store the file into the resolved destParent
-        await storeBufferAsFile(task.userId, destParent, path.posix.basename(d.relPath), d.buffer, undefined, shouldEncrypt);
-      }
-      // nothing more to upload
-      uploadEntries = [];
-    } else {
-      const timestamp = formatTimestamp(new Date());
-      const archiveName = `${timestamp}.${(task.name || 'backup')}`;
-      const archivePath = path.join(tmpDir, `${archiveName}${task.compress === 'ZIP' ? '.zip' : '.tar.gz'}`);
 
-      const output = fs.createWriteStream(archivePath);
-      const archive = archiver(task.compress === 'ZIP' ? 'zip' : 'tar', task.compress === 'TAR_GZ' ? { gzip: true } : {});
-      archive.pipe(output);
-      // Add files preserving relative paths under the requested remote base
-      for (const d of downloadedEntries) {
-        archive.append(d.buffer, { name: d.relPath });
+        await walk(remoteBase, '', targetParentId, baseParentPath);
       }
-      await archive.finalize();
-      // wait for stream to finish
-      await new Promise<void>((res, rej) => output.on('close', () => res()).on('error', (e) => rej(e)));
-      const buf = await fs.promises.readFile(archivePath);
-      uploadEntries = [{ name: path.basename(archivePath), buffer: buf }];
-    }
 
-    // For each upload entry, store it using storage helper into the chosen parent (folder or destination)
-    for (const entry of uploadEntries) {
-      let nameToUse: string;
-      if (task.timestampNames) {
-        // Don't double-prefix if entry already begins with a timestamp
-        nameToUse = looksLikeTimestampPrefix(entry.name) ? entry.name : `${formatTimestamp(new Date())}.${entry.name}`;
-      } else {
-        nameToUse = entry.name;
-      }
-      await storeBufferAsFile(task.userId, targetParentId, nameToUse, entry.buffer, undefined, shouldEncrypt);
+      await streamRemoteFiles(task.sftpPath);
+      logger.info('All files uploaded', { taskId, filesUploaded, totalBytes: formatBytes(totalBytes) });
     }
 
     // Prune according to maxFiles
@@ -378,6 +475,11 @@ export async function runTaskNow(taskId: string) {
     }
 
     await sftp.end();
+    
+    // Clean up temp directory
+    if (tmpDir) {
+      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
     
     // Calculate runtime in seconds
     const endTime = new Date();
@@ -393,6 +495,11 @@ export async function runTaskNow(taskId: string) {
     logger.info('Task run complete', { taskId, runtimeSeconds });
   } catch (err) {
     logger.error('Task run failed', err);
+    
+    // Clean up temp directory on error
+    if (tmpDir) {
+      await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
+    }
     
     // Still update lastRun on failure to show when it was attempted
     const endTime = new Date();
@@ -411,4 +518,12 @@ export async function runTaskNow(taskId: string) {
     
     throw err;
   }
+}
+
+// Helper to format bytes for logging
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
