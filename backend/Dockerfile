@@ -12,8 +12,8 @@ RUN npm install
 # Copy Prisma schema
 COPY prisma ./prisma/
 
-# Generate Prisma client (use specific version to avoid breaking changes)
-RUN npx prisma@5.8.0 generate
+# Generate Prisma client using installed version
+RUN ./node_modules/.bin/prisma generate
 
 # Copy source
 COPY . .
@@ -26,4 +26,4 @@ RUN mkdir -p logs
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "npx prisma@5.8.0 migrate deploy && npm start"]
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && npm start"]
