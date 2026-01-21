@@ -344,11 +344,16 @@ export async function runTaskNow(taskId: string) {
     // Ensure destination folder exists (recreate if deleted)
     const destinationId = await ensureTaskDestination(task);
     
-    const sftp = new SftpClient();
+    let sftp = new SftpClient();
 
     // Attempt connections based on task auth preferences. If both methods are allowed,
     // try password first then private key (password may be desired by some servers).
     const baseConfig: any = { host: task.sftpHost, port: task.sftpPort || 22, username: task.sftpUser };
+
+    // Build the working config for reconnections
+    let workingConfig: any = { ...baseConfig };
+    if (task.sftpPassword) workingConfig.password = task.sftpPassword;
+    if (task.sftpPrivateKey) workingConfig.privateKey = task.sftpPrivateKey;
 
     const tryConnectWith = async (cfg: any) => {
       try {
@@ -360,17 +365,43 @@ export async function runTaskNow(taskId: string) {
       }
     };
 
+    // Helper to reconnect SFTP if connection drops
+    const ensureConnected = async (): Promise<boolean> => {
+      try {
+        // Quick test if connected - try to get current working directory
+        await sftp.cwd();
+        return true;
+      } catch (e) {
+        // Connection lost, attempt reconnect
+        logger.warn('SFTP connection lost, attempting reconnect...', { taskId });
+        try {
+          // End old connection gracefully
+          try { await sftp.end(); } catch (endErr) { /* ignore */ }
+          // Create new client and connect
+          sftp = new SftpClient();
+          await sftp.connect(workingConfig);
+          logger.info('SFTP reconnected successfully', { taskId });
+          return true;
+        } catch (reconnectErr) {
+          logger.error('SFTP reconnect failed', { taskId, err: reconnectErr });
+          return false;
+        }
+      }
+    };
+
     let connected = false;
     // If password auth is requested and a password is provided, try it first.
     if (task.authPassword && task.sftpPassword) {
       const cfg = { ...baseConfig, password: task.sftpPassword };
       connected = await tryConnectWith(cfg);
+      if (connected) workingConfig = cfg;
     }
 
     // If not connected and private-key auth is requested, try private key.
     if (!connected && task.authPrivateKey && task.sftpPrivateKey) {
       const cfg = { ...baseConfig, privateKey: task.sftpPrivateKey };
       connected = await tryConnectWith(cfg);
+      if (connected) workingConfig = cfg;
     }
 
     // If still not connected, as a fallback try any single method present.
@@ -379,6 +410,7 @@ export async function runTaskNow(taskId: string) {
       if (task.sftpPrivateKey) cfg.privateKey = task.sftpPrivateKey;
       if (task.sftpPassword) cfg.password = task.sftpPassword;
       await sftp.connect(cfg);
+      workingConfig = cfg;
     }
 
     // Create temp directory for this task run
@@ -409,6 +441,8 @@ export async function runTaskNow(taskId: string) {
       // Track progress
       let filesAdded = 0;
       let totalBytes = 0;
+      let reconnectAttempts = 0;
+      const MAX_RECONNECTS = 10; // Allow up to 10 reconnections per task
 
       // Pipe archive to file
       archive.pipe(output);
@@ -416,14 +450,69 @@ export async function runTaskNow(taskId: string) {
       // Recursively walk and STREAM files directly into the archive (no memory buffering)
       async function streamRemoteToArchive(remoteBase: string) {
         if (!task) throw new Error('Task not found');
-        async function walk(dir: string, prefix: string) {
-          let list;
-          try {
-            list = await sftp.list(dir);
-          } catch (listErr) {
-            logger.warn('Failed to list directory, skipping', { dir, err: listErr });
-            return;
+        
+        // Helper to list directory with retry on connection failure
+        async function listWithRetry(dir: string, retries = 3): Promise<any[] | null> {
+          for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+              return await sftp.list(dir);
+            } catch (err: any) {
+              const isConnectionError = err.code === 'ERR_NOT_CONNECTED' || 
+                                        err.code === 'ECONNRESET' || 
+                                        err.code === 'ERR_GENERIC_CLIENT';
+              
+              if (isConnectionError && attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
+                logger.warn('Connection lost during list, reconnecting...', { dir, attempt, taskId });
+                reconnectAttempts++;
+                const reconnected = await ensureConnected();
+                if (reconnected) {
+                  await new Promise(r => setTimeout(r, 1000)); // Brief pause after reconnect
+                  continue;
+                }
+              }
+              
+              if (attempt === retries) {
+                logger.warn('Failed to list directory after retries, skipping', { dir, err, taskId });
+                return null;
+              }
+            }
           }
+          return null;
+        }
+        
+        // Helper to download file with retry on connection failure
+        async function downloadWithRetry(remotePath: string, localPath: string, retries = 3): Promise<boolean> {
+          for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+              await sftp.fastGet(remotePath, localPath);
+              return true;
+            } catch (err: any) {
+              const isConnectionError = err.code === 'ERR_NOT_CONNECTED' || 
+                                        err.code === 'ECONNRESET' || 
+                                        err.code === 'ERR_GENERIC_CLIENT';
+              
+              if (isConnectionError && attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
+                logger.warn('Connection lost during download, reconnecting...', { remotePath, attempt, taskId });
+                reconnectAttempts++;
+                const reconnected = await ensureConnected();
+                if (reconnected) {
+                  await new Promise(r => setTimeout(r, 1000)); // Brief pause after reconnect
+                  continue;
+                }
+              }
+              
+              if (attempt === retries) {
+                logger.warn('Failed to download file after retries, skipping', { remotePath, err, taskId });
+                return false;
+              }
+            }
+          }
+          return false;
+        }
+        
+        async function walk(dir: string, prefix: string) {
+          const list = await listWithRetry(dir);
+          if (!list) return;
           
           for (const it of list) {
             // Check for cancellation
@@ -441,13 +530,14 @@ export async function runTaskNow(taskId: string) {
               await walk(remoteFull, rel);
             } else if (it.type === '-') {
               // regular file -> stream directly to archive
+              // Download to temp file first (for large files this prevents memory issues)
+              const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+              
+              // Use sftp.fastGet with retry for reliable download
+              const downloaded = await downloadWithRetry(remoteFull, tempFilePath);
+              if (!downloaded) continue; // Skip this file
+              
               try {
-                // Download to temp file first (for large files this prevents memory issues)
-                const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-                
-                // Use sftp.fastGet for efficient streaming download
-                await sftp.fastGet(remoteFull, tempFilePath);
-                
                 // Get file size
                 const stat = await fs.promises.stat(tempFilePath);
                 totalBytes += stat.size;
@@ -460,7 +550,7 @@ export async function runTaskNow(taskId: string) {
                 
                 // Log progress every 100 files
                 if (filesAdded % 100 === 0) {
-                  logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes) });
+                  logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts });
                 }
                 
                 // Clean up temp file after it's been added to archive
@@ -472,9 +562,10 @@ export async function runTaskNow(taskId: string) {
                     // Ignore cleanup errors
                   }
                 }, 5000);
-                
               } catch (fileErr) {
-                logger.warn('Failed to download file, skipping', { remoteFull, err: fileErr });
+                logger.warn('Failed to process downloaded file', { remoteFull, err: fileErr });
+                // Clean up temp file on error
+                try { await fs.promises.unlink(tempFilePath); } catch (e) { /* ignore */ }
               }
             } else {
               // ignore other types (links, etc.)
