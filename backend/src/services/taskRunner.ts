@@ -16,7 +16,32 @@ const runningTasks = new Map<string, { cancelled: boolean; tmpDir: string | null
 // Stop a running task
 export async function stopTask(taskId: string) {
   const runInfo = runningTasks.get(taskId);
+  
+  // If task is not in memory but DB shows it's running, fix the DB state
   if (!runInfo) {
+    const task = await prisma.task.findUnique({ 
+      where: { id: taskId },
+      select: { id: true, lastStarted: true, lastRun: true, userId: true, name: true }
+    });
+    
+    if (!task) {
+      throw new Error('Task not found');
+    }
+    
+    // If DB shows task as running (lastStarted > lastRun), update it
+    if (task.lastStarted && task.lastRun && task.lastStarted > task.lastRun) {
+      await prisma.task.update({
+        where: { id: taskId },
+        data: { lastRun: new Date() }
+      });
+      logger.info('Fixed stale task state in DB', { taskId });
+      
+      const { createLog } = require('../routes/logs');
+      await createLog(task.userId, 'TASK', `Task stopped: ${task.name}`, true, 'Task was not actually running (stale state fixed)');
+      
+      return;
+    }
+    
     throw new Error('Task is not currently running');
   }
   
