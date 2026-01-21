@@ -2,6 +2,7 @@ import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { runTaskNow } from './taskRunner';
 import { logger } from '../utils/logger';
+import { cleanupOrphanedDiscordFiles } from './cleanup';
 
 const prisma = new PrismaClient();
 
@@ -15,7 +16,18 @@ export async function initScheduler() {
     for (const t of tasks) {
       scheduleTask(t.id, t.cron);
     }
-    logger.info('Scheduler initialized', { count: tasks.length });
+    
+    // Schedule hourly cleanup task for orphaned Discord files
+    cron.schedule('0 * * * *', async () => {
+      logger.info('Running hourly Discord cleanup task');
+      try {
+        await cleanupOrphanedDiscordFiles();
+      } catch (err) {
+        logger.error('Discord cleanup task failed:', err);
+      }
+    });
+    
+    logger.info('Scheduler initialized', { count: tasks.length, cleanupScheduled: true });
   } catch (err) {
     logger.error('Failed to initialize scheduler', err);
   }

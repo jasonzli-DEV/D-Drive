@@ -55,7 +55,7 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="static" elevation={0} sx={{ bgcolor: '#5865F2', borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
+      <AppBar position="sticky" elevation={0} sx={{ bgcolor: '#5865F2', borderBottom: '1px solid rgba(255,255,255,0.1)', top: 0, zIndex: 1100 }}>
         <Toolbar sx={{ minHeight: 72, alignItems: 'center' }}>
             {/* Logo on the left */}
             <IconButton
@@ -124,7 +124,7 @@ export default function Layout({ children }: LayoutProps) {
       
       {/* Main content area with left sidebar (hidden on settings) */}
       <Box sx={{ display: 'flex', flexGrow: 1, bgcolor: '#f5f5f5' }}>
-        {/* Sidebar: visible on all pages except settings */}
+        {/* Sidebar: visible on all pages except settings - STICKY */}
         {!(location.pathname || '').startsWith('/settings') && (
           <Box
             component="aside"
@@ -133,10 +133,14 @@ export default function Layout({ children }: LayoutProps) {
               bgcolor: 'background.paper',
               borderRight: 1,
               borderColor: 'divider',
-              // visually align with AppBar so it appears connected
               boxShadow: '0 1px 0 rgba(0,0,0,0.06)',
               px: 1,
               pt: 2,
+              position: 'sticky',
+              top: 72,
+              alignSelf: 'flex-start',
+              height: 'calc(100vh - 72px)',
+              overflowY: 'auto',
             }}
           >
             <List disablePadding>
