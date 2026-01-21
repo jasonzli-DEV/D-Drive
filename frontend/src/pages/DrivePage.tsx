@@ -2133,7 +2133,7 @@ export default function DrivePage() {
         </Paper>
       )}
       
-      <FolderSelectDialog open={bulkMoveOpen} value={null} onClose={() => setBulkMoveOpen(false)} onSelect={(id) => handleBulkMoveSelect(id)} title="Move selected items" />
+      <FolderSelectDialog open={bulkMoveOpen} onClose={() => setBulkMoveOpen(false)} onSelect={(id) => handleBulkMoveSelect(id)} title="Move selected items" />
       
     </Box>
   );
