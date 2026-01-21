@@ -8,6 +8,7 @@ import { downloadCommand } from './commands/download';
 import { listCommand } from './commands/list';
 import { deleteCommand } from './commands/delete';
 import { copyCommand } from './commands/copy';
+import { tasksListCommand, taskRunCommand, taskStopCommand, taskDeleteCommand, taskEnableCommand } from './commands/tasks';
 const pkg = require('../package.json');
 
 const program = new Command();
@@ -64,6 +65,44 @@ program
   .description('Make a copy of a file in-place (auto-numbered)')
   .action(copyCommand);
 
+// Tasks commands
+const tasks = program
+  .command('tasks')
+  .description('Manage backup tasks');
+
+tasks
+  .command('list')
+  .alias('ls')
+  .description('List all backup tasks')
+  .action(tasksListCommand);
+
+tasks
+  .command('run <taskId>')
+  .description('Run a task immediately')
+  .action(taskRunCommand);
+
+tasks
+  .command('stop <taskId>')
+  .description('Stop a running task')
+  .action(taskStopCommand);
+
+tasks
+  .command('delete <taskId>')
+  .alias('rm')
+  .description('Delete a task')
+  .option('-f, --force', 'Force deletion without confirmation')
+  .action(taskDeleteCommand);
+
+tasks
+  .command('enable <taskId>')
+  .description('Enable a task')
+  .action((taskId: string) => taskEnableCommand(taskId, true));
+
+tasks
+  .command('disable <taskId>')
+  .description('Disable a task')
+  .action((taskId: string) => taskEnableCommand(taskId, false));
+
 // Help command
 program.on('--help', () => {
   console.log('');
@@ -74,6 +113,14 @@ program.on('--help', () => {
   console.log('  $ d-drive download /backups/file.txt ./restored.txt');
   console.log('  $ d-drive list /backups');
   console.log('  $ d-drive delete /backups/old-file.txt');
+  console.log('');
+  console.log(chalk.bold('Task Commands:'));
+  console.log('  $ d-drive tasks list              List all backup tasks');
+  console.log('  $ d-drive tasks run <taskId>      Run a task immediately');
+  console.log('  $ d-drive tasks stop <taskId>     Stop a running task');
+  console.log('  $ d-drive tasks enable <taskId>   Enable a task');
+  console.log('  $ d-drive tasks disable <taskId>  Disable a task');
+  console.log('  $ d-drive tasks delete <taskId>   Delete a task');
 });
 
 program.parse();

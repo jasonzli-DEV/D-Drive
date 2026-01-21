@@ -2,6 +2,8 @@
 
 Command-line tool for D-Drive cloud storage.
 
+**Version: 2.0.0 LTS**
+
 ## Installation
 
 ```bash
@@ -155,6 +157,69 @@ Upload build artifacts from CI/CD:
 
 - `-f, --force` - Force deletion without confirmation
 - `-r, --recursive` - Delete directory recursively
+
+---
+
+## Task Management
+
+D-Drive supports automated SFTP backup tasks. Use the CLI to manage them:
+
+### List Tasks
+
+```bash
+d-drive tasks list
+# or
+d-drive tasks ls
+```
+
+### Run a Task Immediately
+
+```bash
+d-drive tasks run <taskId>
+```
+
+### Stop a Running Task
+
+```bash
+d-drive tasks stop <taskId>
+```
+
+### Enable/Disable a Task
+
+```bash
+d-drive tasks enable <taskId>
+d-drive tasks disable <taskId>
+```
+
+### Delete a Task
+
+```bash
+d-drive tasks delete <taskId>
+
+# Force delete without confirmation
+d-drive tasks delete <taskId> -f
+```
+
+### Task Examples
+
+```bash
+# List all tasks with status
+$ d-drive tasks list
+● Daily Server Backup [RUNNING]
+  ID: abc123
+  Schedule: 0 2 * * *
+  SFTP: backupuser@backup.example.com:22/backups
+  Destination: /backups/server
+  Last Run: 1/20/2026, 2:00:00 AM (2m 15s)
+
+# Run a backup task manually
+$ d-drive tasks run abc123
+
+# Stop a running task
+$ d-drive tasks stop abc123
+```
+
+---
 
 ## License
 
