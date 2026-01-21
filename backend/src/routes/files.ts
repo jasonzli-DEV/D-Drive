@@ -764,6 +764,11 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     }
 
     if (file.type === 'DIRECTORY' && file.children.length > 0 && !recursive) {
+      logger.warn('Cannot delete non-empty directory without recursive flag', { 
+        fileId: id, 
+        fileName: file.name, 
+        childCount: file.children.length 
+      });
       return res.status(400).json({ error: 'Directory is not empty' });
     }
 
