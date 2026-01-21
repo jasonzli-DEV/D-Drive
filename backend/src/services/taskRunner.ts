@@ -112,51 +112,75 @@ async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise
 
 // Ensure task destination folder exists, recreating the path if needed
 async function ensureTaskDestination(task: any): Promise<string | null> {
-  if (!task.destinationId) return null;
+  if (!task.destinationId && !task.destinationPath) return null;
   
   // Check if destination folder still exists
-  const dest = await prisma.file.findUnique({
-    where: { id: task.destinationId },
-    select: { id: true, path: true }
-  });
+  if (task.destinationId) {
+    const dest = await prisma.file.findUnique({
+      where: { id: task.destinationId },
+      select: { id: true, path: true }
+    });
+    
+    if (dest) {
+      // Update destinationPath if not set (migration from old tasks)
+      if (!task.destinationPath && dest.path) {
+        await prisma.task.update({
+          where: { id: task.id },
+          data: { destinationPath: dest.path }
+        });
+      }
+      return dest.id;
+    }
+  }
   
-  if (dest) return dest.id;
-  
-  // Destination was deleted/moved, try to recreate it from the stored path
-  logger.warn('Task destination folder missing, attempting to recreate', { taskId: task.id, destId: task.destinationId });
-  
-  // Try to find the original path by looking at recent backup files created by this task
-  const recentFile = await prisma.file.findFirst({
-    where: {
-      userId: task.userId,
-      name: { contains: task.name },
-      type: 'FILE',
-    },
-    orderBy: { createdAt: 'desc' },
-    select: { path: true },
+  // Destination was deleted, recreate it from destinationPath
+  logger.warn('Task destination folder missing, attempting to recreate', { 
+    taskId: task.id, 
+    destId: task.destinationId,
+    destPath: task.destinationPath 
   });
   
   let targetPath: string;
-  if (recentFile?.path) {
-    // Extract the parent path from the file path (e.g., "/TinyFun Backups/TinyProxy/file.tar.gz" -> "/TinyFun Backups/TinyProxy")
-    const pathParts = recentFile.path.split('/').filter(Boolean);
-    pathParts.pop(); // Remove filename
-    targetPath = '/' + pathParts.join('/');
-    logger.info('Found original path from recent file', { originalPath: targetPath });
+  if (task.destinationPath) {
+    // Use the stored path
+    targetPath = task.destinationPath;
+    logger.info('Using stored destination path', { path: targetPath });
   } else {
-    // Fallback: create a simple folder with task name at root
-    targetPath = `/${task.name}`;
-    logger.warn('No recent files found, using simple path', { fallbackPath: targetPath });
+    // Fallback for old tasks without destinationPath: look at recent files
+    const recentFile = await prisma.file.findFirst({
+      where: {
+        userId: task.userId,
+        name: { contains: task.name },
+        type: 'FILE',
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { path: true },
+    });
+    
+    if (recentFile?.path) {
+      // Extract the parent path from the file path
+      const pathParts = recentFile.path.split('/').filter(Boolean);
+      pathParts.pop(); // Remove filename
+      targetPath = '/' + pathParts.join('/');
+      logger.info('Found original path from recent file', { originalPath: targetPath });
+    } else {
+      // Last resort: create folder with task name at root
+      targetPath = `/${task.name}`;
+      logger.warn('No stored path or recent files, using fallback path', { fallbackPath: targetPath });
+    }
   }
   
   // Recreate the full folder structure
   const pathParts = targetPath.split('/').filter(Boolean);
   const newFolder = await ensureDirectoryPath(task.userId, pathParts);
   
-  // Update the task to point to new destination
+  // Update the task with new destination ID and store the path
   await prisma.task.update({
     where: { id: task.id },
-    data: { destinationId: newFolder }
+    data: { 
+      destinationId: newFolder,
+      destinationPath: targetPath
+    }
   });
   
   logger.info('Recreated task destination folder', { taskId: task.id, newDestId: newFolder, path: targetPath });

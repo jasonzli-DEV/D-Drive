@@ -120,6 +120,7 @@ model Task {
   authPassword    Boolean  @default(false) // attempt password auth
   authPrivateKey  Boolean  @default(true)  // attempt private key auth
   destinationId  String?  // local destination folder (File.id)
+  destinationPath String? // original path to recreate if folder deleted
   compress       CompressFormat @default(NONE)
   compressFiles  Boolean  @default(true) // compress files vs folders
   timestampNames Boolean  @default(true)
