@@ -229,7 +229,11 @@ router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
     await runTaskNow(id);
     const updated = await prisma.task.update({ where: { id }, data: { lastRun: new Date() } });
     res.json({ ok: true, task: updated });
-  } catch (err) {
+  } catch (err: any) {
+    // Check if it's the "already running" error
+    if (err?.message === 'Task is already running') {
+      return res.status(409).json({ error: 'This task is already running. Please wait for it to complete or stop it first.' });
+    }
     logger.error('Error running task', err);
     res.status(500).json({ error: 'Failed to run task' });
   }
