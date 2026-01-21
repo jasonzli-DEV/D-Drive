@@ -17,7 +17,7 @@ import {
   ToggleButton,
 } from '@mui/material';
 import { CheckCircle, XCircle, Upload, Copy, Trash2, PlayCircle } from 'lucide-react';
-import { api } from '../lib/api';
+import api from '../lib/api';
 
 interface Log {
   id: string;
@@ -65,7 +65,7 @@ export default function LogsPage() {
       case 'DELETE':
         return <Trash2 size={18} />;
       default:
-        return null;
+        return <PlayCircle size={18} />;
     }
   };
 
