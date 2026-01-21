@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient, CompressFormat } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
-import { runTaskNow } from '../services/taskRunner';
+import { runTaskNow, stopTask } from '../services/taskRunner';
 import { testSftpConnection } from '../services/sftp';
 import scheduler from '../services/scheduler';
 
@@ -214,5 +214,20 @@ router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// Stop a running task
+router.post('/:id/stop', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+    const task = await prisma.task.findUnique({ where: { id } });
+    if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
+    
+    await stopTask(id);
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Error stopping task', err);
+    res.status(500).json({ error: 'Failed to stop task' });
+  }
+});
 
 export default router;

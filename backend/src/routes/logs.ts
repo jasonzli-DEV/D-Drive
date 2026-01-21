@@ -7,7 +7,7 @@ const prisma = new PrismaClient();
 
 // Get logs for the authenticated user
 router.get('/', authenticate, async (req: Request, res: Response) => {
-  const userId = req.user?.id;
+  const userId = (req as any).user?.userId;
   if (!userId) return res.status(401).json({ error: 'Unauthorized' });
 
   try {

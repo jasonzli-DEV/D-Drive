@@ -10,6 +10,46 @@ import { deleteChunkFromDiscord } from './discord';
 
 const prisma = new PrismaClient();
 
+// Track running tasks and their cancellation flags
+const runningTasks = new Map<string, { cancelled: boolean; tmpDir: string | null }>();
+
+// Stop a running task
+export async function stopTask(taskId: string) {
+  const runInfo = runningTasks.get(taskId);
+  if (!runInfo) {
+    throw new Error('Task is not currently running');
+  }
+  
+  logger.info('Stopping task', { taskId });
+  runInfo.cancelled = true;
+  
+  // Wait a moment for cleanup
+  await new Promise(resolve => setTimeout(resolve, 1000));
+  
+  // Force cleanup temp directory if it exists
+  if (runInfo.tmpDir) {
+    try {
+      await fs.promises.rm(runInfo.tmpDir, { recursive: true, force: true });
+      logger.info('Cleaned up temp directory', { taskId, tmpDir: runInfo.tmpDir });
+    } catch (err) {
+      logger.warn('Failed to cleanup temp directory', { taskId, tmpDir: runInfo.tmpDir, err });
+    }
+  }
+  
+  runningTasks.delete(taskId);
+  
+  // Log the stop
+  try {
+    const task = await prisma.task.findUnique({ where: { id: taskId } });
+    if (task) {
+      const { createLog } = require('../routes/logs');
+      await createLog(task.userId, 'TASK', `Task stopped: ${task.name}`, true, 'Manually stopped by user');
+    }
+  } catch (logErr) {
+    logger.warn('Failed to log task stop:', logErr);
+  }
+}
+
 // Helper to ensure a directory path exists, creating it recursively if needed
 async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise<string | null> {
   if (pathParts.length === 0) return null;
@@ -190,6 +230,9 @@ export async function runTaskNow(taskId: string) {
   const startTime = new Date();
   let tmpDir: string | null = null;
   
+  // Track this task as running
+  runningTasks.set(taskId, { cancelled: false, tmpDir: null });
+  
   try {
     const task = await prisma.task.findUnique({ where: { id: taskId }, include: { user: true } });
     if (!task) throw new Error('Task not found');
@@ -200,6 +243,19 @@ export async function runTaskNow(taskId: string) {
       where: { id: taskId }, 
       data: { lastStarted: startTime } 
     });
+    
+    // Log task start
+    try {
+      const { createLog } = require('../routes/logs');
+      await createLog(task.userId, 'TASK', `Task started: ${task.name}`, true);
+    } catch (logErr) {
+      logger.warn('Failed to log task start:', logErr);
+    }
+
+    // Check for cancellation
+    if (runningTasks.get(taskId)?.cancelled) {
+      throw new Error('Task was cancelled');
+    }
 
     // Ensure destination folder exists (recreate if deleted)
     const destinationId = await ensureTaskDestination(task);
@@ -243,7 +299,13 @@ export async function runTaskNow(taskId: string) {
 
     // Create temp directory for this task run
     tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
+    runningTasks.get(taskId)!.tmpDir = tmpDir;
     logger.info('Created temp directory for task', { taskId, tmpDir });
+    
+    // Check for cancellation
+    if (runningTasks.get(taskId)?.cancelled) {
+      throw new Error('Task was cancelled');
+    }
 
     // Determine encryption preference: task explicit OR user's default
     const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
@@ -280,6 +342,11 @@ export async function runTaskNow(taskId: string) {
           }
           
           for (const it of list) {
+            // Check for cancellation
+            if (runningTasks.get(taskId)?.cancelled) {
+              throw new Error('Task was cancelled');
+            }
+            
             // skip special entries
             if (it.name === '.' || it.name === '..') continue;
             const remoteFull = path.posix.join(dir, it.name);
@@ -485,6 +552,9 @@ export async function runTaskNow(taskId: string) {
       await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
     
+    // Remove from running tasks
+    runningTasks.delete(taskId);
+    
     // Calculate runtime in seconds
     const endTime = new Date();
     const runtimeSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
@@ -496,6 +566,18 @@ export async function runTaskNow(taskId: string) {
         lastRuntime: runtimeSeconds
       } 
     });
+    
+    // Log success
+    try {
+      const { createLog } = require('../routes/logs');
+      await createLog(task.userId, 'TASK', `Task completed: ${task.name}`, true, undefined, { 
+        runtime: runtimeSeconds,
+        taskName: task.name
+      });
+    } catch (logErr) {
+      logger.warn('Failed to log task completion:', logErr);
+    }
+    
     logger.info('Task run complete', { taskId, runtimeSeconds });
   } catch (err) {
     logger.error('Task run failed', err);
@@ -505,10 +587,15 @@ export async function runTaskNow(taskId: string) {
       await fs.promises.rm(tmpDir, { recursive: true, force: true }).catch(() => {});
     }
     
+    // Remove from running tasks
+    runningTasks.delete(taskId);
+    
     // Still update lastRun on failure to show when it was attempted
     const endTime = new Date();
     const runtimeSeconds = Math.round((endTime.getTime() - startTime.getTime()) / 1000);
     try {
+      const task = await prisma.task.findUnique({ where: { id: taskId } });
+      
       await prisma.task.update({
         where: { id: taskId },
         data: {
@@ -516,6 +603,16 @@ export async function runTaskNow(taskId: string) {
           lastRuntime: runtimeSeconds
         }
       });
+      
+      // Log failure
+      if (task) {
+        const { createLog } = require('../routes/logs');
+        const errMsg = err instanceof Error ? err.message : String(err);
+        await createLog(task.userId, 'TASK', `Task failed: ${task.name}`, false, errMsg, { 
+          runtime: runtimeSeconds,
+          taskName: task.name
+        });
+      }
     } catch (updateErr) {
       logger.error('Failed to update task after error', updateErr);
     }
