@@ -611,9 +611,17 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
     }
     
     // Non-range request - download all chunks (for small files or non-streaming requests)
+    logger.info('Starting full file download', { 
+      fileId: file.id, 
+      encrypted: file.encrypted, 
+      hasEncryptionKey: !!file.user.encryptionKey,
+      chunkCount: file.chunks.length 
+    });
+    
     const chunkBuffers: Buffer[] = [];
     for (const chunk of file.chunks) {
       const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
+      logger.info(`Downloaded chunk ${chunk.chunkIndex}`, { size: buffer.length });
       chunkBuffers.push(buffer);
     }
 
