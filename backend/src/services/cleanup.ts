@@ -2,6 +2,8 @@ import { PrismaClient } from '@prisma/client';
 import { logger } from '../utils/logger';
 import { deleteChunkFromDiscord } from './discord';
 import axios from 'axios';
+import { promises as fs } from 'fs';
+import path from 'path';
 
 const prisma = new PrismaClient();
 
@@ -86,5 +88,47 @@ export async function cleanupOrphanedDiscordFiles() {
     
   } catch (err) {
     logger.error('Discord cleanup task failed:', err);
+  }
+}
+/**
+ * Cleanup old temporary files from /tmp directory
+ * Files older than 1 hour will be removed
+ */
+export async function cleanupTempFiles() {
+  logger.info('Starting temp file cleanup...');
+  
+  try {
+    const tmpDir = '/tmp';
+    const oneHourAgo = Date.now() - (60 * 60 * 1000);
+    
+    const files = await fs.readdir(tmpDir);
+    let deletedCount = 0;
+    let errorCount = 0;
+    
+    for (const file of files) {
+      // Only clean up ddrive-task-* directories
+      if (!file.startsWith('ddrive-task-')) continue;
+      
+      const filePath = path.join(tmpDir, file);
+      
+      try {
+        const stats = await fs.stat(filePath);
+        
+        // Check if older than 1 hour
+        if (stats.mtimeMs < oneHourAgo) {
+          await fs.rm(filePath, { recursive: true, force: true });
+          deletedCount++;
+          logger.info(`Deleted old temp directory: ${file}`);
+        }
+      } catch (err) {
+        errorCount++;
+        logger.warn(`Failed to delete temp file ${file}:`, err);
+      }
+    }
+    
+    logger.info(`Temp cleanup complete: deleted ${deletedCount} old files/dirs (${errorCount} errors)`);
+    
+  } catch (err) {
+    logger.error('Temp file cleanup failed:', err);
   }
 }
