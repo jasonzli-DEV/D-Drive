@@ -150,7 +150,8 @@ async function ensureTaskDestination(task: any): Promise<string | null> {
   }
   
   // Recreate the full folder structure
-  const newFolder = await createFolderPath(targetPath, task.userId);
+  const pathParts = targetPath.split('/').filter(Boolean);
+  const newFolder = await ensureDirectoryPath(task.userId, pathParts);
   
   // Update the task to point to new destination
   await prisma.task.update({
