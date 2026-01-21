@@ -27,5 +27,8 @@
   "license": "MIT",
   "devDependencies": {
     "concurrently": "^8.2.2"
+  },
+  "dependencies": {
+    "d-drive-cli": "^2.0.0"
   }
 }
