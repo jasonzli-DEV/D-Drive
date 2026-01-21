@@ -201,7 +201,7 @@ export async function storeFileFromPath(
         if (read === 0) break; // End of file
         
         // Trim buffer if we read less than allocated
-        const plaintextPart = read < chunkBuffer.length ? chunkBuffer.slice(0, read) : chunkBuffer;
+        const plaintextPart: Buffer = (read < chunkBuffer.length ? chunkBuffer.slice(0, read) : chunkBuffer) as Buffer;
         
         // Encrypt per-chunk if encryption is enabled
         let toUpload = plaintextPart;

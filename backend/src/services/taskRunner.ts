@@ -269,6 +269,7 @@ export async function runTaskNow(taskId: string) {
 
       // Recursively walk and STREAM files directly into the archive (no memory buffering)
       async function streamRemoteToArchive(remoteBase: string) {
+        if (!task) throw new Error('Task not found');
         async function walk(dir: string, prefix: string) {
           let list;
           try {
@@ -401,6 +402,7 @@ export async function runTaskNow(taskId: string) {
 
       // Recursively walk and stream each file
       async function streamRemoteFiles(remoteBase: string) {
+        if (!task) throw new Error('Task not found');
         async function walk(dir: string, prefix: string, currentParentId: string, currentPath: string) {
           let list;
           try {
