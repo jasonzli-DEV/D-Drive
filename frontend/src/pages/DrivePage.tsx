@@ -95,6 +95,7 @@ export default function DrivePage() {
   const [uploadFolders, setUploadFolders] = useState<FolderUploadProgress[]>([]);
   const [deleteProgress, setDeleteProgress] = useState<UploadProgress[]>([]);
   const [copyProgress, setCopyProgress] = useState<UploadProgress[]>([]);
+  const [downloadProgress, setDownloadProgress] = useState<{fileName: string, progress: number, total: number} | null>(null);
   const [videoLoadProgress, setVideoLoadProgress] = useState<number>(0);
   const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
   const fileLoadedRef = useRef<Record<string, number>>({});
@@ -1372,9 +1373,17 @@ export default function DrivePage() {
 
   const handleDownload = async (file: FileItem) => {
     try {
+      setDownloadProgress({ fileName: file.name, progress: 0, total: file.size });
+      
       const response = await api.get(`/files/${file.id}/download`, {
         responseType: 'blob',
+        onDownloadProgress: (progressEvent) => {
+          const progress = progressEvent.loaded;
+          const total = progressEvent.total || file.size;
+          setDownloadProgress({ fileName: file.name, progress, total });
+        },
       });
+      
       const url = window.URL.createObjectURL(new Blob([response.data]));
       const link = document.createElement('a');
       link.href = url;
@@ -1382,8 +1391,11 @@ export default function DrivePage() {
       document.body.appendChild(link);
       link.click();
       link.remove();
-      toast.success('Download started!');
+      
+      setDownloadProgress(null);
+      toast.success('Download complete!');
     } catch (error) {
+      setDownloadProgress(null);
       toast.error('Download failed');
     }
   };
@@ -2082,6 +2094,45 @@ export default function DrivePage() {
           ))}
         </Paper>
       )}
+      
+      {/* Download Progress Panel */}
+      {downloadProgress && (
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            width: 350,
+            p: 2,
+            zIndex: 1002,
+          }}
+          elevation={6}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            Downloading
+          </Typography>
+          <Box sx={{ mb: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+              <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                {downloadProgress.fileName}
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                {downloadProgress.total > 0 
+                  ? `${Math.round((downloadProgress.progress / downloadProgress.total) * 100)}%` 
+                  : 'Loading...'}
+              </Typography>
+            </Box>
+            <LinearProgress
+              variant={downloadProgress.total > 0 ? "determinate" : "indeterminate"}
+              value={downloadProgress.total > 0 
+                ? Math.round((downloadProgress.progress / downloadProgress.total) * 100) 
+                : 0}
+              color="primary"
+            />
+          </Box>
+        </Paper>
+      )}
+      
       <FolderSelectDialog open={bulkMoveOpen} value={null} onClose={() => setBulkMoveOpen(false)} onSelect={(id) => handleBulkMoveSelect(id)} title="Move selected items" />
       
     </Box>

@@ -87,7 +87,7 @@ router.get('/discord/callback', async (req, res) => {
           email: discordUser.email,
         },
       });
-      logger.info(`New user created: ${user.username}#${user.discriminator}`);
+      logger.info(`New user created: ${user.username}`);
     } else {
       user = await prisma.user.update({
         where: { discordId: discordUser.id },
