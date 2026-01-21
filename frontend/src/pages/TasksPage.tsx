@@ -21,6 +21,9 @@ import {
   TableCell,
   TableBody,
   CircularProgress,
+  Menu,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import { Plus, Play, Trash, Edit } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -79,8 +82,9 @@ export default function TasksPage() {
       const resp = await api.get('/tasks');
       return resp.data as any[];
     },
-    staleTime: 30000, // Tasks data fresh for 30s
+    staleTime: 2000, // Tasks data fresh for 2s
     gcTime: 5 * 60 * 1000,
+    refetchInterval: 3000, // Auto-refresh every 3 seconds to update status
   });
 
   const { data: allFolders } = useQuery<any[]>({
@@ -114,16 +118,15 @@ export default function TasksPage() {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast.success('Task run started');
     },
-    onError: (err: any) => {
-      const message = err?.response?.data?.error || 'Failed to run task';
-      toast.error(message);
-    },
   });
 
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState(defaultForm);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [destDialogOpen, setDestDialogOpen] = useState(false);
+  const [taskMenuAnchor, setTaskMenuAnchor] = useState<null | HTMLElement>(null);
+  const [taskMenuPosition, setTaskMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [selectedTask, setSelectedTask] = useState<any | null>(null);
 
   useEffect(() => { if (!open) setForm(defaultForm); }, [open]);
 
@@ -150,6 +153,60 @@ export default function TasksPage() {
     });
     setOpen(true);
   }
+
+  const handleTaskContextMenu = (e: React.MouseEvent, task: any) => {
+    e.preventDefault();
+    setSelectedTask(task);
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    const approxMenuWidth = 180;
+    const approxMenuHeight = 150;
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - approxMenuWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - approxMenuHeight - margin);
+    const left = Math.min(clientX, maxLeft);
+    const top = Math.min(clientY, maxTop);
+    setTaskMenuAnchor(null);
+    setTaskMenuPosition({ top, left });
+  };
+
+  const handleCloseTaskMenu = () => {
+    setTaskMenuAnchor(null);
+    setTaskMenuPosition(null);
+    setSelectedTask(null);
+  };
+
+  const handleTaskMenuAction = (action: string) => {
+    if (!selectedTask && action !== 'new') return;
+    switch (action) {
+      case 'edit':
+        openForEdit(selectedTask);
+        break;
+      case 'run':
+        (async () => {
+          try {
+            await runNowMutation.mutateAsync(selectedTask.id);
+          } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Failed to run task');
+          }
+        })();
+        break;
+      case 'delete':
+        (async () => {
+          if (!window.confirm(`Delete task "${selectedTask.name}"?`)) return;
+          try {
+            await deleteMutation.mutateAsync(selectedTask.id);
+          } catch (e: any) {
+            toast.error(e?.response?.data?.error || 'Failed to delete task');
+          }
+        })();
+        break;
+      case 'new':
+        setOpen(true);
+        break;
+    }
+    handleCloseTaskMenu();
+  };
 
   async function save(runNow = false) {
     const payload = { ...form, timestampNames: true };
@@ -268,7 +325,7 @@ export default function TasksPage() {
               const isRunning = t.lastStarted && (!t.lastRun || new Date(t.lastStarted) > new Date(t.lastRun));
               
               return (
-              <TableRow key={t.id} hover>
+              <TableRow key={t.id} hover onContextMenu={(e) => handleTaskContextMenu(e, t)}>
                 <TableCell>
                   <Typography fontWeight={500}>{t.name}</Typography>
                 </TableCell>
@@ -462,6 +519,52 @@ export default function TasksPage() {
           <Button variant="contained" onClick={() => save(false)}>Save</Button>
         </DialogActions>
       </Dialog>
+
+      {/* Context Menu for Tasks */}
+      <Menu
+        anchorEl={taskMenuAnchor}
+        anchorReference={taskMenuPosition ? 'anchorPosition' : 'anchorEl'}
+        anchorPosition={taskMenuPosition ? { top: taskMenuPosition.top, left: taskMenuPosition.left } : undefined}
+        open={Boolean(taskMenuAnchor) || Boolean(taskMenuPosition)}
+        onClose={handleCloseTaskMenu}
+        sx={{
+          '& .MuiPaper-root': {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            minWidth: 180,
+          },
+        }}
+      >
+        {selectedTask ? (
+          <>
+            <MenuItem onClick={() => handleTaskMenuAction('run')}>
+              <ListItemIcon>
+                <Play size={18} />
+              </ListItemIcon>
+              <ListItemText>Run now</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleTaskMenuAction('edit')}>
+              <ListItemIcon>
+                <Edit size={18} />
+              </ListItemIcon>
+              <ListItemText>Edit</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleTaskMenuAction('delete')} sx={{ color: 'error.main' }}>
+              <ListItemIcon sx={{ color: 'inherit' }}>
+                <Trash size={18} />
+              </ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>
+          </>
+        ) : (
+          <MenuItem onClick={() => handleTaskMenuAction('new')}>
+            <ListItemIcon>
+              <Plus size={18} />
+            </ListItemIcon>
+            <ListItemText>New task</ListItemText>
+          </MenuItem>
+        )}
+      </Menu>
     </Box>
   );
 }

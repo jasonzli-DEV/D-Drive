@@ -298,51 +298,59 @@ export default function DrivePage() {
     mutationFn: async (vars: string | { id: string; encrypt?: boolean }) => {
       const id = typeof vars === 'string' ? vars : vars.id;
       const body = typeof vars === 'object' && typeof vars.encrypt !== 'undefined' ? { encrypt: vars.encrypt } : {};
+      
+      // Get file info first to show progress immediately
+      const origMeta = await api.get(`/files/${id}`);
+      const fileName = origMeta.data.name || `Copy of ${id}`;
+      const tempId = `temp-${Date.now()}-${Math.random()}`;
+      
+      // Add progress entry IMMEDIATELY before API call
+      setCopyProgress(prev => [...prev, { id: tempId, fileName, progress: 5, status: 'uploading' }]);
+      
       const resp = await api.post(`/files/${id}/copy`, body);
-      return resp.data;
+      return { ...resp.data, tempId, origChunks: Array.isArray(origMeta.data.chunks) ? origMeta.data.chunks.length : (origMeta.data.chunkCount || origMeta.data._count?.chunks || 1) };
     },
-    onSuccess: (data, vars) => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
-      // If API returned the new file id, poll its metadata and show chunk-level progress
+      // Poll for chunk progress
       (async () => {
         try {
-          const origId = typeof vars === 'string' ? vars : vars.id;
-          const origMeta = await api.get(`/files/${origId}`);
-          const origChunks = Array.isArray(origMeta.data.chunks) ? origMeta.data.chunks.length : (origMeta.data.chunkCount || origMeta.data._count?.chunks || 1);
-          const newId = data?.id;
+          const { id: newId, tempId, origChunks } = data;
           if (!newId) {
-            toast.success('Copy created');
+            setCopyProgress(prev => prev.filter(p => p.id !== tempId));
             return;
           }
-          // create progress entry
-          setCopyProgress(prev => [...prev, { id: newId, fileName: origMeta.data.name || `Copy of ${origId}`, progress: 0, status: 'uploading' }]);
+          // Update temp entry with real ID
+          setCopyProgress(prev => prev.map(p => p.id === tempId ? { ...p, id: newId, progress: 10 } : p));
+          
           let lastSeen = 0;
           // poll until chunks reach origChunks
           while (lastSeen < origChunks) {
             // eslint-disable-next-line no-await-in-loop
             const m = await api.get(`/files/${newId}`);
             const seen = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || m.data._count?.chunks || 0);
-            const delta = Math.max(0, seen - lastSeen);
-            if (delta > 0) {
+            if (seen > lastSeen) {
               lastSeen = seen;
               const pct = Math.round((Math.min(lastSeen, origChunks) / Math.max(1, origChunks)) * 100);
               setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: pct } : p));
             }
             if (lastSeen >= origChunks) break;
-            // wait a bit
             // eslint-disable-next-line no-await-in-loop
             await new Promise(r => setTimeout(r, 500));
           }
           setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: 100, status: 'success' } : p));
-          setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== newId)), 1500);
-          toast.success('Copy created');
+          setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== newId)), 2000);
         } catch (err: any) {
-          toast.success('Copy created');
+          const tempOrRealId = data.id || data.tempId;
+          setCopyProgress(prev => prev.map(p => p.id === tempOrRealId ? { ...p, status: 'error' } : p));
+          setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== tempOrRealId)), 2000);
         }
       })();
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to copy file');
+      // Remove any pending progress entries
+      setCopyProgress(prev => prev.filter(p => !p.id || !p.id.startsWith('temp-')));
     },
   });
 
@@ -622,22 +630,6 @@ export default function DrivePage() {
     },
   });
 
-  // Delete file mutation
-  const deleteMutation = useMutation({
-    mutationFn: async ({ id, recursive }: { id: string; recursive?: boolean }) => {
-      await api.delete(`/files/${id}`, { data: { recursive: !!recursive } });
-      return id;
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['files'] });
-      toast.success('Deleted successfully!');
-      handleCloseMenu();
-    },
-    onError: (error: any) => {
-      toast.error(error.response?.data?.error || 'Delete failed');
-    },
-  });
-
   // Helper: collect all files and directories under a directory (BFS)
   const collectFilesAndDirs = async (rootId: string) => {
     const files: FileItem[] = [];
@@ -716,7 +708,6 @@ export default function DrivePage() {
       setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: 100, status: 'success' } : p));
 
       queryClient.invalidateQueries({ queryKey: ['files'] });
-      toast.success('Deleted successfully!');
     } catch (err) {
       setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, status: 'error' } : p));
       toast.error('Delete failed');
@@ -724,6 +715,27 @@ export default function DrivePage() {
       // remove the progress entry after a short delay so user can see result
       setTimeout(() => {
         setDeleteProgress(prev => prev.filter(p => p.id !== entryId));
+      }, 1500);
+    }
+  };
+
+  // Delete single file with progress bar
+  const performSingleDelete = async (file: FileItem) => {
+    // Create progress entry
+    setDeleteProgress(prev => [...prev, { id: file.id, fileName: file.name, progress: 0, status: 'uploading' }]);
+    
+    try {
+      setDeleteProgress(prev => prev.map(p => p.id === file.id ? { ...p, progress: 50 } : p));
+      await api.delete(`/files/${file.id}`, { data: { recursive: false } });
+      setDeleteProgress(prev => prev.map(p => p.id === file.id ? { ...p, progress: 100, status: 'success' } : p));
+      
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+    } catch (err) {
+      setDeleteProgress(prev => prev.map(p => p.id === file.id ? { ...p, status: 'error' } : p));
+      toast.error('Delete failed');
+    } finally {
+      setTimeout(() => {
+        setDeleteProgress(prev => prev.filter(p => p.id !== file.id));
       }, 1500);
     }
   };
@@ -1265,12 +1277,12 @@ export default function DrivePage() {
                 return;
               }
 
-              // empty directory: single confirm, then delete non-recursively
+              // empty directory: single confirm, then delete with progress bar
               if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
-              deleteMutation.mutate({ id: menuFile.id, recursive: false });
+              await performSingleDelete(menuFile);
             } else {
               if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
-              deleteMutation.mutate({ id: menuFile.id, recursive: false });
+              await performSingleDelete(menuFile);
             }
           } catch (err) {
             toast.error('Failed to verify folder contents');
@@ -1540,10 +1552,20 @@ export default function DrivePage() {
             <Box sx={{ display: 'flex', gap: 1, p: 1, alignItems: 'center' }}>
               <Button variant="outlined" size="small" onClick={handleBulkCopy} disabled={bulkProcessing}>Copy ({selectedIds.length})</Button>
               <Button variant="outlined" size="small" onClick={handleOpenBulkMove} disabled={bulkProcessing}>Move ({selectedIds.length})</Button>
-              <Button variant="contained" color="error" size="small" onClick={handleBulkDelete} disabled={bulkProcessing}>Delete ({selectedIds.length})</Button>
+              <Button variant="outlined" color="error" size="small" onClick={handleBulkDelete} disabled={bulkProcessing}>Delete ({selectedIds.length})</Button>
             </Box>
           )}
-          <TableContainer>
+          <TableContainer onContextMenu={(e) => {
+            // Only open menu if not clicking on a row (background click)
+            const target = e.target as HTMLElement;
+            if (!target.closest('tr[data-file-row]')) {
+              e.preventDefault();
+              const clientX = e.clientX;
+              const clientY = e.clientY;
+              setMenuFile(null);
+              setMenuPosition({ top: clientY, left: clientX });
+            }
+          }}>
             <Table>
               <TableHead>
                 <TableRow sx={{ bgcolor: '#fafbfc' }}>
@@ -1569,6 +1591,7 @@ export default function DrivePage() {
                 {files?.map((file) => (
                   <TableRow 
                     key={file.id} 
+                    data-file-row="true"
                     hover
                     draggable={file.type === 'FILE'}
                     onDragStart={(e) => file.type === 'FILE' && handleDragStart(e, file)}
@@ -1669,38 +1692,63 @@ export default function DrivePage() {
           },
         }}
       >
-        {menuFile?.type === 'FILE' && (
-          <MenuItem onClick={() => handleMenuAction('download')}>
-            <ListItemIcon>
-              <Download size={18} />
-            </ListItemIcon>
-            <ListItemText>Download</ListItemText>
-          </MenuItem>
+        {menuFile ? (
+          <>
+            {menuFile.type === 'FILE' && (
+              <MenuItem onClick={() => handleMenuAction('download')}>
+                <ListItemIcon>
+                  <Download size={18} />
+                </ListItemIcon>
+                <ListItemText>Download</ListItemText>
+              </MenuItem>
+            )}
+            <MenuItem onClick={() => handleMenuAction('copy')}>
+              <ListItemIcon>
+                <Copy size={18} />
+              </ListItemIcon>
+              <ListItemText>Make a copy</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleMenuAction('rename')}>
+              <ListItemIcon>
+                <Edit size={18} />
+              </ListItemIcon>
+              <ListItemText>Rename</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleMenuAction('move')}>
+              <ListItemIcon>
+                <Move size={18} />
+              </ListItemIcon>
+              <ListItemText>Move</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
+              <ListItemIcon sx={{ color: 'inherit' }}>
+                <Trash2 size={18} />
+              </ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>
+          </>
+        ) : (
+          <>
+            <MenuItem onClick={() => { handleCloseMenu(); document.getElementById('file-upload-input')?.click(); }}>
+              <ListItemIcon>
+                <Upload size={18} />
+              </ListItemIcon>
+              <ListItemText>Upload file</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { handleCloseMenu(); document.getElementById('folder-upload-input')?.click(); }}>
+              <ListItemIcon>
+                <FolderPlus size={18} />
+              </ListItemIcon>
+              <ListItemText>Upload folder</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { handleCloseMenu(); setNewFolderOpen(true); }}>
+              <ListItemIcon>
+                <FolderPlus size={18} />
+              </ListItemIcon>
+              <ListItemText>New folder</ListItemText>
+            </MenuItem>
+          </>
         )}
-        <MenuItem onClick={() => handleMenuAction('copy')}>
-          <ListItemIcon>
-            <Copy size={18} />
-          </ListItemIcon>
-          <ListItemText>Make a copy</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction('rename')}>
-          <ListItemIcon>
-            <Edit size={18} />
-          </ListItemIcon>
-          <ListItemText>Rename</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction('move')}>
-          <ListItemIcon>
-            <Move size={18} />
-          </ListItemIcon>
-          <ListItemText>Move</ListItemText>
-        </MenuItem>
-        <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
-          <ListItemIcon sx={{ color: 'inherit' }}>
-            <Trash2 size={18} />
-          </ListItemIcon>
-          <ListItemText>Delete</ListItemText>
-        </MenuItem>
       </Menu>
 
       {/* Image Viewer Dialog */}
