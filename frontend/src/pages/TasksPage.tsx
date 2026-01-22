@@ -332,66 +332,37 @@ export default function TasksPage() {
     return `${hours}h ${remainingMins}m`;
   }
 
-  // Drag and drop state for reordering - using drop index
-  const [draggedId, setDraggedId] = useState<string | null>(null);
-  const [dropIndex, setDropIndex] = useState<number | null>(null);
+  // Drag and drop state for reordering (simple index-based)
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
 
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
-    setDraggedId(taskId);
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
     e.dataTransfer.effectAllowed = 'move';
-    e.dataTransfer.setData('text/plain', taskId);
-    // Use a simple drag image
-    const dragEl = document.createElement('div');
-    dragEl.textContent = tasks?.find(t => t.id === taskId)?.name || 'Task';
-    dragEl.style.cssText = 'position: absolute; top: -1000px; padding: 8px 16px; background: #1976d2; color: white; border-radius: 4px; font-weight: 500;';
-    document.body.appendChild(dragEl);
-    e.dataTransfer.setDragImage(dragEl, 0, 0);
-    setTimeout(() => document.body.removeChild(dragEl), 0);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
   };
 
   const handleDragEnd = () => {
-    setDraggedId(null);
-    setDropIndex(null);
+    setDraggedIndex(null);
+    setDragOverIndex(null);
   };
 
-  const handleDropZoneDragOver = (e: React.DragEvent, index: number) => {
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
     e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (draggedId) {
-      setDropIndex(index);
-    }
-  };
-
-  const handleDropZoneDragLeave = () => {
-    setDropIndex(null);
-  };
-
-  const handleDropZoneDrop = async (e: React.DragEvent, insertIndex: number) => {
-    e.preventDefault();
-    if (!draggedId || !tasks) {
+    if (draggedIndex === null || draggedIndex === dropIndex || !tasks) {
       handleDragEnd();
       return;
     }
     
-    const draggedIdx = tasks.findIndex(t => t.id === draggedId);
-    if (draggedIdx === -1) {
-      handleDragEnd();
-      return;
-    }
-    
-    // Don't do anything if dropping in same position
-    if (insertIndex === draggedIdx || insertIndex === draggedIdx + 1) {
-      handleDragEnd();
-      return;
-    }
-    
-    // Build new order
+    // Reorder
     const newTasks = [...tasks];
-    const [draggedTask] = newTasks.splice(draggedIdx, 1);
-    
-    // Adjust insert index if we removed an item before it
-    const adjustedIndex = insertIndex > draggedIdx ? insertIndex - 1 : insertIndex;
-    newTasks.splice(adjustedIndex, 0, draggedTask);
+    const [draggedTask] = newTasks.splice(draggedIndex, 1);
+    newTasks.splice(dropIndex, 0, draggedTask);
     
     const taskIds = newTasks.map(t => t.id);
     
@@ -462,34 +433,29 @@ export default function TasksPage() {
               const isRunning = t.lastStarted && (!t.lastRun || new Date(t.lastStarted) > new Date(t.lastRun));
               const isQueued = isTaskQueued(t.id);
               const queuePosition = getQueuePosition(t.id);
-              const isDragged = draggedId === t.id;
-              const showDropBefore = dropIndex === index && draggedId !== t.id;
               
               return (
               <TableRow 
                 key={t.id} 
                 hover 
                 onContextMenu={(e) => handleTaskContextMenu(e, t)}
-                onDragOver={(e) => handleDropZoneDragOver(e, index)}
-                onDragLeave={handleDropZoneDragLeave}
-                onDrop={(e) => handleDropZoneDrop(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDrop={(e) => handleDrop(e, index)}
                 sx={{
-                  opacity: isDragged ? 0.3 : 1,
-                  bgcolor: isDragged ? 'action.disabledBackground' : 'inherit',
-                  borderTop: showDropBefore ? '3px solid' : undefined,
-                  borderTopColor: showDropBefore ? 'primary.main' : undefined,
+                  opacity: draggedIndex === index ? 0.5 : 1,
+                  bgcolor: dragOverIndex === index && draggedIndex !== index ? 'action.selected' : 'inherit',
                 }}
               >
                 <TableCell 
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragEnd={handleDragEnd}
                   sx={{ 
                     cursor: 'grab',
                     width: 40,
                     userSelect: 'none',
                     '&:active': { cursor: 'grabbing' },
                   }}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, t.id)}
-                  onDragEnd={handleDragEnd}
                 >
                   <GripVertical size={18} style={{ opacity: 0.5 }} />
                 </TableCell>
@@ -714,25 +680,6 @@ export default function TasksPage() {
               </TableRow>
               );
             })}
-            {/* Drop zone at the end to allow reordering to bottom */}
-            {draggedId && tasks && (
-              <TableRow
-                onDragOver={(e) => handleDropZoneDragOver(e, tasks.length)}
-                onDragLeave={handleDropZoneDragLeave}
-                onDrop={(e) => handleDropZoneDrop(e, tasks.length)}
-                sx={{
-                  height: 48,
-                  borderTop: dropIndex === tasks.length ? '3px solid' : undefined,
-                  borderTopColor: dropIndex === tasks.length ? 'primary.main' : undefined,
-                  bgcolor: dropIndex === tasks.length ? 'action.hover' : 'transparent',
-                  '&:hover': { bgcolor: 'action.hover' },
-                }}
-              >
-                <TableCell colSpan={9} sx={{ textAlign: 'center', color: 'text.secondary', fontStyle: 'italic' }}>
-                  Drop here to move to bottom
-                </TableCell>
-              </TableRow>
-            )}
           </TableBody>
         </Table>
       )}
