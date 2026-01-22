@@ -425,13 +425,14 @@ router.delete('/recycle-bin', authenticate, async (req: Request, res: Response) 
 
 // ==================== END RECYCLE BIN ROUTES ====================
 
-// Get file details
+// Get file details - also supports shared files
 router.get('/:id', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const file = await prisma.file.findFirst({
+    // First try to find file owned by user
+    let file = await prisma.file.findFirst({
       where: { id, userId, deletedAt: null },
       include: {
         chunks: {
@@ -439,6 +440,29 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
         },
       },
     });
+
+    // If not found, check if file is shared with the user
+    if (!file) {
+      const share = await prisma.share.findFirst({
+        where: { 
+          fileId: id, 
+          sharedWithId: userId 
+        },
+        include: {
+          file: {
+            include: {
+              chunks: {
+                orderBy: { chunkIndex: 'asc' },
+              },
+            },
+          },
+        },
+      });
+      
+      if (share?.file && !share.file.deletedAt) {
+        file = share.file;
+      }
+    }
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
@@ -719,13 +743,15 @@ async function authenticateDownload(req: Request, res: Response, next: NextFunct
 }
 
 // Download file - supports both header auth and query param token (for video elements)
+// Also supports downloading files shared with the user
 router.get('/:id/download', authenticateDownload, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const file = await prisma.file.findFirst({
-      where: { id, userId, type: 'FILE' },
+    // First try to find file owned by user
+    let file = await prisma.file.findFirst({
+      where: { id, userId, type: 'FILE', deletedAt: null },
       include: {
         chunks: {
           orderBy: { chunkIndex: 'asc' },
@@ -735,6 +761,33 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
         },
       },
     });
+
+    // If not found, check if file is shared with the user
+    if (!file) {
+      const share = await prisma.share.findFirst({
+        where: { 
+          fileId: id, 
+          sharedWithId: userId 
+        },
+        include: {
+          file: {
+            include: {
+              chunks: {
+                orderBy: { chunkIndex: 'asc' },
+              },
+              user: {
+                select: { encryptionKey: true },
+              },
+            },
+          },
+        },
+      });
+      
+      if (share?.file && share.file.type === 'FILE' && !share.file.deletedAt) {
+        file = share.file;
+        logger.info('Downloading shared file', { fileId: id, sharedWithUserId: userId });
+      }
+    }
 
     if (!file) {
       return res.status(404).json({ error: 'File not found' });
