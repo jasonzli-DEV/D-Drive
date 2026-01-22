@@ -186,6 +186,41 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
   }
 });
 
+// Helper to ensure a directory path exists, creating it recursively if needed
+async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise<string | null> {
+  if (pathParts.length === 0) return null;
+  
+  let currentParentId: string | null = null;
+  let currentPath = '';
+  
+  for (const part of pathParts) {
+    currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
+    
+    // Check if this folder already exists (and is not deleted)
+    let folder = await prisma.file.findFirst({
+      where: { userId, path: currentPath, type: 'DIRECTORY', deletedAt: null }
+    });
+    
+    if (!folder) {
+      // Create the folder
+      folder = await prisma.file.create({
+        data: {
+          name: part,
+          path: currentPath,
+          type: 'DIRECTORY',
+          userId,
+          parentId: currentParentId,
+        },
+      });
+      logger.info('Auto-created directory for restore', { path: currentPath, folderId: folder.id });
+    }
+    
+    currentParentId = folder.id;
+  }
+  
+  return currentParentId;
+}
+
 // Restore file from recycle bin
 router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: Response) => {
   try {
@@ -210,27 +245,62 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
           { path: { startsWith: `${file.path}/` } }
         ]
       },
-      select: { id: true, originalPath: true, path: true }
+      select: { id: true, originalPath: true, path: true, parentId: true, name: true }
     });
 
-    // Check if original path is available
+    const targetPath = file.originalPath || file.path;
+    
+    // Check if a file already exists at the exact original location
     const existingFile = await prisma.file.findFirst({
-      where: { userId, path: file.originalPath || file.path, deletedAt: null }
+      where: { userId, path: targetPath, deletedAt: null }
     });
 
     if (existingFile) {
       return res.status(409).json({ error: 'A file already exists at the original location' });
     }
 
+    // Ensure parent directories exist (recreate if they were deleted or never existed)
+    const pathParts = targetPath.split('/').filter(Boolean);
+    pathParts.pop(); // Remove the file/folder name itself, keep only parent path
+    
+    let newParentId: string | null = null;
+    let foldersCreated = 0;
+    if (pathParts.length > 0) {
+      // Check if parent path exists
+      const parentPath = '/' + pathParts.join('/');
+      const existingParent = await prisma.file.findFirst({
+        where: { userId, path: parentPath, type: 'DIRECTORY', deletedAt: null }
+      });
+      
+      if (!existingParent) {
+        // Recreate the parent path
+        logger.info('Recreating parent path for restore', { targetPath, parentPath });
+        newParentId = await ensureDirectoryPath(userId, pathParts);
+        foldersCreated = pathParts.length; // approximate
+      } else {
+        newParentId = existingParent.id;
+      }
+    }
+
     // Restore all files
     await prisma.$transaction(async (tx) => {
       for (const f of filesToRestore) {
+        const restorePath = f.originalPath || f.path;
+        
+        // Determine the correct parentId for this file
+        let parentId = f.parentId;
+        if (f.id === file.id && newParentId !== null) {
+          // This is the root item being restored, use the recreated parent
+          parentId = newParentId;
+        }
+        
         await tx.file.update({
           where: { id: f.id },
           data: {
             deletedAt: null,
-            path: f.originalPath || f.path,
+            path: restorePath,
             originalPath: null,
+            parentId: parentId,
           },
         });
       }
@@ -242,13 +312,18 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       await createLog(userId, 'DELETE', `Restored from recycle bin: ${file.name}`, true, undefined, { 
         fileName: file.name, 
         fileType: file.type,
-        filesRestored: filesToRestore.length
+        filesRestored: filesToRestore.length,
+        foldersCreated
       });
     } catch (logErr) {
       logger.warn('Failed to log restore:', logErr);
     }
 
-    res.json({ message: 'File restored successfully', filesRestored: filesToRestore.length });
+    res.json({ 
+      message: 'File restored successfully', 
+      filesRestored: filesToRestore.length,
+      foldersCreated 
+    });
   } catch (error) {
     logger.error('Error restoring file:', error);
     res.status(500).json({ error: 'Failed to restore file' });
@@ -973,7 +1048,9 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    if (file.type === 'DIRECTORY' && file.children.length > 0 && !recursive) {
+    // For permanent delete without recursive flag, reject non-empty directories
+    // For recycle bin, we always handle children (soft delete is implicitly recursive)
+    if (file.type === 'DIRECTORY' && file.children.length > 0 && !recursive && !useRecycleBin) {
       logger.warn('Cannot delete non-empty directory without recursive flag', { 
         fileId: id, 
         fileName: file.name, 
@@ -985,7 +1062,8 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     // Collect files to delete
     const filesToDelete: string[] = [];
 
-    if (file.type === 'DIRECTORY' && recursive) {
+    // For directories, always include descendants when using recycle bin or explicit recursive flag
+    if (file.type === 'DIRECTORY' && (recursive || useRecycleBin)) {
       // include all descendants (files and directories) whose path starts with file.path/
       const descendants = await prisma.file.findMany({ where: { userId, path: { startsWith: `${file.path}/` } }, select: { id: true } });
       for (const d of descendants) filesToDelete.push(d.id);
