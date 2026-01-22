@@ -1,6 +1,6 @@
 import cron from 'node-cron';
 import { prisma } from '../lib/prisma';
-import { runTaskNow } from './taskRunner';
+import { runTaskNow, isTaskRunning } from './taskRunner';
 import { logger } from '../utils/logger';
 import { cleanupOrphanedDiscordFiles, cleanupTempFiles } from './cleanup';
 
@@ -170,8 +170,50 @@ export async function initScheduler() {
     });
     
     logger.info('Scheduler initialized', { count: tasks.length, cleanupScheduled: true, logCleanupScheduled: true });
+    
+    // Start stale task checker (every 30 seconds)
+    setInterval(checkStaleRunningTasks, 30000);
+    logger.info('Stale task checker started (30s interval)');
   } catch (err) {
     logger.error('Failed to initialize scheduler', err);
+  }
+}
+
+// Check for tasks that appear to be running in DB but aren't actually running in memory
+async function checkStaleRunningTasks() {
+  try {
+    // Find tasks where lastStarted > lastRun (indicates "running" state in DB)
+    const potentiallyRunning = await prisma.task.findMany({
+      where: {
+        lastStarted: { not: null }
+      },
+      select: { id: true, name: true, lastStarted: true, lastRun: true, userId: true }
+    });
+    
+    for (const task of potentiallyRunning) {
+      // Task is considered "running in DB" if lastStarted > lastRun (or lastRun is null)
+      const isRunningInDb = task.lastStarted && (!task.lastRun || task.lastStarted > task.lastRun);
+      
+      if (isRunningInDb && !isTaskRunning(task.id) && !running.get(task.id)) {
+        // DB says running but it's not actually running - this is a stale state
+        logger.warn('Detected stale running task state, fixing', { taskId: task.id, taskName: task.name });
+        
+        await prisma.task.update({
+          where: { id: task.id },
+          data: { lastRun: new Date() }
+        });
+        
+        // Log the fix
+        try {
+          const { createLog } = require('../routes/logs');
+          await createLog(task.userId, 'TASK', `Stale state fixed: ${task.name}`, true, 'Task was marked as running but process was not found');
+        } catch (logErr) {
+          logger.warn('Failed to log stale task fix:', logErr);
+        }
+      }
+    }
+  } catch (err) {
+    logger.error('Error checking for stale tasks:', err);
   }
 }
 
