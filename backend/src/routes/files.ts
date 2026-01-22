@@ -144,6 +144,212 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// ==================== RECYCLE BIN ROUTES ====================
+// NOTE: These routes MUST come before /:id to avoid "recycle-bin" being matched as an ID
+
+// List files in recycle bin
+router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const deletedFiles = await prisma.file.findMany({
+      where: { 
+        userId, 
+        deletedAt: { not: null },
+        // Only show top-level deleted items (parents that were directly deleted)
+        // Children of deleted folders are also marked but we don't show them separately
+        OR: [
+          { parentId: null },
+          { parent: { deletedAt: null } }
+        ]
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        size: true,
+        mimeType: true,
+        deletedAt: true,
+        originalPath: true,
+        createdAt: true,
+      },
+      orderBy: { deletedAt: 'desc' },
+    });
+
+    res.json(deletedFiles.map(f => ({
+      ...f,
+      size: f.size.toString(),
+    })));
+  } catch (error) {
+    logger.error('Error listing recycle bin:', error);
+    res.status(500).json({ error: 'Failed to list recycle bin' });
+  }
+});
+
+// Restore file from recycle bin
+router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+
+    const file = await prisma.file.findFirst({
+      where: { id, userId, deletedAt: { not: null } },
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found in recycle bin' });
+    }
+
+    // Get all files that were deleted at the same time (including children)
+    const filesToRestore = await prisma.file.findMany({
+      where: {
+        userId,
+        deletedAt: file.deletedAt,
+        OR: [
+          { id: file.id },
+          { path: { startsWith: `${file.path}/` } }
+        ]
+      },
+      select: { id: true, originalPath: true, path: true }
+    });
+
+    // Check if original path is available
+    const existingFile = await prisma.file.findFirst({
+      where: { userId, path: file.originalPath || file.path, deletedAt: null }
+    });
+
+    if (existingFile) {
+      return res.status(409).json({ error: 'A file already exists at the original location' });
+    }
+
+    // Restore all files
+    await prisma.$transaction(async (tx) => {
+      for (const f of filesToRestore) {
+        await tx.file.update({
+          where: { id: f.id },
+          data: {
+            deletedAt: null,
+            path: f.originalPath || f.path,
+            originalPath: null,
+          },
+        });
+      }
+    });
+
+    // Log the restore
+    try {
+      const { createLog } = require('./logs');
+      await createLog(userId, 'DELETE', `Restored from recycle bin: ${file.name}`, true, undefined, { 
+        fileName: file.name, 
+        fileType: file.type,
+        filesRestored: filesToRestore.length
+      });
+    } catch (logErr) {
+      logger.warn('Failed to log restore:', logErr);
+    }
+
+    res.json({ message: 'File restored successfully', filesRestored: filesToRestore.length });
+  } catch (error) {
+    logger.error('Error restoring file:', error);
+    res.status(500).json({ error: 'Failed to restore file' });
+  }
+});
+
+// Permanently delete file from recycle bin
+router.delete('/recycle-bin/:id', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+
+    const file = await prisma.file.findFirst({
+      where: { id, userId, deletedAt: { not: null } },
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found in recycle bin' });
+    }
+
+    // Get all files that were deleted together (including children)
+    const filesToDelete = await prisma.file.findMany({
+      where: {
+        userId,
+        deletedAt: file.deletedAt,
+        OR: [
+          { id: file.id },
+          { path: { startsWith: `${file.path}/` } }
+        ]
+      },
+      select: { id: true }
+    });
+
+    const fileIds = filesToDelete.map(f => f.id);
+
+    // Permanently delete
+    await prisma.$transaction(async (tx) => {
+      await tx.fileChunk.deleteMany({ where: { fileId: { in: fileIds } } });
+      await tx.file.deleteMany({ where: { id: { in: fileIds } } });
+    });
+
+    // Log the permanent deletion
+    try {
+      const { createLog } = require('./logs');
+      await createLog(userId, 'DELETE', `Permanently deleted: ${file.name}`, true, undefined, { 
+        fileName: file.name, 
+        fileType: file.type,
+        filesDeleted: fileIds.length
+      });
+    } catch (logErr) {
+      logger.warn('Failed to log permanent deletion:', logErr);
+    }
+
+    res.json({ message: 'File permanently deleted', filesDeleted: fileIds.length });
+  } catch (error) {
+    logger.error('Error permanently deleting file:', error);
+    res.status(500).json({ error: 'Failed to permanently delete file' });
+  }
+});
+
+// Empty entire recycle bin
+router.delete('/recycle-bin', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const deletedFiles = await prisma.file.findMany({
+      where: { userId, deletedAt: { not: null } },
+      select: { id: true }
+    });
+
+    const fileIds = deletedFiles.map(f => f.id);
+
+    if (fileIds.length === 0) {
+      return res.json({ message: 'Recycle bin is already empty', filesDeleted: 0 });
+    }
+
+    // Permanently delete all
+    await prisma.$transaction(async (tx) => {
+      await tx.fileChunk.deleteMany({ where: { fileId: { in: fileIds } } });
+      await tx.file.deleteMany({ where: { id: { in: fileIds } } });
+    });
+
+    // Log the empty
+    try {
+      const { createLog } = require('./logs');
+      await createLog(userId, 'DELETE', `Emptied recycle bin`, true, undefined, { 
+        filesDeleted: fileIds.length
+      });
+    } catch (logErr) {
+      logger.warn('Failed to log recycle bin empty:', logErr);
+    }
+
+    res.json({ message: 'Recycle bin emptied', filesDeleted: fileIds.length });
+  } catch (error) {
+    logger.error('Error emptying recycle bin:', error);
+    res.status(500).json({ error: 'Failed to empty recycle bin' });
+  }
+});
+
+// ==================== END RECYCLE BIN ROUTES ====================
+
 // Get file details
 router.get('/:id', authenticate, async (req: Request, res: Response) => {
   try {
@@ -1041,209 +1247,6 @@ async function isChildOf(sourceId: string, targetId: string): Promise<boolean> {
   if (target.parentId === sourceId) return true;
   return isChildOf(sourceId, target.parentId);
 }
-
-// ==================== RECYCLE BIN ROUTES ====================
-
-// List files in recycle bin
-router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-
-    const deletedFiles = await prisma.file.findMany({
-      where: { 
-        userId, 
-        deletedAt: { not: null },
-        // Only show top-level deleted items (parents that were directly deleted)
-        // Children of deleted folders are also marked but we don't show them separately
-        OR: [
-          { parentId: null },
-          { parent: { deletedAt: null } }
-        ]
-      },
-      select: {
-        id: true,
-        name: true,
-        type: true,
-        size: true,
-        mimeType: true,
-        deletedAt: true,
-        originalPath: true,
-        createdAt: true,
-      },
-      orderBy: { deletedAt: 'desc' },
-    });
-
-    res.json(deletedFiles.map(f => ({
-      ...f,
-      size: f.size.toString(),
-    })));
-  } catch (error) {
-    logger.error('Error listing recycle bin:', error);
-    res.status(500).json({ error: 'Failed to list recycle bin' });
-  }
-});
-
-// Restore file from recycle bin
-router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const { id } = req.params;
-
-    const file = await prisma.file.findFirst({
-      where: { id, userId, deletedAt: { not: null } },
-    });
-
-    if (!file) {
-      return res.status(404).json({ error: 'File not found in recycle bin' });
-    }
-
-    // Get all files that were deleted at the same time (including children)
-    const filesToRestore = await prisma.file.findMany({
-      where: {
-        userId,
-        deletedAt: file.deletedAt,
-        OR: [
-          { id: file.id },
-          { path: { startsWith: `${file.path}/` } }
-        ]
-      },
-      select: { id: true, originalPath: true, path: true }
-    });
-
-    // Check if original path is available
-    const existingFile = await prisma.file.findFirst({
-      where: { userId, path: file.originalPath || file.path, deletedAt: null }
-    });
-
-    if (existingFile) {
-      return res.status(409).json({ error: 'A file already exists at the original location' });
-    }
-
-    // Restore all files
-    await prisma.$transaction(async (tx) => {
-      for (const f of filesToRestore) {
-        await tx.file.update({
-          where: { id: f.id },
-          data: {
-            deletedAt: null,
-            path: f.originalPath || f.path,
-            originalPath: null,
-          },
-        });
-      }
-    });
-
-    // Log the restore
-    try {
-      const { createLog } = require('./logs');
-      await createLog(userId, 'DELETE', `Restored from recycle bin: ${file.name}`, true, undefined, { 
-        fileName: file.name, 
-        fileType: file.type,
-        filesRestored: filesToRestore.length
-      });
-    } catch (logErr) {
-      logger.warn('Failed to log restore:', logErr);
-    }
-
-    res.json({ message: 'File restored successfully', filesRestored: filesToRestore.length });
-  } catch (error) {
-    logger.error('Error restoring file:', error);
-    res.status(500).json({ error: 'Failed to restore file' });
-  }
-});
-
-// Permanently delete file from recycle bin
-router.delete('/recycle-bin/:id', authenticate, async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const { id } = req.params;
-
-    const file = await prisma.file.findFirst({
-      where: { id, userId, deletedAt: { not: null } },
-    });
-
-    if (!file) {
-      return res.status(404).json({ error: 'File not found in recycle bin' });
-    }
-
-    // Get all files that were deleted together (including children)
-    const filesToDelete = await prisma.file.findMany({
-      where: {
-        userId,
-        deletedAt: file.deletedAt,
-        OR: [
-          { id: file.id },
-          { path: { startsWith: `${file.path}/` } }
-        ]
-      },
-      select: { id: true }
-    });
-
-    const fileIds = filesToDelete.map(f => f.id);
-
-    // Permanently delete
-    await prisma.$transaction(async (tx) => {
-      await tx.fileChunk.deleteMany({ where: { fileId: { in: fileIds } } });
-      await tx.file.deleteMany({ where: { id: { in: fileIds } } });
-    });
-
-    // Log the permanent deletion
-    try {
-      const { createLog } = require('./logs');
-      await createLog(userId, 'DELETE', `Permanently deleted: ${file.name}`, true, undefined, { 
-        fileName: file.name, 
-        fileType: file.type,
-        filesDeleted: fileIds.length
-      });
-    } catch (logErr) {
-      logger.warn('Failed to log permanent deletion:', logErr);
-    }
-
-    res.json({ message: 'File permanently deleted', filesDeleted: fileIds.length });
-  } catch (error) {
-    logger.error('Error permanently deleting file:', error);
-    res.status(500).json({ error: 'Failed to permanently delete file' });
-  }
-});
-
-// Empty entire recycle bin
-router.delete('/recycle-bin', authenticate, async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-
-    const deletedFiles = await prisma.file.findMany({
-      where: { userId, deletedAt: { not: null } },
-      select: { id: true }
-    });
-
-    const fileIds = deletedFiles.map(f => f.id);
-
-    if (fileIds.length === 0) {
-      return res.json({ message: 'Recycle bin is already empty', filesDeleted: 0 });
-    }
-
-    // Permanently delete all
-    await prisma.$transaction(async (tx) => {
-      await tx.fileChunk.deleteMany({ where: { fileId: { in: fileIds } } });
-      await tx.file.deleteMany({ where: { id: { in: fileIds } } });
-    });
-
-    // Log the empty
-    try {
-      const { createLog } = require('./logs');
-      await createLog(userId, 'DELETE', `Emptied recycle bin`, true, undefined, { 
-        filesDeleted: fileIds.length
-      });
-    } catch (logErr) {
-      logger.warn('Failed to log recycle bin empty:', logErr);
-    }
-
-    res.json({ message: 'Recycle bin emptied', filesDeleted: fileIds.length });
-  } catch (error) {
-    logger.error('Error emptying recycle bin:', error);
-    res.status(500).json({ error: 'Failed to empty recycle bin' });
-  }
-});
 
 // Make a copy of a file (creates a new File record and duplicates chunk refs)
 router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
