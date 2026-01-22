@@ -20,6 +20,7 @@ model User {
   encryptByDefault Boolean  @default(true)
   recycleBinEnabled Boolean @default(true)  // Enable/disable recycle bin
   allowSharedWithMe Boolean @default(true)  // Allow others to share files with this user
+  theme         String   @default("auto")  // Theme preference: light, dark, auto
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -64,6 +65,7 @@ model File {
   mimeType    String?
   type        FileType @default(FILE)
   encrypted   Boolean  @default(false)
+  starred     Boolean  @default(false)  // User-starred file for quick access
   parentId    String?
   parent      File?    @relation("FileHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
   children    File[]   @relation("FileHierarchy")
@@ -88,6 +90,7 @@ model File {
   @@index([parentId])
   @@index([path])
   @@index([deletedAt])
+  @@index([starred])
 }
 
 model FileChunk {

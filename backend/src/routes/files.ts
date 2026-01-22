@@ -128,6 +128,7 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
         path: true,
         parentId: true,
         mimeType: true,
+        starred: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -141,6 +142,45 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
   } catch (error) {
     logger.error('Error listing files:', error);
     res.status(500).json({ error: 'Failed to list files' });
+  }
+});
+
+// ==================== STARRED FILES ROUTES ====================
+// NOTE: These routes MUST come before /:id to avoid "starred" being matched as an ID
+
+// List starred files
+router.get('/starred', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const starredFiles = await prisma.file.findMany({
+      where: { 
+        userId, 
+        starred: true,
+        deletedAt: null
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        size: true,
+        path: true,
+        parentId: true,
+        mimeType: true,
+        starred: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: [
+        { type: 'desc' },
+        { updatedAt: 'desc' },
+      ],
+    });
+
+    res.json(starredFiles.map(serializeFile));
+  } catch (error) {
+    logger.error('Error listing starred files:', error);
+    res.status(500).json({ error: 'Failed to list starred files' });
   }
 });
 
@@ -1378,6 +1418,37 @@ async function isChildOf(sourceId: string, targetId: string): Promise<boolean> {
   if (target.parentId === sourceId) return true;
   return isChildOf(sourceId, target.parentId);
 }
+
+// Toggle starred status for a file
+router.post('/:id/star', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+    const { starred } = req.body;
+
+    const file = await prisma.file.findFirst({
+      where: { id, userId, deletedAt: null },
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Toggle or set starred status
+    const newStarred = typeof starred === 'boolean' ? starred : !file.starred;
+
+    const updated = await prisma.file.update({
+      where: { id },
+      data: { starred: newStarred },
+      select: { id: true, starred: true },
+    });
+
+    res.json(updated);
+  } catch (error) {
+    logger.error('Error toggling starred status:', error);
+    res.status(500).json({ error: 'Failed to update starred status' });
+  }
+});
 
 // Make a copy of a file (creates a new File record and duplicates chunk refs)
 router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {

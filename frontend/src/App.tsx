@@ -11,6 +11,7 @@ import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
 import RecycleBinPage from './pages/RecycleBinPage';
 import SharedPage from './pages/SharedPage';
+import StarredPage from './pages/StarredPage';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -117,6 +118,18 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <SharedPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/starred"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <StarredPage />
             </Layout>
           ) : (
             <Navigate to="/login" replace />

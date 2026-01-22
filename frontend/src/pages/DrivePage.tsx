@@ -49,6 +49,8 @@ import {
   ChevronDown,
   X,
   Share2,
+  Star,
+  StarOff,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -62,6 +64,7 @@ interface FileItem {
   type: 'FILE' | 'DIRECTORY';
   size: number;
   mimeType?: string;
+  starred?: boolean;
   createdAt: string;
   updatedAt: string;
   parentId?: string | null;
@@ -373,6 +376,21 @@ export default function DrivePage() {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to share file');
+    },
+  });
+
+  // Toggle star mutation
+  const starMutation = useMutation({
+    mutationFn: async (vars: { fileId: string; starred?: boolean }) => {
+      const resp = await api.post(`/files/${vars.fileId}/star`, { starred: vars.starred });
+      return resp.data;
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      toast.success(data.starred ? 'Added to starred' : 'Removed from starred');
+    },
+    onError: () => {
+      toast.error('Failed to update starred status');
     },
   });
 
@@ -1326,6 +1344,10 @@ export default function DrivePage() {
         // create a copy of the file (respect user's encrypt setting)
         copyMutation.mutate({ id: menuFile.id, encrypt: encryptFiles });
         break;
+      case 'star':
+        // toggle starred status
+        starMutation.mutate({ fileId: menuFile.id, starred: !menuFile.starred });
+        break;
     }
     
     handleCloseMenu();
@@ -1608,10 +1630,10 @@ export default function DrivePage() {
                     />
                   </TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Modified</TableCell>
+                  <TableCell sx={{ fontWeight: 600, display: { xs: 'none', md: 'table-cell' } }}>Created</TableCell>
+                  <TableCell sx={{ fontWeight: 600, display: { xs: 'none', sm: 'table-cell' } }}>Modified</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Size</TableCell>
-                  <TableCell sx={{ fontWeight: 600 }}>Path</TableCell>
+                  <TableCell sx={{ fontWeight: 600, display: { xs: 'none', lg: 'table-cell' } }}>Path</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -1656,12 +1678,12 @@ export default function DrivePage() {
                         <Typography fontWeight={500}>{file.name}</Typography>
                       </Box>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                       <Typography variant="body2" color="text.secondary">
                         {new Date(file.createdAt).toLocaleString()}
                       </Typography>
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                       <Typography variant="body2" color="text.secondary">
                         {formatDistance(new Date(file.updatedAt), new Date(), {
                           addSuffix: true,
@@ -1679,14 +1701,14 @@ export default function DrivePage() {
                         }}
                       />
                     </TableCell>
-                    <TableCell>
+                    <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
                       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                         {file.path || `/${file.name}`}
                       </Typography>
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       {file.type === 'FILE' && (
-                        <IconButton onClick={() => handleDownload(file)} size="small" sx={{ mr: 0.5 }}>
+                        <IconButton onClick={() => handleDownload(file)} size="small" sx={{ mr: 0.5, display: { xs: 'none', sm: 'inline-flex' } }}>
                           <Download size={18} />
                         </IconButton>
                       )}
@@ -1735,6 +1757,12 @@ export default function DrivePage() {
                 <Copy size={18} />
               </ListItemIcon>
               <ListItemText>Make a copy</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleMenuAction('star')}>
+              <ListItemIcon>
+                {menuFile.starred ? <StarOff size={18} /> : <Star size={18} />}
+              </ListItemIcon>
+              <ListItemText>{menuFile.starred ? 'Remove from starred' : 'Add to starred'}</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => handleMenuAction('rename')}>
               <ListItemIcon>
