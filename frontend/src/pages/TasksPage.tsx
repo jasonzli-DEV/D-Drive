@@ -99,9 +99,14 @@ export default function TasksPage() {
     refetchInterval: 2000, // Update progress every 2 seconds
   });
 
+  // Debug: log progress data
+  console.log('runningProgress:', runningProgress);
+
   // Helper to get progress for a specific task
   const getProgress = (taskId: string) => {
-    return runningProgress?.tasks?.find(t => t.taskId === taskId)?.progress;
+    const progress = runningProgress?.tasks?.find(t => t.taskId === taskId)?.progress;
+    console.log('getProgress for', taskId, ':', progress);
+    return progress;
   };
 
   // Helper to format bytes
