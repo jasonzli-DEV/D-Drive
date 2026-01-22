@@ -1,11 +1,11 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import { deleteChunkFromDiscord } from './discord';
 import axios from 'axios';
 import { promises as fs } from 'fs';
 import path from 'path';
 
-const prisma = new PrismaClient();
+
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
 const DISCORD_CHANNEL_ID = process.env.DISCORD_CHANNEL_ID || '';

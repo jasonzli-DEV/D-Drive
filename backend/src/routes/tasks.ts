@@ -1,5 +1,6 @@
 import { Router, Request, Response } from 'express';
-import { PrismaClient, CompressFormat } from '@prisma/client';
+import { CompressFormat } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow, stopTask, isTaskRunning, getTaskProgress, getAllRunningTasksProgress } from '../services/taskRunner';
@@ -13,7 +14,7 @@ function isValidCronExpression(expr: string | undefined) {
 }
 
 const router = Router();
-const prisma = new PrismaClient();
+
 
 // List tasks for current user
 router.get('/', authenticate, async (req: Request, res: Response) => {

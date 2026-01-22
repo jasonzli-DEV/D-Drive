@@ -1,13 +1,13 @@
 import { Router } from 'express';
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import fs from 'fs';
 import path from 'path';
 import { logger } from '../utils/logger';
 
 const router = Router();
-const prisma = new PrismaClient();
+
 
 // JWT_SECRET must be set in environment - no fallback for security
 const JWT_SECRET = process.env.JWT_SECRET;

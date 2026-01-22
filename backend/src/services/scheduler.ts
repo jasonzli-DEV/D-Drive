@@ -1,10 +1,10 @@
 import cron from 'node-cron';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { runTaskNow } from './taskRunner';
 import { logger } from '../utils/logger';
 import { cleanupOrphanedDiscordFiles, cleanupTempFiles } from './cleanup';
 
-const prisma = new PrismaClient();
+
 
 // Map of taskId -> cron job
 const jobs: Map<string, any> = new Map();

@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install OpenSSL for Prisma
-RUN apk add --no-cache openssl
+# Install OpenSSL for Prisma and tini for proper process management
+RUN apk add --no-cache openssl tini
 
 WORKDIR /app
 
@@ -26,4 +26,8 @@ RUN mkdir -p logs
 
 EXPOSE 5000
 
-CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && npm start"]
+# Use tini as init to properly reap zombie processes
+ENTRYPOINT ["/sbin/tini", "--"]
+
+# Run prisma migrate then start with node directly (not npm) to avoid zombie processes
+CMD ["sh", "-c", "./node_modules/.bin/prisma migrate deploy && node dist/index.js"]
