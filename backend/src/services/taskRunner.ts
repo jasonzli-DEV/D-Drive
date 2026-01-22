@@ -604,8 +604,22 @@ export async function runTaskNow(taskId: string) {
         }
         
         async function walk(dir: string, prefix: string) {
+          // Update progress when entering a new directory
+          updateProgress({
+            phase: 'downloading',
+            filesProcessed: filesAdded,
+            totalBytes,
+            currentDir: dir,
+            reconnects: reconnectAttempts,
+          });
+          
           const list = await listWithRetry(dir);
           if (!list) return;
+          
+          // Log large directories that might take time to process
+          if (list.length > 1000) {
+            logger.info('Processing large directory', { taskId, dir, fileCount: list.length });
+          }
           
           // Separate files and directories
           const dirs: { name: string; remoteFull: string; rel: string }[] = [];
@@ -683,16 +697,18 @@ export async function runTaskNow(taskId: string) {
               }
             }));
             
-            // Log progress every batch and update progress tracker
+            // Update progress after every batch (no logging to avoid spam, but keep UI updated)
+            updateProgress({
+              phase: 'downloading',
+              filesProcessed: filesAdded,
+              totalBytes,
+              currentDir: dir,
+              reconnects: reconnectAttempts,
+            });
+            
+            // Log progress every 100 files 
             if (filesAdded % 100 === 0 || i + BATCH_SIZE >= files.length) {
               logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts, dir });
-              updateProgress({
-                phase: 'downloading',
-                filesProcessed: filesAdded,
-                totalBytes,
-                currentDir: dir,
-                reconnects: reconnectAttempts,
-              });
             }
           }
           
