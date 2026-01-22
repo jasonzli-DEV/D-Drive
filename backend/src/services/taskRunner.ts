@@ -546,6 +546,12 @@ export async function runTaskNow(taskId: string) {
       const dirsToScan: string[] = [task.sftpPath];
       const PARALLEL_SCANS = 10; // Scan up to 10 directories in parallel
       
+      // Increase max listeners to prevent warnings during parallel scans
+      const sshClient = (sftp as any).client;
+      if (sshClient && typeof sshClient.setMaxListeners === 'function') {
+        sshClient.setMaxListeners(50);
+      }
+      
       while (dirsToScan.length > 0 && !runningTasks.get(taskId)?.cancelled) {
         // Take a batch of directories to scan in parallel
         const batch = dirsToScan.splice(0, PARALLEL_SCANS);
