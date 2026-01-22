@@ -176,9 +176,8 @@ enum LogType {
 
 // Permission levels for sharing
 enum SharePermission {
-  VIEW       // Can only view/download
-  EDIT       // Can view/download and rename/move
-  ADMIN      // Full control including delete and reshare
+  VIEW       // Can view/download files and open folders
+  EDIT       // Can view/download + rename/upload/delete within shared folders
 }
 
 model Share {
