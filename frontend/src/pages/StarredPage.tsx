@@ -13,6 +13,7 @@ import {
   IconButton,
   Tooltip,
   CircularProgress,
+  useTheme,
 } from '@mui/material';
 import { Folder, File, Download, Star, StarOff, Eye } from 'lucide-react';
 import { formatDistance } from 'date-fns';
@@ -44,6 +45,7 @@ function formatSize(bytes: string | number): string {
 export default function StarredPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const { data: starredFiles, isLoading } = useQuery<StarredFile[]>({
     queryKey: ['files', 'starred'],
@@ -148,9 +150,9 @@ export default function StarredPage() {
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {file.type === 'DIRECTORY' ? (
-                          <Folder size={20} color="#1976d2" />
+                          <Folder size={20} color={theme.palette.warning.main} />
                         ) : (
-                          <File size={20} color="#666" />
+                          <File size={20} color={theme.palette.primary.main} />
                         )}
                         <Typography>{file.name}</Typography>
                       </Box>

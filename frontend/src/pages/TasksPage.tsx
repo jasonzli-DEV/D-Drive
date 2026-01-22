@@ -333,7 +333,7 @@ export default function TasksPage() {
       {isLoading ? <CircularProgress /> : (
         <Table sx={{ '& .MuiTableCell-root': { py: 1.5 } }}>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#f5f7fa' }}>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Destination</TableCell>
@@ -364,8 +364,9 @@ export default function TasksPage() {
                           px: 1.5,
                           py: 0.5,
                           borderRadius: 1,
-                          bgcolor: '#e3f2fd',
-                          color: '#1565c0'
+                          bgcolor: 'primary.main',
+                          color: 'primary.contrastText',
+                          opacity: 0.9
                         }}
                       >
                         <Box 
@@ -373,7 +374,7 @@ export default function TasksPage() {
                             width: 8, 
                             height: 8, 
                             borderRadius: '50%', 
-                            bgcolor: '#2196f3',
+                            bgcolor: 'background.paper',
                             mr: 1,
                             animation: 'pulse 2s ease-in-out infinite',
                             '@keyframes pulse': {
@@ -418,11 +419,11 @@ export default function TasksPage() {
                           : progress.phase;
                         
                         return (
-                          <Box sx={{ mt: 0.5, fontSize: '0.75rem', color: '#666' }}>
+                          <Box sx={{ mt: 0.5, fontSize: '0.75rem', color: 'text.secondary' }}>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               <span>{phaseText}</span>
-                              {percentage > 0 && <span style={{ fontWeight: 600, color: '#1976d2' }}>{percentage}%</span>}
-                              {eta && <span style={{ color: '#888' }}>{eta}</span>}
+                              {percentage > 0 && <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>{percentage}%</Box>}
+                              {eta && <Box component="span" sx={{ color: 'text.disabled' }}>{eta}</Box>}
                             </Box>
                             {progress.totalFiles > 0 ? (
                               <Box>{progress.filesProcessed?.toLocaleString()} / {progress.totalFiles?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
@@ -430,7 +431,7 @@ export default function TasksPage() {
                               <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
                             )}
                             {progress.currentDir && <Box sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
-                            {progress.reconnects > 0 && <Box sx={{ color: '#f57c00' }}>{progress.reconnects} reconnects</Box>}
+                            {progress.reconnects > 0 && <Box sx={{ color: 'warning.main' }}>{progress.reconnects} reconnects</Box>}
                           </Box>
                         );
                       })()}
@@ -443,8 +444,8 @@ export default function TasksPage() {
                         px: 1.5,
                         py: 0.5,
                         borderRadius: 1,
-                        bgcolor: t.enabled ? '#e8f5e9' : '#ffebee',
-                        color: t.enabled ? '#2e7d32' : '#c62828'
+                        bgcolor: t.enabled ? 'success.light' : 'error.light',
+                        color: t.enabled ? 'success.dark' : 'error.dark'
                       }}
                     >
                       <Box 
@@ -452,7 +453,7 @@ export default function TasksPage() {
                           width: 8, 
                           height: 8, 
                           borderRadius: '50%', 
-                          bgcolor: t.enabled ? '#4caf50' : '#ef5350',
+                          bgcolor: t.enabled ? 'success.main' : 'error.main',
                           mr: 1
                         }} 
                       />
@@ -472,8 +473,8 @@ export default function TasksPage() {
                       px: 1,
                       py: 0.25,
                       borderRadius: 0.5,
-                      bgcolor: t.compress === 'NONE' ? '#f5f5f5' : '#e3f2fd',
-                      color: t.compress === 'NONE' ? '#757575' : '#1976d2',
+                      bgcolor: t.compress === 'NONE' ? 'action.hover' : 'primary.light',
+                      color: t.compress === 'NONE' ? 'text.secondary' : 'primary.dark',
                       fontSize: '0.75rem',
                       fontWeight: 500
                     }}

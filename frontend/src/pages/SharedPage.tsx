@@ -23,6 +23,7 @@ import {
   DialogContent,
   DialogActions,
   Button,
+  useTheme,
 } from '@mui/material';
 import { Folder, File, Download, X, Eye, Edit, Shield } from 'lucide-react';
 import { formatDistance } from 'date-fns';
@@ -75,6 +76,7 @@ const permissionColors: Record<string, 'default' | 'primary' | 'secondary'> = {
 };
 
 export default function SharedPage() {
+  const theme = useTheme();
   const queryClient = useQueryClient();
   const [tab, setTab] = useState(0);
   const [removeDialog, setRemoveDialog] = useState<SharedFile | null>(null);
@@ -183,9 +185,9 @@ export default function SharedPage() {
                       <TableCell>
                         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                           {share.file.type === 'DIRECTORY' ? (
-                            <Folder size={20} style={{ color: '#ffc107' }} />
+                            <Folder size={20} style={{ color: theme.palette.warning.main }} />
                           ) : (
-                            <File size={20} style={{ color: '#2196f3' }} />
+                            <File size={20} style={{ color: theme.palette.primary.main }} />
                           )}
                           {share.file.name}
                         </Box>

@@ -31,6 +31,7 @@ import {
   Chip,
   Card,
   CardContent,
+  useTheme,
 } from '@mui/material';
 import {
   Upload,
@@ -88,6 +89,7 @@ interface FolderUploadProgress {
 }
 
 export default function DrivePage() {
+  const theme = useTheme();
   const { folderId } = useParams();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
@@ -1471,7 +1473,7 @@ export default function DrivePage() {
   };
 
   return (
-    <Box {...getRootProps()} sx={{ height: '100%', p: { xs: 2, sm: 3 }, bgcolor: '#f5f7fa' }}>
+    <Box {...getRootProps()} sx={{ height: '100%', p: { xs: 2, sm: 3 }, bgcolor: 'background.default' }}>
       <input {...getInputProps()} />
       
       {isDragActive && (
@@ -1618,7 +1620,7 @@ export default function DrivePage() {
           }}>
             <Table>
               <TableHead>
-                <TableRow sx={{ bgcolor: '#fafbfc' }}>
+                <TableRow sx={{ bgcolor: 'action.hover' }}>
                   <TableCell sx={{ width: 48 }}>
                     <Checkbox
                       size="small"
@@ -1671,9 +1673,9 @@ export default function DrivePage() {
                     <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); else if (file.type === 'FILE' && (isImageFile(file) || isVideoFile(file) || isPdfFile(file))) openImageViewer(file); }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {file.type === 'DIRECTORY' ? (
-                          <Folder size={22} color="#FFA000" />
+                          <Folder size={22} style={{ color: theme.palette.warning.main }} />
                         ) : (
-                          <File size={22} color="#666" />
+                          <File size={22} style={{ color: theme.palette.text.secondary }} />
                         )}
                         <Typography fontWeight={500}>{file.name}</Typography>
                       </Box>
@@ -1694,11 +1696,9 @@ export default function DrivePage() {
                       <Chip
                         label={file.type === 'FILE' ? formatFileSize(Number(file.size)) : 'Folder'}
                         size="small"
-                        sx={{
-                          bgcolor: file.type === 'FILE' ? '#e3f2fd' : '#fff3e0',
-                          color: file.type === 'FILE' ? '#1976d2' : '#e65100',
-                          fontWeight: 500,
-                        }}
+                        color={file.type === 'FILE' ? 'primary' : 'warning'}
+                        variant="outlined"
+                        sx={{ fontWeight: 500 }}
                       />
                     </TableCell>
                     <TableCell sx={{ display: { xs: 'none', lg: 'table-cell' } }}>
