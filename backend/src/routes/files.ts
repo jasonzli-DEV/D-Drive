@@ -1,5 +1,5 @@
 import { Router, Request, Response, NextFunction } from 'express';
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import jwt from 'jsonwebtoken';
 import { uploadChunkToDiscord, downloadChunkFromDiscord, deleteChunkFromDiscord, DISCORD_MAX } from '../services/discord';
@@ -27,7 +27,7 @@ try {
 import crypto from 'crypto';
 
 const router = Router();
-const prisma = new PrismaClient();
+
 // Use disk storage to avoid buffering large files in memory on the Pi
 const upload = multer({
   storage: multer.diskStorage({

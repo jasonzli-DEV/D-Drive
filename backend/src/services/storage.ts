@@ -1,10 +1,10 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { uploadChunkToDiscord, deleteChunkFromDiscord } from './discord';
 import { logger } from '../utils/logger';
 import fs from 'fs';
 import { encryptBuffer, generateEncryptionKey } from '../utils/crypto';
 
-const prisma = new PrismaClient();
+
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
 // Encryption adds 44 bytes overhead (16 salt + 12 IV + 16 auth tag)
 // So we need to leave room when encrypting to stay under Discord's 8MB limit

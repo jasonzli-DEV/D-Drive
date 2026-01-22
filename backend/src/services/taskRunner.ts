@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client';
+import { prisma } from '../lib/prisma';
 import { logger } from '../utils/logger';
 import SftpClient from 'ssh2-sftp-client';
 import archiver from 'archiver';
@@ -8,7 +8,7 @@ import path from 'path';
 import { storeFileFromPath, storeBufferAsFile } from './storage';
 import { deleteChunkFromDiscord } from './discord';
 
-const prisma = new PrismaClient();
+
 
 // Track running tasks, their cancellation flags, and progress
 interface TaskRunInfo {
