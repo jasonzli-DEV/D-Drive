@@ -7,6 +7,7 @@ import os from 'os';
 import path from 'path';
 import { storeFileFromPath, storeBufferAsFile } from './storage';
 import { deleteChunkFromDiscord } from './discord';
+import { clearRunningState } from './scheduler';
 
 
 
@@ -111,6 +112,9 @@ export async function stopTask(taskId: string) {
   }
   
   runningTasks.delete(taskId);
+  
+  // Also clear the running state in scheduler (separate tracking system)
+  clearRunningState(taskId);
   
   // Update lastRun to mark task as stopped, but DON'T update lastRuntime
   // because the task was manually stopped, not completed
