@@ -281,6 +281,12 @@ export function isTaskQueued(taskId: string): boolean {
   return taskQueue.some(t => t.taskId === taskId);
 }
 
+// Clear running state for a task (called when task is manually stopped)
+export function clearRunningState(taskId: string): void {
+  running.set(taskId, false);
+  logger.info('Cleared running state for task', { taskId });
+}
+
 // Get queue status for API
 export function getQueueStatus() {
   return {
