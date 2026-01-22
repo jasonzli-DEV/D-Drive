@@ -335,21 +335,30 @@ export default function TasksPage() {
   // Drag and drop state for reordering
   const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedIndex(index);
+    setIsDragging(true);
     e.dataTransfer.effectAllowed = 'move';
+    // Set a transparent drag image so we only see the drop indicator
+    const img = new Image();
+    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
+    e.dataTransfer.setDragImage(img, 0, 0);
   };
 
   const handleDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverIndex(index);
+    if (draggedIndex !== null && draggedIndex !== index) {
+      setDragOverIndex(index);
+    }
   };
 
   const handleDragEnd = () => {
     setDraggedIndex(null);
     setDragOverIndex(null);
+    setIsDragging(false);
   };
 
   const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
@@ -437,19 +446,34 @@ export default function TasksPage() {
                 key={t.id} 
                 hover 
                 onContextMenu={(e) => handleTaskContextMenu(e, t)}
-                draggable
-                onDragStart={(e) => handleDragStart(e, index)}
                 onDragOver={(e) => handleDragOver(e, index)}
-                onDragEnd={handleDragEnd}
                 onDrop={(e) => handleDrop(e, index)}
                 sx={{
-                  cursor: 'grab',
-                  opacity: draggedIndex === index ? 0.5 : 1,
-                  bgcolor: dragOverIndex === index ? 'action.selected' : 'inherit',
-                  '&:active': { cursor: 'grabbing' },
+                  opacity: draggedIndex === index ? 0.3 : 1,
+                  position: 'relative',
+                  // Show drop indicator line when dragging over (but not over self)
+                  '&::before': {
+                    content: dragOverIndex === index && draggedIndex !== index && isDragging ? '""' : 'none',
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    right: 0,
+                    height: 3,
+                    bgcolor: 'primary.main',
+                    zIndex: 10,
+                  },
                 }}
               >
-                <TableCell sx={{ cursor: 'grab', width: 40 }}>
+                <TableCell 
+                  sx={{ 
+                    cursor: 'grab',
+                    width: 40,
+                    '&:active': { cursor: 'grabbing' },
+                  }}
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragEnd={handleDragEnd}
+                >
                   <GripVertical size={18} style={{ opacity: 0.5 }} />
                 </TableCell>
                 <TableCell>
