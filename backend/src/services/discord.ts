@@ -33,7 +33,8 @@ export async function initDiscordBot(): Promise<Client> {
 
   await client.login(process.env.DISCORD_BOT_TOKEN);
 
-  client.on('ready', () => {
+  // Use clientReady instead of deprecated ready event (changed in discord.js v15)
+  client.once('ready', () => {
     logger.info(`Discord bot logged in as ${client.user?.tag}`);
   });
 
