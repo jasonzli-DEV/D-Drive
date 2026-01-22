@@ -490,33 +490,125 @@ export async function runTaskNow(taskId: string) {
       throw new Error('Task was cancelled');
     }
     
-    // Pre-scan to count files and estimate total size (quick recursive scan)
+    // Pre-scan to count files and estimate total size using fast 'find' command
     updateProgress({ phase: 'scanning' });
     logger.info('Pre-scanning remote directory for file count...', { taskId, remotePath: task.sftpPath });
     
     let scanFileCount = 0;
     let scanTotalBytes = 0;
     
-    async function quickScan(dir: string) {
-      if (runningTasks.get(taskId)?.cancelled) return;
+    // Use SSH exec to run 'find' command - much faster than recursive SFTP list calls
+    try {
+      const sshClient = (sftp as any).client;
+      const findResult = await new Promise<string>((resolve, reject) => {
+        // Use find with -type f to get files and their sizes in one command
+        // Output format: size (in bytes) for each file
+        const cmd = `find "${task.sftpPath}" -type f -exec stat -c '%s' {} \\; 2>/dev/null`;
+        
+        sshClient.exec(cmd, (err: Error | undefined, stream: any) => {
+          if (err) {
+            reject(err);
+            return;
+          }
+          
+          let output = '';
+          stream.on('data', (data: Buffer) => {
+            output += data.toString();
+          });
+          stream.stderr.on('data', (data: Buffer) => {
+            // Ignore stderr (permission errors etc)
+          });
+          stream.on('close', () => {
+            resolve(output);
+          });
+          stream.on('error', reject);
+        });
+      });
+      
+      // Parse the output - each line is a file size in bytes
+      const lines = findResult.trim().split('\n').filter(line => line.length > 0);
+      for (const line of lines) {
+        const size = parseInt(line, 10);
+        if (!isNaN(size)) {
+          scanFileCount++;
+          scanTotalBytes += size;
+        }
+      }
+    } catch (scanErr) {
+      // Fallback: try alternate command syntax (BSD stat vs GNU stat)
+      logger.warn('Fast scan failed, trying alternate command...', { taskId, err: scanErr });
       try {
-        const list = await sftp.list(dir);
-        for (const item of list) {
-          if (item.name === '.' || item.name === '..') continue;
-          if (item.type === 'd') {
-            await quickScan(path.posix.join(dir, item.name));
-          } else if (item.type === '-') {
+        const sshClient = (sftp as any).client;
+        // BSD stat syntax (macOS)
+        const findResult = await new Promise<string>((resolve, reject) => {
+          const cmd = `find "${task.sftpPath}" -type f -exec stat -f '%z' {} \\; 2>/dev/null`;
+          
+          sshClient.exec(cmd, (err: Error | undefined, stream: any) => {
+            if (err) {
+              reject(err);
+              return;
+            }
+            
+            let output = '';
+            stream.on('data', (data: Buffer) => {
+              output += data.toString();
+            });
+            stream.stderr.on('data', () => {});
+            stream.on('close', () => resolve(output));
+            stream.on('error', reject);
+          });
+        });
+        
+        const lines = findResult.trim().split('\n').filter(line => line.length > 0);
+        for (const line of lines) {
+          const size = parseInt(line, 10);
+          if (!isNaN(size)) {
             scanFileCount++;
-            scanTotalBytes += item.size || 0;
+            scanTotalBytes += size;
           }
         }
-      } catch (err) {
-        // Ignore errors during scan, we'll handle them during actual download
-        logger.warn('Error during pre-scan, skipping directory', { dir, err });
+      } catch (fallbackErr) {
+        // Final fallback: use du for total size only (faster than recursive list)
+        logger.warn('Alternate scan failed, trying du...', { taskId, err: fallbackErr });
+        try {
+          const sshClient = (sftp as any).client;
+          const duResult = await new Promise<string>((resolve, reject) => {
+            const cmd = `du -sb "${task.sftpPath}" 2>/dev/null || du -sk "${task.sftpPath}" 2>/dev/null`;
+            
+            sshClient.exec(cmd, (err: Error | undefined, stream: any) => {
+              if (err) {
+                reject(err);
+                return;
+              }
+              
+              let output = '';
+              stream.on('data', (data: Buffer) => {
+                output += data.toString();
+              });
+              stream.stderr.on('data', () => {});
+              stream.on('close', () => resolve(output));
+              stream.on('error', reject);
+            });
+          });
+          
+          // Parse du output: "size<tab>path"
+          const match = duResult.match(/^(\d+)/);
+          if (match) {
+            scanTotalBytes = parseInt(match[1], 10);
+            // du -sk returns KB, du -sb returns bytes
+            if (duResult.includes('-sk')) {
+              scanTotalBytes *= 1024;
+            }
+          }
+          scanFileCount = -1; // Unknown file count
+        } catch (duErr) {
+          logger.warn('All fast scan methods failed, continuing without pre-scan', { taskId, err: duErr });
+          scanFileCount = -1;
+          scanTotalBytes = -1;
+        }
       }
     }
     
-    await quickScan(task.sftpPath);
     logger.info('Pre-scan complete', { taskId, fileCount: scanFileCount, estimatedSize: formatBytes(scanTotalBytes) });
     
     // Update progress with totals
