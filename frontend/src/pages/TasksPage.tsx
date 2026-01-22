@@ -25,7 +25,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import { Plus, Play, Trash, Edit } from 'lucide-react';
+import { Plus, Play, Trash, Edit, GripVertical, Square } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
@@ -87,6 +87,17 @@ export default function TasksPage() {
     refetchInterval: 3000, // Auto-refresh every 3 seconds to update status
   });
 
+  // Fetch queue status (queued and running tasks)
+  const { data: queueStatus } = useQuery<{ queuedTasks: { taskId: string; queuedAt: string; priority: number }[]; runningTasks: string[] }>({
+    queryKey: ['queueStatus'],
+    queryFn: async () => {
+      const resp = await api.get('/tasks/queue/status');
+      return resp.data;
+    },
+    staleTime: 1000,
+    refetchInterval: 2000, // Update queue status every 2 seconds
+  });
+
   // Fetch running tasks progress
   const { data: runningProgress } = useQuery<{ tasks: { taskId: string; progress: any }[] }>({
     queryKey: ['runningTasksProgress'],
@@ -98,6 +109,17 @@ export default function TasksPage() {
     staleTime: 1000,
     refetchInterval: 2000, // Update progress every 2 seconds
   });
+
+  // Helper to check if a task is queued
+  const isTaskQueued = (taskId: string) => {
+    return queueStatus?.queuedTasks?.some(t => t.taskId === taskId) || false;
+  };
+
+  // Helper to get queue position
+  const getQueuePosition = (taskId: string) => {
+    const index = queueStatus?.queuedTasks?.findIndex(t => t.taskId === taskId);
+    return index !== undefined && index >= 0 ? index + 1 : null;
+  };
 
   // Helper to get progress for a specific task
   const getProgress = (taskId: string) => {
@@ -310,6 +332,60 @@ export default function TasksPage() {
     return `${hours}h ${remainingMins}m`;
   }
 
+  // Drag and drop state for reordering
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+
+  const handleDragStart = (e: React.DragEvent, index: number) => {
+    setDraggedIndex(index);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setDragOverIndex(index);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+    setDragOverIndex(null);
+  };
+
+  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === dropIndex || !tasks) return;
+    
+    // Reorder locally first for immediate feedback
+    const newTasks = [...tasks];
+    const [draggedTask] = newTasks.splice(draggedIndex, 1);
+    newTasks.splice(dropIndex, 0, draggedTask);
+    
+    // Get new order of task IDs
+    const taskIds = newTasks.map(t => t.id);
+    
+    try {
+      await api.post('/tasks/reorder', { taskIds });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Task order updated');
+    } catch (err) {
+      toast.error('Failed to reorder tasks');
+    }
+    
+    handleDragEnd();
+  };
+
+  // Cancel a queued task
+  const cancelQueuedTask = async (taskId: string) => {
+    try {
+      await api.post(`/tasks/${taskId}/dequeue`);
+      toast.success('Task removed from queue');
+      queryClient.invalidateQueries({ queryKey: ['queueStatus'] });
+    } catch (err: any) {
+      toast.error(err?.response?.data?.error || 'Failed to cancel queued task');
+    }
+  };
+
   return (
     <Box>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
@@ -330,10 +406,15 @@ export default function TasksPage() {
         </Button>
       </Box>
 
+      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+        Drag tasks to reorder priority. Top task runs first when multiple tasks are scheduled simultaneously.
+      </Typography>
+
       {isLoading ? <CircularProgress /> : (
         <Table sx={{ '& .MuiTableCell-root': { py: 1.5 } }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'action.hover' }}>
+                  <TableCell sx={{ fontWeight: 600, width: 40 }}></TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Destination</TableCell>
@@ -345,17 +426,67 @@ export default function TasksPage() {
                 </TableRow>
               </TableHead>
           <TableBody>
-            {tasks && tasks.map((t: any) => {
+            {tasks && tasks.map((t: any, index: number) => {
               // Task is running if lastStarted is more recent than lastRun
               const isRunning = t.lastStarted && (!t.lastRun || new Date(t.lastStarted) > new Date(t.lastRun));
+              const isQueued = isTaskQueued(t.id);
+              const queuePosition = getQueuePosition(t.id);
               
               return (
-              <TableRow key={t.id} hover onContextMenu={(e) => handleTaskContextMenu(e, t)}>
+              <TableRow 
+                key={t.id} 
+                hover 
+                onContextMenu={(e) => handleTaskContextMenu(e, t)}
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragEnd={handleDragEnd}
+                onDrop={(e) => handleDrop(e, index)}
+                sx={{
+                  cursor: 'grab',
+                  opacity: draggedIndex === index ? 0.5 : 1,
+                  bgcolor: dragOverIndex === index ? 'action.selected' : 'inherit',
+                  '&:active': { cursor: 'grabbing' },
+                }}
+              >
+                <TableCell sx={{ cursor: 'grab', width: 40 }}>
+                  <GripVertical size={18} style={{ opacity: 0.5 }} />
+                </TableCell>
                 <TableCell>
                   <Typography fontWeight={500}>{t.name}</Typography>
                 </TableCell>
                 <TableCell>
-                  {isRunning ? (
+                  {isQueued ? (
+                    <Box>
+                      <Box 
+                        sx={{ 
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: 1,
+                          bgcolor: 'warning.light',
+                          color: 'warning.dark',
+                        }}
+                      >
+                        <Box 
+                          sx={{ 
+                            width: 8, 
+                            height: 8, 
+                            borderRadius: '50%', 
+                            bgcolor: 'warning.main',
+                            mr: 1,
+                            animation: 'pulse 2s ease-in-out infinite',
+                            '@keyframes pulse': {
+                              '0%, 100%': { opacity: 1 },
+                              '50%': { opacity: 0.3 },
+                            }
+                          }} 
+                        />
+                        Queued{queuePosition && queuePosition > 1 ? ` (#${queuePosition})` : ''}
+                      </Box>
+                    </Box>
+                  ) : isRunning ? (
                     <Box>
                       <Box 
                         sx={{ 
@@ -484,7 +615,17 @@ export default function TasksPage() {
                 </TableCell>
                 <TableCell>{t.maxFiles || '∞'}</TableCell>
                 <TableCell align="right">
-                  {isRunning ? (
+                  {isQueued ? (
+                    <IconButton 
+                      onClick={() => cancelQueuedTask(t.id)} 
+                      title="Cancel queued task"
+                      color="warning"
+                      size="small"
+                      sx={{ mr: 0.5 }}
+                    >
+                      <Square size={18} fill="currentColor" />
+                    </IconButton>
+                  ) : isRunning ? (
                     <IconButton 
                       onClick={async () => { 
                         if (!window.confirm(`Stop running task "${t.name}"?`)) return;
@@ -501,7 +642,7 @@ export default function TasksPage() {
                       size="small"
                       sx={{ mr: 0.5 }}
                     >
-                      <Box component="span" sx={{ fontSize: '1.2rem' }}>⏹</Box>
+                      <Square size={18} fill="currentColor" />
                     </IconButton>
                   ) : (
                     <IconButton 

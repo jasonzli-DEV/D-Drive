@@ -11,7 +11,7 @@ const jobs: Map<string, any> = new Map();
 const running: Map<string, boolean> = new Map();
 
 // Global task queue to serialize backup tasks and prevent bandwidth competition
-const taskQueue: { taskId: string; addedAt: Date }[] = [];
+const taskQueue: { taskId: string; addedAt: Date; priority: number }[] = [];
 let queueProcessing = false;
 
 // Process the task queue one task at a time
@@ -65,7 +65,7 @@ async function processTaskQueue() {
 }
 
 // Add a task to the queue (called by cron scheduler)
-export function queueTask(taskId: string) {
+export async function queueTask(taskId: string) {
   // Check if task is already in queue
   if (taskQueue.some(t => t.taskId === taskId)) {
     logger.info('Task already in queue, skipping', { taskId });
@@ -78,16 +78,24 @@ export function queueTask(taskId: string) {
     return;
   }
   
-  taskQueue.push({ taskId, addedAt: new Date() });
-  logger.info('Task added to queue', { taskId, queuePosition: taskQueue.length });
+  // Get task priority from database
+  const task = await prisma.task.findUnique({ where: { id: taskId }, select: { priority: true } });
+  const priority = task?.priority ?? 999;
+  
+  taskQueue.push({ taskId, addedAt: new Date(), priority });
+  
+  // Sort queue by priority (lower number = higher priority)
+  taskQueue.sort((a, b) => a.priority - b.priority);
+  
+  logger.info('Task added to queue', { taskId, priority, queuePosition: taskQueue.findIndex(t => t.taskId === taskId) + 1, queueLength: taskQueue.length });
   
   // Start processing if not already
   processTaskQueue();
 }
 
 // Queue a task and wait for it to complete (for manual runs)
-export function queueTaskAndWait(taskId: string): Promise<void> {
-  return new Promise((resolve, reject) => {
+export async function queueTaskAndWait(taskId: string): Promise<void> {
+  return new Promise(async (resolve, reject) => {
     // Check if task is already in queue
     if (taskQueue.some(t => t.taskId === taskId)) {
       reject(new Error('Task is already queued'));
@@ -100,11 +108,19 @@ export function queueTaskAndWait(taskId: string): Promise<void> {
       return;
     }
     
+    // Get task priority from database
+    const task = await prisma.task.findUnique({ where: { id: taskId }, select: { priority: true } });
+    const priority = task?.priority ?? 999;
+    
     // Add to pending completions
     pendingCompletions.set(taskId, { resolve, reject });
     
-    taskQueue.push({ taskId, addedAt: new Date() });
-    logger.info('Task added to queue (with wait)', { taskId, queuePosition: taskQueue.length });
+    taskQueue.push({ taskId, addedAt: new Date(), priority });
+    
+    // Sort queue by priority (lower number = higher priority)
+    taskQueue.sort((a, b) => a.priority - b.priority);
+    
+    logger.info('Task added to queue (with wait)', { taskId, priority, queuePosition: taskQueue.findIndex(t => t.taskId === taskId) + 1, queueLength: taskQueue.length });
     
     // Start processing if not already
     processTaskQueue();
@@ -199,11 +215,35 @@ export function rescheduleTask(taskId: string, expression: string) {
   scheduleTask(taskId, expression);
 }
 
+// Remove a task from the queue (cancel a queued task)
+export function dequeueTask(taskId: string): boolean {
+  const index = taskQueue.findIndex(t => t.taskId === taskId);
+  if (index === -1) {
+    return false;
+  }
+  taskQueue.splice(index, 1);
+  
+  // Reject any pending completion
+  const pending = pendingCompletions.get(taskId);
+  if (pending) {
+    pending.reject(new Error('Task was cancelled from queue'));
+    pendingCompletions.delete(taskId);
+  }
+  
+  logger.info('Task removed from queue', { taskId });
+  return true;
+}
+
+// Check if a task is in the queue
+export function isTaskQueued(taskId: string): boolean {
+  return taskQueue.some(t => t.taskId === taskId);
+}
+
 // Get queue status for API
 export function getQueueStatus() {
   return {
     queueLength: taskQueue.length,
-    queuedTasks: taskQueue.map(t => ({ taskId: t.taskId, queuedAt: t.addedAt })),
+    queuedTasks: taskQueue.map(t => ({ taskId: t.taskId, queuedAt: t.addedAt, priority: t.priority })),
     runningTasks: Array.from(running.entries()).filter(([_, isRunning]) => isRunning).map(([taskId]) => taskId),
   };
 }
@@ -214,4 +254,6 @@ export default {
   unscheduleTask,
   rescheduleTask,
   getQueueStatus,
+  dequeueTask,
+  isTaskQueued,
 };

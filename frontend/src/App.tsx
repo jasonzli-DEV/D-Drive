@@ -136,6 +136,9 @@ function App() {
           )
         }
       />
+      
+      {/* Catch-all route for invalid URLs - redirect to home */}
+      <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>
   );

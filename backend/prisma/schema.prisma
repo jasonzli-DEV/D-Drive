@@ -125,6 +125,7 @@ model Task {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name           String
   enabled        Boolean  @default(true)
+  priority       Int      @default(0)  // Lower number = higher priority (0 is highest)
   cron           String   // cron expression
   sftpHost       String
   sftpPort       Int      @default(22)
