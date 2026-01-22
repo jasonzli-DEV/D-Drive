@@ -142,6 +142,8 @@ model Task {
   timestampNames Boolean  @default(true)
   maxFiles       Int      @default(0) // 0 = unlimited
   encrypt        Boolean  @default(false) // whether to encrypt per user's settings
+  skipPrescan    Boolean  @default(false) // skip pre-scan phase for faster start (no progress %)
+  excludePaths   String[] @default([]) // paths to exclude from backup (e.g., ["bluemap", "dynmap"])
   lastRun        DateTime? // when task last completed
   lastStarted    DateTime? // when task last started running
   lastRuntime    Int?      // runtime in seconds of last run

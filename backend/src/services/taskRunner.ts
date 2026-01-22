@@ -490,12 +490,27 @@ export async function runTaskNow(taskId: string) {
       throw new Error('Task was cancelled');
     }
     
-    // Pre-scan to count files and estimate total size
-    updateProgress({ phase: 'scanning' });
-    logger.info('Pre-scanning remote directory for file count...', { taskId, remotePath: task.sftpPath });
+    // Build list of excluded paths for filtering
+    const excludePaths = (task.excludePaths || []).map((p: string) => p.toLowerCase().trim()).filter(Boolean);
+    const isExcluded = (itemPath: string) => {
+      if (excludePaths.length === 0) return false;
+      const lower = itemPath.toLowerCase();
+      return excludePaths.some(exc => {
+        // Match if the path contains the excluded pattern as a segment
+        return lower.includes(`/${exc}/`) || lower.endsWith(`/${exc}`) || lower === exc;
+      });
+    };
     
     let scanFileCount = 0;
     let scanTotalBytes = 0;
+    
+    // Pre-scan to count files and estimate total size (unless skipPrescan is enabled)
+    if (task.skipPrescan) {
+      logger.info('Skipping pre-scan (skipPrescan enabled)', { taskId });
+      updateProgress({ phase: 'downloading', totalFiles: 0, estimatedTotalBytes: 0 });
+    } else {
+      updateProgress({ phase: 'scanning' });
+      logger.info('Pre-scanning remote directory for file count...', { taskId, remotePath: task.sftpPath });
     
     // Try SSH exec for fast scan (works on servers that allow shell commands)
     let execWorked = false;
@@ -558,6 +573,10 @@ export async function runTaskNow(taskId: string) {
         
         const results = await Promise.allSettled(
           batch.map(async (dir) => {
+            // Skip excluded directories
+            if (isExcluded(dir)) {
+              return { subdirs: [], files: 0, bytes: 0 };
+            }
             try {
               const list = await sftp.list(dir);
               const subdirs: string[] = [];
@@ -566,8 +585,11 @@ export async function runTaskNow(taskId: string) {
               
               for (const item of list) {
                 if (item.name === '.' || item.name === '..') continue;
+                const itemPath = path.posix.join(dir, item.name);
+                // Skip excluded paths
+                if (isExcluded(itemPath)) continue;
                 if (item.type === 'd') {
-                  subdirs.push(path.posix.join(dir, item.name));
+                  subdirs.push(itemPath);
                 } else if (item.type === '-') {
                   batchFiles++;
                   batchBytes += item.size || 0;
@@ -598,6 +620,7 @@ export async function runTaskNow(taskId: string) {
     }
     
     logger.info('Pre-scan complete', { taskId, fileCount: scanFileCount, estimatedSize: formatBytes(scanTotalBytes) });
+    } // end if (!task.skipPrescan)
     
     // Update progress with totals
     updateProgress({ 
@@ -754,6 +777,12 @@ export async function runTaskNow(taskId: string) {
             if (it.name === '.' || it.name === '..') continue;
             const remoteFull = path.posix.join(dir, it.name);
             const rel = prefix ? `${prefix}/${it.name}` : it.name;
+            
+            // Skip excluded paths
+            if (isExcluded(remoteFull)) {
+              logger.debug('Skipping excluded path', { taskId, path: remoteFull });
+              continue;
+            }
             
             if (it.type === 'd') {
               dirs.push({ name: it.name, remoteFull, rel });

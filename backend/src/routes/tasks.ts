@@ -50,6 +50,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       maxFiles,
       encrypt,
       enabled,
+      skipPrescan,
+      excludePaths,
     } = req.body;
 
     // Required fields validation
@@ -115,6 +117,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         maxFiles: maxFiles ? Number(maxFiles) : 0,
         encrypt: !!encrypt,
         enabled: enabled === undefined ? true : !!enabled,
+        skipPrescan: !!skipPrescan,
+        excludePaths: Array.isArray(excludePaths) ? excludePaths.filter((p: any) => typeof p === 'string' && p.trim()) : [],
       },
     });
 
