@@ -332,45 +332,67 @@ export default function TasksPage() {
     return `${hours}h ${remainingMins}m`;
   }
 
-  // Drag and drop state for reordering
-  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
-  const [isDragging, setIsDragging] = useState(false);
+  // Drag and drop state for reordering - using drop index
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropIndex, setDropIndex] = useState<number | null>(null);
 
-  const handleDragStart = (e: React.DragEvent, index: number) => {
-    setDraggedIndex(index);
-    setIsDragging(true);
+  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+    setDraggedId(taskId);
     e.dataTransfer.effectAllowed = 'move';
-    // Set a transparent drag image so we only see the drop indicator
-    const img = new Image();
-    img.src = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
-    e.dataTransfer.setDragImage(img, 0, 0);
-  };
-
-  const handleDragOver = (e: React.DragEvent, index: number) => {
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    if (draggedIndex !== null && draggedIndex !== index) {
-      setDragOverIndex(index);
-    }
+    e.dataTransfer.setData('text/plain', taskId);
+    // Use a simple drag image
+    const dragEl = document.createElement('div');
+    dragEl.textContent = tasks?.find(t => t.id === taskId)?.name || 'Task';
+    dragEl.style.cssText = 'position: absolute; top: -1000px; padding: 8px 16px; background: #1976d2; color: white; border-radius: 4px; font-weight: 500;';
+    document.body.appendChild(dragEl);
+    e.dataTransfer.setDragImage(dragEl, 0, 0);
+    setTimeout(() => document.body.removeChild(dragEl), 0);
   };
 
   const handleDragEnd = () => {
-    setDraggedIndex(null);
-    setDragOverIndex(null);
-    setIsDragging(false);
+    setDraggedId(null);
+    setDropIndex(null);
   };
 
-  const handleDrop = async (e: React.DragEvent, dropIndex: number) => {
+  const handleDropZoneDragOver = (e: React.DragEvent, index: number) => {
     e.preventDefault();
-    if (draggedIndex === null || draggedIndex === dropIndex || !tasks) return;
+    e.dataTransfer.dropEffect = 'move';
+    if (draggedId) {
+      setDropIndex(index);
+    }
+  };
+
+  const handleDropZoneDragLeave = () => {
+    setDropIndex(null);
+  };
+
+  const handleDropZoneDrop = async (e: React.DragEvent, insertIndex: number) => {
+    e.preventDefault();
+    if (!draggedId || !tasks) {
+      handleDragEnd();
+      return;
+    }
     
-    // Reorder locally first for immediate feedback
+    const draggedIdx = tasks.findIndex(t => t.id === draggedId);
+    if (draggedIdx === -1) {
+      handleDragEnd();
+      return;
+    }
+    
+    // Don't do anything if dropping in same position
+    if (insertIndex === draggedIdx || insertIndex === draggedIdx + 1) {
+      handleDragEnd();
+      return;
+    }
+    
+    // Build new order
     const newTasks = [...tasks];
-    const [draggedTask] = newTasks.splice(draggedIndex, 1);
-    newTasks.splice(dropIndex, 0, draggedTask);
+    const [draggedTask] = newTasks.splice(draggedIdx, 1);
     
-    // Get new order of task IDs
+    // Adjust insert index if we removed an item before it
+    const adjustedIndex = insertIndex > draggedIdx ? insertIndex - 1 : insertIndex;
+    newTasks.splice(adjustedIndex, 0, draggedTask);
+    
     const taskIds = newTasks.map(t => t.id);
     
     try {
@@ -440,38 +462,33 @@ export default function TasksPage() {
               const isRunning = t.lastStarted && (!t.lastRun || new Date(t.lastStarted) > new Date(t.lastRun));
               const isQueued = isTaskQueued(t.id);
               const queuePosition = getQueuePosition(t.id);
+              const isDragged = draggedId === t.id;
+              const showDropBefore = dropIndex === index && draggedId !== t.id;
               
               return (
               <TableRow 
                 key={t.id} 
                 hover 
                 onContextMenu={(e) => handleTaskContextMenu(e, t)}
-                onDragOver={(e) => handleDragOver(e, index)}
-                onDrop={(e) => handleDrop(e, index)}
+                onDragOver={(e) => handleDropZoneDragOver(e, index)}
+                onDragLeave={handleDropZoneDragLeave}
+                onDrop={(e) => handleDropZoneDrop(e, index)}
                 sx={{
-                  opacity: draggedIndex === index ? 0.3 : 1,
-                  position: 'relative',
-                  // Show drop indicator line when dragging over (but not over self)
-                  '&::before': {
-                    content: dragOverIndex === index && draggedIndex !== index && isDragging ? '""' : 'none',
-                    position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    right: 0,
-                    height: 3,
-                    bgcolor: 'primary.main',
-                    zIndex: 10,
-                  },
+                  opacity: isDragged ? 0.3 : 1,
+                  bgcolor: isDragged ? 'action.disabledBackground' : 'inherit',
+                  borderTop: showDropBefore ? '3px solid' : undefined,
+                  borderTopColor: showDropBefore ? 'primary.main' : undefined,
                 }}
               >
                 <TableCell 
                   sx={{ 
                     cursor: 'grab',
                     width: 40,
+                    userSelect: 'none',
                     '&:active': { cursor: 'grabbing' },
                   }}
                   draggable
-                  onDragStart={(e) => handleDragStart(e, index)}
+                  onDragStart={(e) => handleDragStart(e, t.id)}
                   onDragEnd={handleDragEnd}
                 >
                   <GripVertical size={18} style={{ opacity: 0.5 }} />
@@ -697,6 +714,25 @@ export default function TasksPage() {
               </TableRow>
               );
             })}
+            {/* Drop zone at the end to allow reordering to bottom */}
+            {draggedId && tasks && (
+              <TableRow
+                onDragOver={(e) => handleDropZoneDragOver(e, tasks.length)}
+                onDragLeave={handleDropZoneDragLeave}
+                onDrop={(e) => handleDropZoneDrop(e, tasks.length)}
+                sx={{
+                  height: 48,
+                  borderTop: dropIndex === tasks.length ? '3px solid' : undefined,
+                  borderTopColor: dropIndex === tasks.length ? 'primary.main' : undefined,
+                  bgcolor: dropIndex === tasks.length ? 'action.hover' : 'transparent',
+                  '&:hover': { bgcolor: 'action.hover' },
+                }}
+              >
+                <TableCell colSpan={9} sx={{ textAlign: 'center', color: 'text.secondary', fontStyle: 'italic' }}>
+                  Drop here to move to bottom
+                </TableCell>
+              </TableRow>
+            )}
           </TableBody>
         </Table>
       )}

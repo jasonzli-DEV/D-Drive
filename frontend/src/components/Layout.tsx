@@ -124,7 +124,7 @@ export default function Layout({ children }: LayoutProps) {
         <ListItemIcon>
           <Share2 size={18} />
         </ListItemIcon>
-        <ListItemText primary={"Shared with me"} />
+        <ListItemText primary={"Shared"} />
       </ListItemButton>
       <ListItemButton onClick={() => handleNavigation('/recycle-bin') }>
         <ListItemIcon>
