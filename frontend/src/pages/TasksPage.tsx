@@ -165,7 +165,8 @@ export default function TasksPage() {
     mutationFn: (id: string) => api.post(`/tasks/${id}/run`),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      toast.success('Task run started');
+      queryClient.invalidateQueries({ queryKey: ['queueStatus'] });
+      toast.success('Task queued');
     },
   });
 

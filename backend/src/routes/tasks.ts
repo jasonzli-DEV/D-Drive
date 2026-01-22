@@ -5,7 +5,7 @@ import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow, stopTask, isTaskRunning, getTaskProgress, getAllRunningTasksProgress } from '../services/taskRunner';
 import { testSftpConnection } from '../services/sftp';
-import scheduler, { queueTaskAndWait, getQueueStatus, dequeueTask, isTaskQueued } from '../services/scheduler';
+import scheduler, { queueTask, getQueueStatus, dequeueTask, isTaskQueued } from '../services/scheduler';
 
 function isValidCronExpression(expr: string | undefined) {
   if (!expr) return false;
@@ -313,22 +313,20 @@ router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
     const task = await prisma.task.findUnique({ where: { id } });
     if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
     
-    // Use queue to serialize with other tasks and prevent bandwidth competition
-    await queueTaskAndWait(id);
-    const updated = await prisma.task.update({ where: { id }, data: { lastRun: new Date() } });
-    res.json({ ok: true, task: updated });
+    // Check if already running or queued
+    if (isTaskRunning(id)) {
+      return res.status(409).json({ error: 'Task is already running' });
+    }
+    if (isTaskQueued(id)) {
+      return res.status(409).json({ error: 'Task is already queued' });
+    }
+    
+    // Add to queue (doesn't wait for completion)
+    await queueTask(id);
+    res.json({ ok: true, queued: true });
   } catch (err: any) {
-    // Check if it's the "already running" or "already queued" error
-    if (err?.message === 'Task is already running' || err?.message === 'Task is already queued') {
-      return res.status(409).json({ error: err.message });
-    }
-    // If task was cancelled from queue, that's ok - user explicitly stopped it
-    if (err?.message === 'Task was cancelled from queue' || err?.message === 'Task was cancelled') {
-      logger.info('Task run cancelled', { taskId: req.params.id });
-      return res.json({ ok: true, cancelled: true });
-    }
-    logger.error('Error running task', err);
-    res.status(500).json({ error: 'Failed to run task' });
+    logger.error('Error queueing task', err);
+    res.status(500).json({ error: 'Failed to queue task' });
   }
 });
 
