@@ -87,6 +87,30 @@ export default function TasksPage() {
     refetchInterval: 3000, // Auto-refresh every 3 seconds to update status
   });
 
+  // Fetch running tasks progress
+  const { data: runningProgress } = useQuery<{ tasks: { taskId: string; progress: any }[] }>({
+    queryKey: ['runningTasksProgress'],
+    queryFn: async () => {
+      const resp = await api.get('/tasks/running/progress');
+      return resp.data;
+    },
+    staleTime: 1000,
+    refetchInterval: 2000, // Update progress every 2 seconds
+  });
+
+  // Helper to get progress for a specific task
+  const getProgress = (taskId: string) => {
+    return runningProgress?.tasks?.find(t => t.taskId === taskId)?.progress;
+  };
+
+  // Helper to format bytes
+  const formatBytes = (bytes: number) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
   const { data: allFolders } = useQuery<any[]>({
     queryKey: ['allFoldersForTasks'],
     queryFn: async () => {
@@ -331,32 +355,47 @@ export default function TasksPage() {
                 </TableCell>
                 <TableCell>
                   {isRunning ? (
-                    <Box 
-                      sx={{ 
-                        display: 'inline-flex',
-                        alignItems: 'center',
-                        px: 1.5,
-                        py: 0.5,
-                        borderRadius: 1,
-                        bgcolor: '#e3f2fd',
-                        color: '#1565c0'
-                      }}
-                    >
+                    <Box>
                       <Box 
                         sx={{ 
-                          width: 8, 
-                          height: 8, 
-                          borderRadius: '50%', 
-                          bgcolor: '#2196f3',
-                          mr: 1,
-                          animation: 'pulse 2s ease-in-out infinite',
-                          '@keyframes pulse': {
-                            '0%, 100%': { opacity: 1 },
-                            '50%': { opacity: 0.3 },
-                          }
-                        }} 
-                      />
-                      Running
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          px: 1.5,
+                          py: 0.5,
+                          borderRadius: 1,
+                          bgcolor: '#e3f2fd',
+                          color: '#1565c0'
+                        }}
+                      >
+                        <Box 
+                          sx={{ 
+                            width: 8, 
+                            height: 8, 
+                            borderRadius: '50%', 
+                            bgcolor: '#2196f3',
+                            mr: 1,
+                            animation: 'pulse 2s ease-in-out infinite',
+                            '@keyframes pulse': {
+                              '0%, 100%': { opacity: 1 },
+                              '50%': { opacity: 0.3 },
+                            }
+                          }} 
+                        />
+                        Running
+                      </Box>
+                      {/* Show progress if available */}
+                      {(() => {
+                        const progress = getProgress(t.id);
+                        if (!progress) return null;
+                        return (
+                          <Box sx={{ mt: 0.5, fontSize: '0.75rem', color: '#666' }}>
+                            <Box>{progress.phase === 'downloading' ? 'Downloading' : progress.phase === 'archiving' ? 'Creating archive' : progress.phase === 'uploading' ? 'Uploading to Discord' : progress.phase}</Box>
+                            <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
+                            {progress.currentDir && <Box sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
+                            {progress.reconnects > 0 && <Box sx={{ color: '#f57c00' }}>{progress.reconnects} reconnects</Box>}
+                          </Box>
+                        );
+                      })()}
                     </Box>
                   ) : (
                     <Box 

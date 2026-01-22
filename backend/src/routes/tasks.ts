@@ -2,9 +2,9 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient, CompressFormat } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
-import { runTaskNow, stopTask } from '../services/taskRunner';
+import { runTaskNow, stopTask, isTaskRunning, getTaskProgress, getAllRunningTasksProgress } from '../services/taskRunner';
 import { testSftpConnection } from '../services/sftp';
-import scheduler from '../services/scheduler';
+import scheduler, { queueTaskAndWait } from '../services/scheduler';
 
 function isValidCronExpression(expr: string | undefined) {
   if (!expr) return false;
@@ -218,21 +218,22 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
   }
 });
 
-// Trigger run now (for testing) - in future this will invoke the task runner
+// Trigger run now (for testing) - uses queue to serialize with scheduled tasks
 router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
     const task = await prisma.task.findUnique({ where: { id } });
     if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
-    // Execute the runner now and update lastRun when complete.
-    await runTaskNow(id);
+    
+    // Use queue to serialize with other tasks and prevent bandwidth competition
+    await queueTaskAndWait(id);
     const updated = await prisma.task.update({ where: { id }, data: { lastRun: new Date() } });
     res.json({ ok: true, task: updated });
   } catch (err: any) {
-    // Check if it's the "already running" error
-    if (err?.message === 'Task is already running') {
-      return res.status(409).json({ error: 'This task is already running. Please wait for it to complete or stop it first.' });
+    // Check if it's the "already running" or "already queued" error
+    if (err?.message === 'Task is already running' || err?.message === 'Task is already queued') {
+      return res.status(409).json({ error: err.message });
     }
     logger.error('Error running task', err);
     res.status(500).json({ error: 'Failed to run task' });
@@ -252,6 +253,46 @@ router.post('/:id/stop', authenticate, async (req: Request, res: Response) => {
   } catch (err) {
     logger.error('Error stopping task', err);
     res.status(500).json({ error: 'Failed to stop task' });
+  }
+});
+
+// Get progress of a specific running task
+router.get('/:id/progress', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+    const task = await prisma.task.findUnique({ where: { id } });
+    if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
+    
+    const progress = getTaskProgress(id);
+    if (!progress) {
+      return res.json({ running: false, progress: null });
+    }
+    res.json({ running: true, progress });
+  } catch (err) {
+    logger.error('Error getting task progress', err);
+    res.status(500).json({ error: 'Failed to get task progress' });
+  }
+});
+
+// Get progress of all running tasks
+router.get('/running/progress', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const allProgress = getAllRunningTasksProgress();
+    
+    // Filter to only tasks owned by this user
+    const userTasks = await prisma.task.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    const userTaskIds = new Set(userTasks.map(t => t.id));
+    
+    const userProgress = allProgress.filter(p => userTaskIds.has(p.taskId));
+    res.json({ tasks: userProgress });
+  } catch (err) {
+    logger.error('Error getting running tasks progress', err);
+    res.status(500).json({ error: 'Failed to get running tasks progress' });
   }
 });
 

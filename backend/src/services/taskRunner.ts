@@ -10,12 +10,52 @@ import { deleteChunkFromDiscord } from './discord';
 
 const prisma = new PrismaClient();
 
-// Track running tasks and their cancellation flags
-const runningTasks = new Map<string, { cancelled: boolean; tmpDir: string | null }>();
+// Track running tasks, their cancellation flags, and progress
+interface TaskRunInfo {
+  cancelled: boolean;
+  tmpDir: string | null;
+  progress?: {
+    phase: 'connecting' | 'downloading' | 'archiving' | 'uploading' | 'complete';
+    filesProcessed: number;
+    totalBytes: number;
+    currentDir?: string;
+    reconnects: number;
+    startTime: Date;
+  };
+}
+
+const runningTasks = new Map<string, TaskRunInfo>();
 
 // Check if a task is currently running
 export function isTaskRunning(taskId: string): boolean {
   return runningTasks.has(taskId);
+}
+
+// Get task progress for API
+export function getTaskProgress(taskId: string) {
+  const info = runningTasks.get(taskId);
+  if (!info?.progress) return null;
+  return {
+    ...info.progress,
+    elapsedMs: Date.now() - info.progress.startTime.getTime(),
+  };
+}
+
+// Get all running tasks with their progress
+export function getAllRunningTasksProgress() {
+  const result: { taskId: string; progress: any }[] = [];
+  runningTasks.forEach((info, taskId) => {
+    if (info.progress) {
+      result.push({
+        taskId,
+        progress: {
+          ...info.progress,
+          elapsedMs: Date.now() - info.progress.startTime.getTime(),
+        },
+      });
+    }
+  });
+  return result;
 }
 
 // Stop a running task
@@ -314,8 +354,26 @@ export async function runTaskNow(taskId: string) {
   const startTime = new Date();
   let tmpDir: string | null = null;
   
-  // Track this task as running
-  runningTasks.set(taskId, { cancelled: false, tmpDir: null });
+  // Track this task as running with progress
+  runningTasks.set(taskId, { 
+    cancelled: false, 
+    tmpDir: null,
+    progress: {
+      phase: 'connecting',
+      filesProcessed: 0,
+      totalBytes: 0,
+      reconnects: 0,
+      startTime,
+    }
+  });
+  
+  // Helper to update progress
+  const updateProgress = (updates: Partial<TaskRunInfo['progress']>) => {
+    const info = runningTasks.get(taskId);
+    if (info?.progress) {
+      Object.assign(info.progress, updates);
+    }
+  };
   
   try {
     const task = await prisma.task.findUnique({ where: { id: taskId }, include: { user: true } });
@@ -345,6 +403,10 @@ export async function runTaskNow(taskId: string) {
     const destinationId = await ensureTaskDestination(task);
     
     let sftp = new SftpClient();
+    
+    // Increase max listeners to prevent warnings during parallel downloads
+    // Each parallel download adds listeners, so we need more than the default 10
+    sftp.client.setMaxListeners(50);
 
     // Attempt connections based on task auth preferences. If both methods are allowed,
     // try password first then private key (password may be desired by some servers).
@@ -379,6 +441,7 @@ export async function runTaskNow(taskId: string) {
           try { await sftp.end(); } catch (endErr) { /* ignore */ }
           // Create new client and connect
           sftp = new SftpClient();
+          sftp.client.setMaxListeners(50); // Increase for parallel downloads
           await sftp.connect(workingConfig);
           logger.info('SFTP reconnected successfully', { taskId });
           return true;
@@ -620,9 +683,16 @@ export async function runTaskNow(taskId: string) {
               }
             }));
             
-            // Log progress every batch
+            // Log progress every batch and update progress tracker
             if (filesAdded % 100 === 0 || i + BATCH_SIZE >= files.length) {
               logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts, dir });
+              updateProgress({
+                phase: 'downloading',
+                filesProcessed: filesAdded,
+                totalBytes,
+                currentDir: dir,
+                reconnects: reconnectAttempts,
+              });
             }
           }
           
@@ -639,6 +709,7 @@ export async function runTaskNow(taskId: string) {
       await streamRemoteToArchive(task.sftpPath);
       
       logger.info('Finalizing archive', { taskId, filesAdded, totalBytes: formatBytes(totalBytes) });
+      updateProgress({ phase: 'archiving', filesProcessed: filesAdded, totalBytes });
       
       // Finalize the archive
       await archive.finalize();
@@ -665,9 +736,11 @@ export async function runTaskNow(taskId: string) {
         : archiveName;
       
       logger.info('Uploading archive', { finalName, shouldEncrypt, hasEncryptionKey: !!task.user?.encryptionKey });
+      updateProgress({ phase: 'uploading' });
       await storeFileFromPath(task.userId, destinationId, finalName, archivePath, undefined, shouldEncrypt);
       
       logger.info('Archive uploaded to Discord', { taskId, finalName });
+      updateProgress({ phase: 'complete' });
 
     } else {
       // Non-compressed: download each file to disk, then upload individually

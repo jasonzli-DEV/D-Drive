@@ -26,6 +26,12 @@ async function processTaskQueue() {
     // Skip if this task is already running (shouldn't happen but be safe)
     if (running.get(taskId)) {
       logger.info('Skipping queued task; already running', { taskId });
+      // Notify any waiting callers
+      const pending = pendingCompletions.get(taskId);
+      if (pending) {
+        pending.reject(new Error('Task is already running'));
+        pendingCompletions.delete(taskId);
+      }
       continue;
     }
     
@@ -33,12 +39,25 @@ async function processTaskQueue() {
     const waitTime = Date.now() - addedAt.getTime();
     logger.info('Processing queued task', { taskId, queueWaitMs: waitTime, remainingInQueue: taskQueue.length });
     
+    let taskError: Error | null = null;
     try {
       await runTaskNow(taskId);
-    } catch (err) {
+    } catch (err: any) {
       logger.error('Scheduled task run failed', { taskId, err });
+      taskError = err instanceof Error ? err : new Error(String(err));
     } finally {
       running.set(taskId, false);
+      
+      // Notify any waiting callers
+      const pending = pendingCompletions.get(taskId);
+      if (pending) {
+        if (taskError) {
+          pending.reject(taskError);
+        } else {
+          pending.resolve();
+        }
+        pendingCompletions.delete(taskId);
+      }
     }
   }
   
@@ -46,7 +65,7 @@ async function processTaskQueue() {
 }
 
 // Add a task to the queue (called by cron scheduler)
-function queueTask(taskId: string) {
+export function queueTask(taskId: string) {
   // Check if task is already in queue
   if (taskQueue.some(t => t.taskId === taskId)) {
     logger.info('Task already in queue, skipping', { taskId });
@@ -65,6 +84,35 @@ function queueTask(taskId: string) {
   // Start processing if not already
   processTaskQueue();
 }
+
+// Queue a task and wait for it to complete (for manual runs)
+export function queueTaskAndWait(taskId: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Check if task is already in queue
+    if (taskQueue.some(t => t.taskId === taskId)) {
+      reject(new Error('Task is already queued'));
+      return;
+    }
+    
+    // Check if task is currently running
+    if (running.get(taskId)) {
+      reject(new Error('Task is already running'));
+      return;
+    }
+    
+    // Add to pending completions
+    pendingCompletions.set(taskId, { resolve, reject });
+    
+    taskQueue.push({ taskId, addedAt: new Date() });
+    logger.info('Task added to queue (with wait)', { taskId, queuePosition: taskQueue.length });
+    
+    // Start processing if not already
+    processTaskQueue();
+  });
+}
+
+// Track pending completions for queueTaskAndWait
+const pendingCompletions = new Map<string, { resolve: () => void; reject: (err: Error) => void }>();
 
 export async function initScheduler() {
   try {
@@ -151,9 +199,19 @@ export function rescheduleTask(taskId: string, expression: string) {
   scheduleTask(taskId, expression);
 }
 
+// Get queue status for API
+export function getQueueStatus() {
+  return {
+    queueLength: taskQueue.length,
+    queuedTasks: taskQueue.map(t => ({ taskId: t.taskId, queuedAt: t.addedAt })),
+    runningTasks: Array.from(running.entries()).filter(([_, isRunning]) => isRunning).map(([taskId]) => taskId),
+  };
+}
+
 export default {
   initScheduler,
   scheduleTask,
   unscheduleTask,
   rescheduleTask,
+  getQueueStatus,
 };
