@@ -202,6 +202,28 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
   }
 });
 
+// Get progress of all running tasks
+// IMPORTANT: This must be before /:id routes to avoid "running" being matched as an ID
+router.get('/running/progress', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const allProgress = getAllRunningTasksProgress();
+    
+    // Filter to only tasks owned by this user
+    const userTasks = await prisma.task.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    const userTaskIds = new Set(userTasks.map(t => t.id));
+    
+    const userProgress = allProgress.filter(p => userTaskIds.has(p.taskId));
+    res.json({ tasks: userProgress });
+  } catch (err) {
+    logger.error('Error getting running tasks progress', err);
+    res.status(500).json({ error: 'Failed to get running tasks progress' });
+  }
+});
+
 // Delete task
 router.delete('/:id', authenticate, async (req: Request, res: Response) => {
   try {
@@ -273,27 +295,6 @@ router.get('/:id/progress', authenticate, async (req: Request, res: Response) =>
   } catch (err) {
     logger.error('Error getting task progress', err);
     res.status(500).json({ error: 'Failed to get task progress' });
-  }
-});
-
-// Get progress of all running tasks
-router.get('/running/progress', authenticate, async (req: Request, res: Response) => {
-  try {
-    const userId = (req as any).user.userId;
-    const allProgress = getAllRunningTasksProgress();
-    
-    // Filter to only tasks owned by this user
-    const userTasks = await prisma.task.findMany({
-      where: { userId },
-      select: { id: true },
-    });
-    const userTaskIds = new Set(userTasks.map(t => t.id));
-    
-    const userProgress = allProgress.filter(p => userTaskIds.has(p.taskId));
-    res.json({ tasks: userProgress });
-  } catch (err) {
-    logger.error('Error getting running tasks progress', err);
-    res.status(500).json({ error: 'Failed to get running tasks progress' });
   }
 });
 
