@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import { createContext, useContext, useEffect, useState, ReactNode, useMemo } from 'react';
 import { ThemeProvider as MuiThemeProvider, createTheme, CssBaseline } from '@mui/material';
+import api from '../lib/api';
 
 type ThemeMode = 'light' | 'dark' | 'auto';
 
@@ -26,15 +27,28 @@ function getSystemPreference(): 'light' | 'dark' {
   return 'light';
 }
 
-interface ThemeProviderProps {
-  children: ReactNode;
-  initialMode?: ThemeMode;
+// Get initial mode from localStorage immediately (no async)
+function getInitialMode(): ThemeMode {
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem('theme');
+    if (stored === 'light' || stored === 'dark' || stored === 'auto') {
+      return stored;
+    }
+  }
+  return 'auto';
 }
 
-export function ThemeProvider({ children, initialMode = 'auto' }: ThemeProviderProps) {
-  const [mode, setMode] = useState<ThemeMode>(initialMode);
-  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>(getSystemPreference());
+interface ThemeProviderProps {
+  children: ReactNode;
+}
 
+export function ThemeProvider({ children }: ThemeProviderProps) {
+  // Initialize from localStorage immediately to prevent flash
+  const [mode, setModeState] = useState<ThemeMode>(getInitialMode);
+  const [systemPreference, setSystemPreference] = useState<'light' | 'dark'>(getSystemPreference());
+  const [hasSyncedWithServer, setHasSyncedWithServer] = useState(false);
+
+  // Listen for system preference changes
   useEffect(() => {
     const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
@@ -45,9 +59,62 @@ export function ThemeProvider({ children, initialMode = 'auto' }: ThemeProviderP
     return () => mediaQuery.removeEventListener('change', handler);
   }, []);
 
+  // Sync with server on mount (only if authenticated)
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (!token || hasSyncedWithServer) return;
+
+    (async () => {
+      try {
+        const response = await api.get('/me');
+        const serverTheme = response.data?.theme;
+        if (serverTheme && (serverTheme === 'light' || serverTheme === 'dark' || serverTheme === 'auto')) {
+          // Update local state and storage if server has different value
+          if (serverTheme !== mode) {
+            setModeState(serverTheme);
+            localStorage.setItem('theme', serverTheme);
+          }
+        }
+      } catch (err) {
+        // Ignore errors - keep using local value
+      } finally {
+        setHasSyncedWithServer(true);
+      }
+    })();
+  }, [hasSyncedWithServer, mode]);
+
+  // Set mode and persist to both localStorage and server
+  const setMode = async (newMode: ThemeMode) => {
+    setModeState(newMode);
+    localStorage.setItem('theme', newMode);
+    
+    // Save to server in background
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        await api.patch('/me', { theme: newMode });
+      } catch (err) {
+        console.error('Failed to save theme to server:', err);
+      }
+    }
+  };
+
   const effectiveMode = mode === 'auto' ? systemPreference : mode;
 
-  const theme = createTheme({
+  // Apply dark mode class to document immediately for any CSS that needs it
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', effectiveMode);
+    // Also set a class for CSS targeting
+    if (effectiveMode === 'dark') {
+      document.documentElement.classList.add('dark');
+      document.documentElement.classList.remove('light');
+    } else {
+      document.documentElement.classList.add('light');
+      document.documentElement.classList.remove('dark');
+    }
+  }, [effectiveMode]);
+
+  const theme = useMemo(() => createTheme({
     palette: {
       mode: effectiveMode,
       ...(effectiveMode === 'dark' ? {
@@ -94,7 +161,7 @@ export function ThemeProvider({ children, initialMode = 'auto' }: ThemeProviderP
         },
       },
     },
-  });
+  }), [effectiveMode]);
 
   return (
     <ThemeContext.Provider value={{ mode, setMode, effectiveMode }}>

@@ -5,7 +5,7 @@ import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow, stopTask, isTaskRunning, getTaskProgress, getAllRunningTasksProgress } from '../services/taskRunner';
 import { testSftpConnection } from '../services/sftp';
-import scheduler, { queueTaskAndWait } from '../services/scheduler';
+import scheduler, { queueTaskAndWait, getQueueStatus, dequeueTask, isTaskQueued } from '../services/scheduler';
 
 function isValidCronExpression(expr: string | undefined) {
   if (!expr) return false;
@@ -16,11 +16,11 @@ function isValidCronExpression(expr: string | undefined) {
 const router = Router();
 
 
-// List tasks for current user
+// List tasks for current user (ordered by priority)
 router.get('/', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const tasks = await prisma.task.findMany({ where: { userId }, orderBy: { createdAt: 'desc' } });
+    const tasks = await prisma.task.findMany({ where: { userId }, orderBy: { priority: 'asc' } });
     res.json(tasks);
   } catch (err) {
     logger.error('Error listing tasks', err);
@@ -224,6 +224,66 @@ router.get('/running/progress', authenticate, async (req: Request, res: Response
   }
 });
 
+// Get queue status (queued and running tasks)
+// IMPORTANT: This must be before /:id routes
+router.get('/queue/status', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const status = getQueueStatus();
+    
+    // Filter to only tasks owned by this user
+    const userTasks = await prisma.task.findMany({
+      where: { userId },
+      select: { id: true },
+    });
+    const userTaskIds = new Set(userTasks.map(t => t.id));
+    
+    res.json({
+      queueLength: status.queueLength,
+      queuedTasks: status.queuedTasks.filter(t => userTaskIds.has(t.taskId)),
+      runningTasks: status.runningTasks.filter(id => userTaskIds.has(id)),
+    });
+  } catch (err) {
+    logger.error('Error getting queue status', err);
+    res.status(500).json({ error: 'Failed to get queue status' });
+  }
+});
+
+// Update task priorities (reorder tasks)
+router.post('/reorder', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { taskIds } = req.body; // Array of task IDs in desired priority order
+    
+    if (!Array.isArray(taskIds)) {
+      return res.status(400).json({ error: 'taskIds must be an array' });
+    }
+    
+    // Verify all tasks belong to this user
+    const userTasks = await prisma.task.findMany({
+      where: { userId, id: { in: taskIds } },
+      select: { id: true },
+    });
+    
+    if (userTasks.length !== taskIds.length) {
+      return res.status(400).json({ error: 'Some tasks not found or not owned by user' });
+    }
+    
+    // Update priorities based on order (index 0 = priority 0, etc.)
+    for (let i = 0; i < taskIds.length; i++) {
+      await prisma.task.update({
+        where: { id: taskIds[i] },
+        data: { priority: i },
+      });
+    }
+    
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Error reordering tasks', err);
+    res.status(500).json({ error: 'Failed to reorder tasks' });
+  }
+});
+
 // Delete task
 router.delete('/:id', authenticate, async (req: Request, res: Response) => {
   try {
@@ -276,6 +336,25 @@ router.post('/:id/stop', authenticate, async (req: Request, res: Response) => {
   } catch (err) {
     logger.error('Error stopping task', err);
     res.status(500).json({ error: 'Failed to stop task' });
+  }
+});
+
+// Cancel a queued task (remove from queue)
+router.post('/:id/dequeue', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+    const task = await prisma.task.findUnique({ where: { id } });
+    if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
+    
+    const removed = dequeueTask(id);
+    if (!removed) {
+      return res.status(400).json({ error: 'Task is not in queue' });
+    }
+    res.json({ ok: true });
+  } catch (err) {
+    logger.error('Error dequeuing task', err);
+    res.status(500).json({ error: 'Failed to dequeue task' });
   }
 });
 

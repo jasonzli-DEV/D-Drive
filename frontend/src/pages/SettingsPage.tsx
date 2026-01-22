@@ -104,15 +104,13 @@ export default function SettingsPage() {
         if (typeof resp.data?.allowSharedWithMe === 'boolean') {
           setAllowSharedWithMe(resp.data.allowSharedWithMe);
         }
-        if (resp.data?.theme && ['light', 'dark', 'auto'].includes(resp.data.theme)) {
-          setMode(resp.data.theme as 'light' | 'dark' | 'auto');
-        }
+        // Theme is already synced by ThemeContext, no need to call setMode here
       } catch (err) {
         // ignore
       }
     })();
     return () => { mounted = false; };
-  }, [setMode]);
+  }, []);
 
   const updatePref = async (key: string, value: boolean) => {
     try {
@@ -126,15 +124,11 @@ export default function SettingsPage() {
     }
   };
 
-  const handleThemeChange = async (_: React.MouseEvent<HTMLElement>, newMode: 'light' | 'dark' | 'auto' | null) => {
+  const handleThemeChange = (_: React.MouseEvent<HTMLElement>, newMode: 'light' | 'dark' | 'auto' | null) => {
     if (newMode === null) return; // Prevent deselection
-    try {
-      await api.patch('/me', { theme: newMode });
-      setMode(newMode);
-      toast.success('Theme updated');
-    } catch (err) {
-      toast.error('Failed to update theme');
-    }
+    // setMode now handles both localStorage and API saving
+    setMode(newMode);
+    toast.success('Theme updated');
   };
 
   
