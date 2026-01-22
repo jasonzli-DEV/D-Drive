@@ -1,4 +1,4 @@
-import { Client, GatewayIntentBits, TextChannel, Message, AttachmentBuilder } from 'discord.js';
+import { Client, GatewayIntentBits, TextChannel, Message, AttachmentBuilder, Events } from 'discord.js';
 import { REST } from '@discordjs/rest';
 import { logger } from '../utils/logger';
 
@@ -33,8 +33,8 @@ export async function initDiscordBot(): Promise<Client> {
 
   await client.login(process.env.DISCORD_BOT_TOKEN);
 
-  // Use clientReady instead of deprecated ready event (changed in discord.js v15)
-  client.once('ready', () => {
+  // Use Events.ClientReady instead of deprecated 'ready' string (discord.js v15)
+  client.once(Events.ClientReady, () => {
     logger.info(`Discord bot logged in as ${client.user?.tag}`);
   });
 
