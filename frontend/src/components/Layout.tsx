@@ -12,9 +12,10 @@ import {
   ListItemButton,
   ListItemIcon,
   ListItemText,
+  Divider,
 } from '@mui/material';
 import { Settings, LogOut } from 'lucide-react';
-import { Home, Play, Plus } from 'lucide-react';
+import { Home, Play, Plus, Trash2, Share2 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
@@ -179,6 +180,21 @@ export default function Layout({ children }: LayoutProps) {
                     <Play size={18} />
                   </ListItemIcon>
                   <ListItemText primary={"Tasks"} />
+                </ListItemButton>
+                
+                <Divider sx={{ my: 1 }} />
+                
+                <ListItemButton onClick={() => navigate('/shared') }>
+                  <ListItemIcon>
+                    <Share2 size={18} />
+                  </ListItemIcon>
+                  <ListItemText primary={"Shared with me"} />
+                </ListItemButton>
+                <ListItemButton onClick={() => navigate('/recycle-bin') }>
+                  <ListItemIcon>
+                    <Trash2 size={18} />
+                  </ListItemIcon>
+                  <ListItemText primary={"Recycle Bin"} />
                 </ListItemButton>
             </List>
           </Box>

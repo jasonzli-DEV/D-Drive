@@ -48,6 +48,7 @@ import {
   ChevronLeft,
   ChevronDown,
   X,
+  Share2,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -125,6 +126,10 @@ export default function DrivePage() {
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  // Share dialog state
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [shareUsername, setShareUsername] = useState('');
+  const [sharePermission, setSharePermission] = useState<'VIEW' | 'EDIT' | 'ADMIN'>('VIEW');
   // Track which file ID we've loaded to prevent redundant fetches
   const loadedImageIdRef = useRef<string | null>(null);
 
@@ -351,6 +356,23 @@ export default function DrivePage() {
       toast.error(err?.response?.data?.error || 'Failed to copy file');
       // Remove any pending progress entries
       setCopyProgress(prev => prev.filter(p => !p.id || !p.id.startsWith('temp-')));
+    },
+  });
+
+  // Share mutation
+  const shareMutation = useMutation({
+    mutationFn: async (vars: { fileId: string; username: string; permission: string }) => {
+      const resp = await api.post('/shares', vars);
+      return resp.data;
+    },
+    onSuccess: (data) => {
+      toast.success(data.message || 'File shared successfully');
+      setShareDialogOpen(false);
+      setShareUsername('');
+      setSelectedFile(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to share file');
     },
   });
 
@@ -1262,6 +1284,12 @@ export default function DrivePage() {
         setTargetFolderId('');
         setMoveDialogOpen(true);
         break;
+      case 'share':
+        setSelectedFile(menuFile);
+        setShareUsername('');
+        setSharePermission('VIEW');
+        setShareDialogOpen(true);
+        break;
       case 'delete':
         (async () => {
           try {
@@ -1720,6 +1748,12 @@ export default function DrivePage() {
               </ListItemIcon>
               <ListItemText>Move</ListItemText>
             </MenuItem>
+            <MenuItem onClick={() => handleMenuAction('share')}>
+              <ListItemIcon>
+                <Share2 size={18} />
+              </ListItemIcon>
+              <ListItemText>Share</ListItemText>
+            </MenuItem>
             <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
               <ListItemIcon sx={{ color: 'inherit' }}>
                 <Trash2 size={18} />
@@ -1954,6 +1988,52 @@ export default function DrivePage() {
             disabled={!newName || renameIsLoading}
           >
             Rename
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Share Dialog */}
+      <Dialog open={shareDialogOpen} onClose={() => setShareDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Share "{selectedFile?.name}"</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="Username"
+            fullWidth
+            value={shareUsername}
+            onChange={(e) => setShareUsername(e.target.value)}
+            placeholder="Enter Discord username to share with"
+            helperText="The user must have an account on D-Drive"
+            sx={{ mb: 2 }}
+          />
+          <TextField
+            select
+            margin="dense"
+            label="Permission"
+            fullWidth
+            value={sharePermission}
+            onChange={(e) => setSharePermission(e.target.value as 'VIEW' | 'EDIT' | 'ADMIN')}
+            SelectProps={{ native: true }}
+          >
+            <option value="VIEW">View only - Can view and download</option>
+            <option value="EDIT">Edit - Can view, download, and rename</option>
+            <option value="ADMIN">Admin - Full control including delete and reshare</option>
+          </TextField>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setShareDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => selectedFile && shareMutation.mutate({ 
+              fileId: selectedFile.id, 
+              username: shareUsername, 
+              permission: sharePermission 
+            })}
+            variant="contained"
+            disabled={!shareUsername || shareMutation.isPending}
+            startIcon={<Share2 size={18} />}
+          >
+            {shareMutation.isPending ? 'Sharing...' : 'Share'}
           </Button>
         </DialogActions>
       </Dialog>

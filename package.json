@@ -1,6 +1,6 @@
 {
   "name": "d-drive",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Discord-based cloud storage system with Google Drive-like interface",
   "main": "index.js",
   "scripts": {

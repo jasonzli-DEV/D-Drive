@@ -15,9 +15,11 @@ interface TaskRunInfo {
   cancelled: boolean;
   tmpDir: string | null;
   progress?: {
-    phase: 'connecting' | 'downloading' | 'archiving' | 'uploading' | 'complete';
+    phase: 'connecting' | 'scanning' | 'downloading' | 'archiving' | 'uploading' | 'complete';
     filesProcessed: number;
-    totalBytes: number;
+    totalFiles: number;          // Total files to process (from pre-scan)
+    totalBytes: number;          // Bytes downloaded so far
+    estimatedTotalBytes: number; // Estimated total bytes (from pre-scan)
     currentDir?: string;
     reconnects: number;
     startTime: Date;
@@ -361,7 +363,9 @@ export async function runTaskNow(taskId: string) {
     progress: {
       phase: 'connecting',
       filesProcessed: 0,
+      totalFiles: 0,
       totalBytes: 0,
+      estimatedTotalBytes: 0,
       reconnects: 0,
       startTime,
     }
@@ -485,6 +489,41 @@ export async function runTaskNow(taskId: string) {
     if (runningTasks.get(taskId)?.cancelled) {
       throw new Error('Task was cancelled');
     }
+    
+    // Pre-scan to count files and estimate total size (quick recursive scan)
+    updateProgress({ phase: 'scanning' });
+    logger.info('Pre-scanning remote directory for file count...', { taskId, remotePath: task.sftpPath });
+    
+    let scanFileCount = 0;
+    let scanTotalBytes = 0;
+    
+    async function quickScan(dir: string) {
+      if (runningTasks.get(taskId)?.cancelled) return;
+      try {
+        const list = await sftp.list(dir);
+        for (const item of list) {
+          if (item.name === '.' || item.name === '..') continue;
+          if (item.type === 'd') {
+            await quickScan(path.posix.join(dir, item.name));
+          } else if (item.type === '-') {
+            scanFileCount++;
+            scanTotalBytes += item.size || 0;
+          }
+        }
+      } catch (err) {
+        // Ignore errors during scan, we'll handle them during actual download
+        logger.warn('Error during pre-scan, skipping directory', { dir, err });
+      }
+    }
+    
+    await quickScan(task.sftpPath);
+    logger.info('Pre-scan complete', { taskId, fileCount: scanFileCount, estimatedSize: formatBytes(scanTotalBytes) });
+    
+    // Update progress with totals
+    updateProgress({ 
+      totalFiles: scanFileCount, 
+      estimatedTotalBytes: scanTotalBytes 
+    });
 
     // Determine encryption preference: task explicit OR user's default
     const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);

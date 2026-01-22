@@ -276,17 +276,211 @@ Content-Type: application/json
 ```
 
 #### Delete File/Folder
-Delete a file or folder.
+Delete a file or folder. Files are moved to recycle bin by default.
 
 ```http
 DELETE /files/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body (optional):**
+```json
+{
+  "recursive": true,
+  "permanent": false
+}
+```
+
+- `recursive`: Required for non-empty directories
+- `permanent`: Skip recycle bin and delete permanently
+
+**Response:**
+```json
+{
+  "message": "Moved to recycle bin",
+  "recycleBin": true
+}
+```
+
+---
+
+### Recycle Bin
+
+#### List Recycle Bin
+Get all files in the recycle bin.
+
+```http
+GET /files/recycle-bin
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "file-id",
+    "name": "deleted-file.pdf",
+    "type": "FILE",
+    "size": "1048576",
+    "deletedAt": "2026-01-10T12:00:00.000Z",
+    "originalPath": "/documents/deleted-file.pdf"
+  }
+]
+```
+
+#### Restore from Recycle Bin
+Restore a file to its original location.
+
+```http
+POST /files/recycle-bin/:id/restore
 Authorization: Bearer <token>
 ```
 
 **Response:**
 ```json
 {
-  "message": "Deleted successfully"
+  "message": "File restored successfully",
+  "filesRestored": 1
+}
+```
+
+#### Permanently Delete from Recycle Bin
+Permanently delete a file from the recycle bin.
+
+```http
+DELETE /files/recycle-bin/:id
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "message": "File permanently deleted",
+  "filesDeleted": 1
+}
+```
+
+#### Empty Recycle Bin
+Permanently delete all files in the recycle bin.
+
+```http
+DELETE /files/recycle-bin
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "message": "Recycle bin emptied",
+  "filesDeleted": 5
+}
+```
+
+---
+
+### Sharing
+
+#### Share a File
+Share a file or folder with another user.
+
+```http
+POST /shares
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "fileId": "file-id",
+  "username": "targetuser",
+  "permission": "VIEW"
+}
+```
+
+**Permissions:**
+- `VIEW`: Can view and download
+- `EDIT`: Can view, download, and rename
+- `ADMIN`: Full control including delete and reshare
+
+**Response:**
+```json
+{
+  "message": "File shared successfully",
+  "share": {
+    "id": "share-id",
+    "permission": "VIEW",
+    "sharedWith": {
+      "id": "user-id",
+      "username": "targetuser"
+    }
+  }
+}
+```
+
+#### List Shares Created by Me
+Get all files I've shared with others.
+
+```http
+GET /shares/by-me
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "share-id",
+    "permission": "VIEW",
+    "file": {
+      "id": "file-id",
+      "name": "shared-doc.pdf"
+    },
+    "sharedWith": {
+      "username": "otheruser"
+    }
+  }
+]
+```
+
+#### List Files Shared with Me
+Get all files others have shared with me.
+
+```http
+GET /shares/with-me
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "share-id",
+    "permission": "VIEW",
+    "file": {
+      "id": "file-id",
+      "name": "shared-doc.pdf"
+    },
+    "owner": {
+      "username": "fileowner"
+    }
+  }
+]
+```
+
+#### Remove Share
+Remove a share (as owner) or remove yourself from a share (as recipient).
+
+```http
+DELETE /shares/:shareId
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "message": "Share removed successfully"
 }
 ```
 
@@ -711,7 +905,7 @@ async function stopTask(taskId) {
 
 ## CLI Examples
 
-The D-Drive CLI (v2.0.0 LTS) provides easy command-line access:
+The D-Drive CLI (v2.1.0 LTS) provides easy command-line access:
 
 ```bash
 # Configure

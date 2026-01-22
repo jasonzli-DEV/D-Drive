@@ -19,6 +19,8 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
         email: true,
         encryptionKey: true,
         encryptByDefault: true,
+        recycleBinEnabled: true,
+        allowSharedWithMe: true,
       },
     });
     if (!user) return res.status(404).json({ error: 'User not found' });
@@ -33,15 +35,17 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
 router.patch('/', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { encryptByDefault } = req.body;
+    const { encryptByDefault, recycleBinEnabled, allowSharedWithMe } = req.body;
 
     const updates: any = {};
     if (typeof encryptByDefault === 'boolean') updates.encryptByDefault = encryptByDefault;
+    if (typeof recycleBinEnabled === 'boolean') updates.recycleBinEnabled = recycleBinEnabled;
+    if (typeof allowSharedWithMe === 'boolean') updates.allowSharedWithMe = allowSharedWithMe;
 
     const user = await prisma.user.update({
       where: { id: userId },
       data: updates,
-      select: { id: true, encryptByDefault: true },
+      select: { id: true, encryptByDefault: true, recycleBinEnabled: true, allowSharedWithMe: true },
     });
 
     res.json(user);

@@ -9,6 +9,8 @@ import CallbackPage from './pages/CallbackPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import TasksPage from './pages/TasksPage';
 import LogsPage from './pages/LogsPage';
+import RecycleBinPage from './pages/RecycleBinPage';
+import SharedPage from './pages/SharedPage';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -91,6 +93,30 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <LogsPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/recycle-bin"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <RecycleBinPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/shared"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <SharedPage />
             </Layout>
           ) : (
             <Navigate to="/login" replace />

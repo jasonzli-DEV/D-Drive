@@ -81,6 +81,8 @@ export default function SettingsPage() {
   });
 
   const [encryptByDefault, setEncryptByDefault] = useState<boolean>(true);
+  const [recycleBinEnabled, setRecycleBinEnabled] = useState<boolean>(true);
+  const [allowSharedWithMe, setAllowSharedWithMe] = useState<boolean>(true);
 
   // Fetch current user preferences
   useEffect(() => {
@@ -92,6 +94,12 @@ export default function SettingsPage() {
         if (typeof resp.data?.encryptByDefault === 'boolean') {
           setEncryptByDefault(resp.data.encryptByDefault);
         }
+        if (typeof resp.data?.recycleBinEnabled === 'boolean') {
+          setRecycleBinEnabled(resp.data.recycleBinEnabled);
+        }
+        if (typeof resp.data?.allowSharedWithMe === 'boolean') {
+          setAllowSharedWithMe(resp.data.allowSharedWithMe);
+        }
       } catch (err) {
         // ignore
       }
@@ -99,10 +107,12 @@ export default function SettingsPage() {
     return () => { mounted = false; };
   }, []);
 
-  const updatePref = async (value: boolean) => {
+  const updatePref = async (key: string, value: boolean) => {
     try {
-      await api.patch('/me', { encryptByDefault: value });
-      setEncryptByDefault(value);
+      await api.patch('/me', { [key]: value });
+      if (key === 'encryptByDefault') setEncryptByDefault(value);
+      if (key === 'recycleBinEnabled') setRecycleBinEnabled(value);
+      if (key === 'allowSharedWithMe') setAllowSharedWithMe(value);
       toast.success('Preference saved');
     } catch (err) {
       toast.error('Failed to save preference');
@@ -128,10 +138,32 @@ export default function SettingsPage() {
             control={
               <Switch
                 checked={encryptByDefault}
-                onChange={(e) => updatePref(e.target.checked)}
+                onChange={(e) => updatePref('encryptByDefault', e.target.checked)}
               />
             }
             label="Encrypt uploads by default"
+          />
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={recycleBinEnabled}
+                onChange={(e) => updatePref('recycleBinEnabled', e.target.checked)}
+              />
+            }
+            label="Use recycle bin (move deleted files to trash instead of permanent deletion)"
+          />
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={allowSharedWithMe}
+                onChange={(e) => updatePref('allowSharedWithMe', e.target.checked)}
+              />
+            }
+            label="Allow others to share files with me"
           />
         </Box>
 
