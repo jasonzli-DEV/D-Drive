@@ -318,6 +318,11 @@ router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
     if (err?.message === 'Task is already running' || err?.message === 'Task is already queued') {
       return res.status(409).json({ error: err.message });
     }
+    // If task was cancelled from queue, that's ok - user explicitly stopped it
+    if (err?.message === 'Task was cancelled from queue' || err?.message === 'Task was cancelled') {
+      logger.info('Task run cancelled', { taskId: req.params.id });
+      return res.json({ ok: true, cancelled: true });
+    }
     logger.error('Error running task', err);
     res.status(500).json({ error: 'Failed to run task' });
   }
