@@ -18,6 +18,8 @@ model User {
   email         String?
   encryptionKey String?  // Key for encrypting user files
   encryptByDefault Boolean  @default(true)
+  recycleBinEnabled Boolean @default(true)  // Enable/disable recycle bin
+  allowSharedWithMe Boolean @default(true)  // Allow others to share files with this user
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -26,6 +28,8 @@ model User {
   sessions    Session[]
   tasks       Task[]
   logs        Log[]
+  shares      Share[]    @relation("ShareOwner")
+  sharedWithMe Share[]   @relation("ShareRecipient")
 }
 
 model ApiKey {
@@ -66,8 +70,15 @@ model File {
   userId      String
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
+  // Recycle bin support
+  deletedAt   DateTime?  // If set, file is in recycle bin
+  originalPath String?   // Original path before deletion (for restore)
+  
   // Discord storage references
   chunks    FileChunk[]
+  
+  // Sharing
+  shares    Share[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -76,6 +87,7 @@ model File {
   @@index([userId])
   @@index([parentId])
   @@index([path])
+  @@index([deletedAt])
 }
 
 model FileChunk {
@@ -156,4 +168,29 @@ enum LogType {
   UPLOAD
   COPY
   DELETE
+}
+
+// Permission levels for sharing
+enum SharePermission {
+  VIEW       // Can only view/download
+  EDIT       // Can view/download and rename/move
+  ADMIN      // Full control including delete and reshare
+}
+
+model Share {
+  id            String   @id @default(uuid())
+  fileId        String
+  file          File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  ownerId       String   // User who owns the file
+  owner         User     @relation("ShareOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  sharedWithId  String   // User the file is shared with
+  sharedWith    User     @relation("ShareRecipient", fields: [sharedWithId], references: [id], onDelete: Cascade)
+  permission    SharePermission @default(VIEW)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@unique([fileId, sharedWithId])  // Can only share a file once with a user
+  @@index([ownerId])
+  @@index([sharedWithId])
+  @@index([fileId])
 }

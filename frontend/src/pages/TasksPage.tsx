@@ -388,10 +388,47 @@ export default function TasksPage() {
                       {(() => {
                         const progress = getProgress(t.id);
                         if (!progress) return null;
+                        
+                        // Calculate percentage and ETA
+                        const elapsedSec = (progress.elapsedMs || 0) / 1000;
+                        let percentage = 0;
+                        let eta = '';
+                        
+                        if (progress.totalFiles > 0 && progress.filesProcessed > 0) {
+                          percentage = Math.round((progress.filesProcessed / progress.totalFiles) * 100);
+                          const filesPerSec = progress.filesProcessed / elapsedSec;
+                          if (filesPerSec > 0) {
+                            const remainingFiles = progress.totalFiles - progress.filesProcessed;
+                            const remainingSec = remainingFiles / filesPerSec;
+                            if (remainingSec < 60) {
+                              eta = `~${Math.round(remainingSec)}s left`;
+                            } else if (remainingSec < 3600) {
+                              eta = `~${Math.round(remainingSec / 60)}m left`;
+                            } else {
+                              eta = `~${Math.round(remainingSec / 3600)}h left`;
+                            }
+                          }
+                        }
+                        
+                        const phaseText = progress.phase === 'scanning' ? 'Scanning...' 
+                          : progress.phase === 'downloading' ? 'Downloading' 
+                          : progress.phase === 'archiving' ? 'Creating archive' 
+                          : progress.phase === 'uploading' ? 'Uploading to Discord' 
+                          : progress.phase === 'complete' ? 'Complete'
+                          : progress.phase;
+                        
                         return (
                           <Box sx={{ mt: 0.5, fontSize: '0.75rem', color: '#666' }}>
-                            <Box>{progress.phase === 'downloading' ? 'Downloading' : progress.phase === 'archiving' ? 'Creating archive' : progress.phase === 'uploading' ? 'Uploading to Discord' : progress.phase}</Box>
-                            <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <span>{phaseText}</span>
+                              {percentage > 0 && <span style={{ fontWeight: 600, color: '#1976d2' }}>{percentage}%</span>}
+                              {eta && <span style={{ color: '#888' }}>{eta}</span>}
+                            </Box>
+                            {progress.totalFiles > 0 ? (
+                              <Box>{progress.filesProcessed?.toLocaleString()} / {progress.totalFiles?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
+                            ) : (
+                              <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
+                            )}
                             {progress.currentDir && <Box sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
                             {progress.reconnects > 0 && <Box sx={{ color: '#f57c00' }}>{progress.reconnects} reconnects</Box>}
                           </Box>

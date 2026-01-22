@@ -6,6 +6,7 @@ import avatarsRoutes from './avatars';
 import meRoutes from './me';
 import tasksRoutes from './tasks';
 import logsRoutes from './logs';
+import sharesRoutes from './shares';
 
 const router = Router();
 
@@ -16,5 +17,6 @@ router.use('/avatars', avatarsRoutes);
 router.use('/me', meRoutes);
 router.use('/tasks', tasksRoutes);
 router.use('/logs', logsRoutes);
+router.use('/shares', sharesRoutes);
 
 export default router;
