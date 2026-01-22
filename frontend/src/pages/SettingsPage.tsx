@@ -20,11 +20,14 @@ import {
   DialogContent,
   DialogActions,
   TextField,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
-import { Trash2, Copy, Plus } from 'lucide-react';
+import { Trash2, Copy, Plus, Sun, Moon, Monitor } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
+import { useThemeMode } from '../contexts/ThemeContext';
 
 interface ApiKey {
   id: string;
@@ -36,6 +39,7 @@ interface ApiKey {
 
 export default function SettingsPage() {
   const queryClient = useQueryClient();
+  const { mode, setMode } = useThemeMode();
   const [newKeyOpen, setNewKeyOpen] = useState(false);
   const [keyName, setKeyName] = useState('');
   const [newKey, setNewKey] = useState<string | null>(null);
@@ -100,12 +104,15 @@ export default function SettingsPage() {
         if (typeof resp.data?.allowSharedWithMe === 'boolean') {
           setAllowSharedWithMe(resp.data.allowSharedWithMe);
         }
+        if (resp.data?.theme && ['light', 'dark', 'auto'].includes(resp.data.theme)) {
+          setMode(resp.data.theme as 'light' | 'dark' | 'auto');
+        }
       } catch (err) {
         // ignore
       }
     })();
     return () => { mounted = false; };
-  }, []);
+  }, [setMode]);
 
   const updatePref = async (key: string, value: boolean) => {
     try {
@@ -116,6 +123,17 @@ export default function SettingsPage() {
       toast.success('Preference saved');
     } catch (err) {
       toast.error('Failed to save preference');
+    }
+  };
+
+  const handleThemeChange = async (_: React.MouseEvent<HTMLElement>, newMode: 'light' | 'dark' | 'auto' | null) => {
+    if (newMode === null) return; // Prevent deselection
+    try {
+      await api.patch('/me', { theme: newMode });
+      setMode(newMode);
+      toast.success('Theme updated');
+    } catch (err) {
+      toast.error('Failed to update theme');
     }
   };
 
@@ -165,6 +183,30 @@ export default function SettingsPage() {
             }
             label="Allow others to share files with me"
           />
+        </Box>
+
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>Appearance</Typography>
+          <ToggleButtonGroup
+            value={mode}
+            exclusive
+            onChange={handleThemeChange}
+            aria-label="theme mode"
+            size="small"
+          >
+            <ToggleButton value="light" aria-label="light mode">
+              <Sun size={18} style={{ marginRight: 6 }} />
+              Light
+            </ToggleButton>
+            <ToggleButton value="dark" aria-label="dark mode">
+              <Moon size={18} style={{ marginRight: 6 }} />
+              Dark
+            </ToggleButton>
+            <ToggleButton value="auto" aria-label="auto mode">
+              <Monitor size={18} style={{ marginRight: 6 }} />
+              Auto
+            </ToggleButton>
+          </ToggleButtonGroup>
         </Box>
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

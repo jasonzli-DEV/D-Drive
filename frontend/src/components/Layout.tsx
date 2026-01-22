@@ -13,12 +13,17 @@ import {
   ListItemIcon,
   ListItemText,
   Divider,
+  Drawer,
+  useMediaQuery,
+  useTheme,
 } from '@mui/material';
-import { Settings, LogOut } from 'lucide-react';
-import { Home, Play, Plus, Trash2, Share2 } from 'lucide-react';
+import { Settings, LogOut, Menu as MenuIcon, X } from 'lucide-react';
+import { Home, Play, Plus, Trash2, Share2, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
+
+const DRAWER_WIDTH = 240;
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -29,6 +34,9 @@ export default function Layout({ children }: LayoutProps) {
   const location = useLocation();
   const { user, logout } = useAuth();
   const [anchorEl, setAnchorEl] = useState<null | HTMLElement>(null);
+  const [mobileDrawerOpen, setMobileDrawerOpen] = useState(false);
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
 
   const handleMenuOpen = (event: React.MouseEvent<HTMLElement>) => {
     setAnchorEl(event.currentTarget);
@@ -54,10 +62,96 @@ export default function Layout({ children }: LayoutProps) {
     navigate('/login');
   };
 
+  const handleDrawerToggle = () => {
+    setMobileDrawerOpen(!mobileDrawerOpen);
+  };
+
+  const handleNavigation = (path: string) => {
+    navigate(path);
+    if (isMobile) {
+      setMobileDrawerOpen(false);
+    }
+  };
+
+  const isSettingsPage = (location.pathname || '').startsWith('/settings');
+
+  // Shared sidebar content
+  const sidebarContent = (
+    <List disablePadding>
+      <ListItemButton
+        onClick={(e) => {
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          const detail = { x: Math.round(rect.left + 8), y: Math.round(rect.top + 40) };
+          const isDriveRoute = location.pathname === '/' || location.pathname.startsWith('/drive');
+          if (!isDriveRoute) {
+            navigate('/');
+            setTimeout(() => window.dispatchEvent(new CustomEvent('ddrive:new', { detail })), 220);
+          } else {
+            window.dispatchEvent(new CustomEvent('ddrive:new', { detail }));
+          }
+          if (isMobile) setMobileDrawerOpen(false);
+        }}
+        sx={{ mb: 1 }}
+      >
+        <ListItemIcon>
+          <Plus size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"New"} />
+      </ListItemButton>
+
+      <ListItemButton onClick={() => handleNavigation('/') }>
+        <ListItemIcon>
+          <Home size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Home"} />
+      </ListItemButton>
+      <ListItemButton onClick={() => handleNavigation('/tasks') }>
+        <ListItemIcon>
+          <Play size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Tasks"} />
+      </ListItemButton>
+      
+      <Divider sx={{ my: 1 }} />
+      
+      <ListItemButton onClick={() => handleNavigation('/starred') }>
+        <ListItemIcon>
+          <Star size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Starred"} />
+      </ListItemButton>
+      <ListItemButton onClick={() => handleNavigation('/shared') }>
+        <ListItemIcon>
+          <Share2 size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Shared with me"} />
+      </ListItemButton>
+      <ListItemButton onClick={() => handleNavigation('/recycle-bin') }>
+        <ListItemIcon>
+          <Trash2 size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Recycle Bin"} />
+      </ListItemButton>
+    </List>
+  );
+
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="sticky" elevation={0} sx={{ bgcolor: '#5865F2', borderBottom: '1px solid rgba(255,255,255,0.1)', top: 0, zIndex: 1100 }}>
-        <Toolbar sx={{ minHeight: 72, alignItems: 'center' }}>
+        <Toolbar sx={{ minHeight: { xs: 56, sm: 72 }, alignItems: 'center' }}>
+            {/* Hamburger menu on mobile */}
+            {isMobile && !isSettingsPage && (
+              <IconButton
+                color="inherit"
+                edge="start"
+                onClick={handleDrawerToggle}
+                sx={{ mr: 1 }}
+                aria-label="open drawer"
+              >
+                {mobileDrawerOpen ? <X size={24} /> : <MenuIcon size={24} />}
+              </IconButton>
+            )}
+            
             {/* Logo on the left */}
             <IconButton
               color="inherit"
@@ -70,7 +164,7 @@ export default function Layout({ children }: LayoutProps) {
                 component="img"
                 src="/D-Drive.png"
                 alt="D-Drive"
-                sx={{ width: 48, height: 48, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: { xs: 36, sm: 48 }, height: { xs: 36, sm: 48 }, objectFit: 'contain', bgcolor: 'transparent' }}
               />
               <Typography variant="h6" fontWeight={700} sx={{ ml: 1.5, display: { xs: 'none', sm: 'block' } }}>
                 D-Drive
@@ -78,13 +172,13 @@ export default function Layout({ children }: LayoutProps) {
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
-          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 48, height: 48 }}>
-            <Settings size={28} />
+          <IconButton color="inherit" onClick={handleSettings} sx={{ width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 } }}>
+            <Settings size={24} />
           </IconButton>
 
-          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 44, height: 44 }}>
+          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: { xs: 36, sm: 44 }, height: { xs: 36, sm: 44 } }}>
             <Avatar
-              sx={{ width: 40, height: 40 }}
+              sx={{ width: { xs: 32, sm: 40 }, height: { xs: 32, sm: 40 } }}
               src={
                 user?.avatarUrl ? user.avatarUrl :
                 user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined
@@ -123,14 +217,38 @@ export default function Layout({ children }: LayoutProps) {
         </Toolbar>
       </AppBar>
       
-      {/* Main content area with left sidebar (hidden on settings) */}
-      <Box sx={{ display: 'flex', flexGrow: 1, bgcolor: '#f5f5f5' }}>
-        {/* Sidebar: visible on all pages except settings - STICKY */}
-        {!(location.pathname || '').startsWith('/settings') && (
+      {/* Mobile Drawer */}
+      {!isSettingsPage && (
+        <Drawer
+          variant="temporary"
+          open={mobileDrawerOpen}
+          onClose={handleDrawerToggle}
+          ModalProps={{ keepMounted: true }}
+          sx={{
+            display: { xs: 'block', md: 'none' },
+            '& .MuiDrawer-paper': {
+              boxSizing: 'border-box',
+              width: DRAWER_WIDTH,
+              top: { xs: 56, sm: 72 },
+              height: { xs: 'calc(100% - 56px)', sm: 'calc(100% - 72px)' },
+            },
+          }}
+        >
+          <Box sx={{ px: 1, pt: 2 }}>
+            {sidebarContent}
+          </Box>
+        </Drawer>
+      )}
+
+      {/* Main content area with left sidebar */}
+      <Box sx={{ display: 'flex', flexGrow: 1, bgcolor: 'background.default' }}>
+        {/* Desktop Sidebar: visible on md+ screens except settings */}
+        {!isSettingsPage && (
           <Box
             component="aside"
             sx={{
-              width: 240,
+              display: { xs: 'none', md: 'block' },
+              width: DRAWER_WIDTH,
               bgcolor: 'background.paper',
               borderRight: 1,
               borderColor: 'divider',
@@ -144,63 +262,11 @@ export default function Layout({ children }: LayoutProps) {
               overflowY: 'auto',
             }}
           >
-            <List disablePadding>
-                <ListItemButton
-                  onClick={(e) => {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    // dispatch a global event with approximate anchor coordinates
-                    const detail = { x: Math.round(rect.left + 8), y: Math.round(rect.top + 40) };
-                    // If we're not currently on a Drive route, navigate to root first so
-                    // the DrivePage can handle the event and create/upload into root.
-                    const isDriveRoute = location.pathname === '/' || location.pathname.startsWith('/drive');
-                    if (!isDriveRoute) {
-                      navigate('/');
-                      // wait briefly for DrivePage to mount and register its listener
-                      setTimeout(() => window.dispatchEvent(new CustomEvent('ddrive:new', { detail })), 220);
-                    } else {
-                      window.dispatchEvent(new CustomEvent('ddrive:new', { detail }));
-                    }
-                  }}
-                  sx={{ mb: 1 }}
-                >
-                  <ListItemIcon>
-                    <Plus size={18} />
-                  </ListItemIcon>
-                  <ListItemText primary={"New"} />
-                </ListItemButton>
-
-                <ListItemButton onClick={() => navigate('/') }>
-                  <ListItemIcon>
-                    <Home size={18} />
-                  </ListItemIcon>
-                  <ListItemText primary={"Home"} />
-                </ListItemButton>
-                <ListItemButton onClick={() => navigate('/tasks') }>
-                  <ListItemIcon>
-                    <Play size={18} />
-                  </ListItemIcon>
-                  <ListItemText primary={"Tasks"} />
-                </ListItemButton>
-                
-                <Divider sx={{ my: 1 }} />
-                
-                <ListItemButton onClick={() => navigate('/shared') }>
-                  <ListItemIcon>
-                    <Share2 size={18} />
-                  </ListItemIcon>
-                  <ListItemText primary={"Shared with me"} />
-                </ListItemButton>
-                <ListItemButton onClick={() => navigate('/recycle-bin') }>
-                  <ListItemIcon>
-                    <Trash2 size={18} />
-                  </ListItemIcon>
-                  <ListItemText primary={"Recycle Bin"} />
-                </ListItemButton>
-            </List>
+            {sidebarContent}
           </Box>
         )}
 
-        <Box component="main" sx={{ flexGrow: 1, p: 2 }}>
+        <Box component="main" sx={{ flexGrow: 1, p: { xs: 1, sm: 2 }, minWidth: 0 }}>
           {children}
         </Box>
       </Box>
