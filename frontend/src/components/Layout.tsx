@@ -137,12 +137,11 @@ export default function Layout({ children }: LayoutProps) {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
-      <AppBar position="sticky" elevation={0} sx={{ bgcolor: '#5865F2', borderBottom: '1px solid rgba(255,255,255,0.1)', top: 0, zIndex: 1100 }}>
+      <AppBar position="sticky" elevation={0} sx={{ bgcolor: 'background.paper', borderBottom: 1, borderColor: 'divider', top: 0, zIndex: 1100 }}>
         <Toolbar sx={{ minHeight: { xs: 56, sm: 72 }, alignItems: 'center' }}>
             {/* Hamburger menu on mobile */}
             {isMobile && !isSettingsPage && (
               <IconButton
-                color="inherit"
                 edge="start"
                 onClick={handleDrawerToggle}
                 sx={{ mr: 1 }}
@@ -154,9 +153,8 @@ export default function Layout({ children }: LayoutProps) {
             
             {/* Logo on the left */}
             <IconButton
-              color="inherit"
               onClick={() => navigate('/')}
-              sx={{ mr: 2, p: 0.5, borderRadius: 2, '&:hover': { bgcolor: 'rgba(255,255,255,0.1)' } }}
+              sx={{ mr: 2, p: 0.5, borderRadius: 2, '&:hover': { bgcolor: 'action.hover' } }}
               aria-label="Go to root drive"
               title="Go to root drive"
             >
@@ -172,11 +170,11 @@ export default function Layout({ children }: LayoutProps) {
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
-          <IconButton color="inherit" onClick={handleSettings} sx={{ width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 } }}>
+          <IconButton onClick={handleSettings} sx={{ width: { xs: 40, sm: 48 }, height: { xs: 40, sm: 48 } }}>
             <Settings size={24} />
           </IconButton>
 
-          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: { xs: 36, sm: 44 }, height: { xs: 36, sm: 44 } }}>
+          <IconButton onClick={handleMenuOpen} sx={{ width: { xs: 36, sm: 44 }, height: { xs: 36, sm: 44 } }}>
             <Avatar
               sx={{ width: { xs: 32, sm: 40 }, height: { xs: 32, sm: 40 } }}
               src={
