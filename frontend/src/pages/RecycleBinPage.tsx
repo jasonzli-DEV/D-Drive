@@ -19,6 +19,7 @@ import {
   DialogActions,
   CircularProgress,
   Tooltip,
+  useTheme,
 } from '@mui/material';
 import { Trash2, RotateCcw, Folder, File, AlertTriangle } from 'lucide-react';
 import { formatDistance } from 'date-fns';
@@ -46,6 +47,7 @@ function formatBytes(bytes: number): string {
 
 export default function RecycleBinPage() {
   const queryClient = useQueryClient();
+  const theme = useTheme();
   const [emptyDialogOpen, setEmptyDialogOpen] = useState(false);
   const [deleteDialogFile, setDeleteDialogFile] = useState<DeletedFile | null>(null);
 
@@ -149,9 +151,9 @@ export default function RecycleBinPage() {
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {file.type === 'DIRECTORY' ? (
-                          <Folder size={20} style={{ color: '#ffc107' }} />
+                          <Folder size={20} style={{ color: theme.palette.warning.main }} />
                         ) : (
-                          <File size={20} style={{ color: '#2196f3' }} />
+                          <File size={20} style={{ color: theme.palette.primary.main }} />
                         )}
                         {file.name}
                       </Box>
@@ -204,7 +206,7 @@ export default function RecycleBinPage() {
       {/* Empty Recycle Bin Dialog */}
       <Dialog open={emptyDialogOpen} onClose={() => setEmptyDialogOpen(false)}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AlertTriangle color="#f44336" />
+          <AlertTriangle style={{ color: theme.palette.error.main }} />
           Empty Recycle Bin
         </DialogTitle>
         <DialogContent>
@@ -231,7 +233,7 @@ export default function RecycleBinPage() {
       {/* Delete Single File Dialog */}
       <Dialog open={!!deleteDialogFile} onClose={() => setDeleteDialogFile(null)}>
         <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-          <AlertTriangle color="#f44336" />
+          <AlertTriangle style={{ color: theme.palette.error.main }} />
           Delete Permanently
         </DialogTitle>
         <DialogContent>
