@@ -510,9 +510,43 @@ export async function runTaskNow(taskId: string) {
           return false;
         }
         
+        // Helper to download small file to memory buffer with retry
+        async function downloadToBufferWithRetry(remotePath: string, retries = 3): Promise<Buffer | null> {
+          for (let attempt = 1; attempt <= retries; attempt++) {
+            try {
+              const buffer = await sftp.get(remotePath);
+              return Buffer.isBuffer(buffer) ? buffer : Buffer.from(buffer as any);
+            } catch (err: any) {
+              const isConnectionError = err.code === 'ERR_NOT_CONNECTED' || 
+                                        err.code === 'ECONNRESET' || 
+                                        err.code === 'ERR_GENERIC_CLIENT';
+              
+              if (isConnectionError && attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
+                logger.warn('Connection lost during buffer download, reconnecting...', { remotePath, attempt, taskId });
+                reconnectAttempts++;
+                const reconnected = await ensureConnected();
+                if (reconnected) {
+                  await new Promise(r => setTimeout(r, 1000));
+                  continue;
+                }
+              }
+              
+              if (attempt === retries) {
+                logger.warn('Failed to download file to buffer after retries, skipping', { remotePath, err, taskId });
+                return null;
+              }
+            }
+          }
+          return null;
+        }
+        
         async function walk(dir: string, prefix: string) {
           const list = await listWithRetry(dir);
           if (!list) return;
+          
+          // Separate files and directories
+          const dirs: { name: string; remoteFull: string; rel: string }[] = [];
+          const files: { name: string; remoteFull: string; rel: string; size: number }[] = [];
           
           for (const it of list) {
             // Check for cancellation
@@ -526,51 +560,75 @@ export async function runTaskNow(taskId: string) {
             const rel = prefix ? `${prefix}/${it.name}` : it.name;
             
             if (it.type === 'd') {
-              // directory -> recurse
-              await walk(remoteFull, rel);
+              dirs.push({ name: it.name, remoteFull, rel });
             } else if (it.type === '-') {
-              // regular file -> stream directly to archive
-              // Download to temp file first (for large files this prevents memory issues)
-              const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-              
-              // Use sftp.fastGet with retry for reliable download
-              const downloaded = await downloadWithRetry(remoteFull, tempFilePath);
-              if (!downloaded) continue; // Skip this file
-              
-              try {
-                // Get file size
-                const stat = await fs.promises.stat(tempFilePath);
-                totalBytes += stat.size;
-                
-                // Stream the temp file into the archive
-                const fileStream = fs.createReadStream(tempFilePath);
-                archive.append(fileStream, { name: rel });
-                
-                filesAdded++;
-                
-                // Log progress every 100 files
-                if (filesAdded % 100 === 0) {
-                  logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts });
-                }
-                
-                // Clean up temp file after it's been added to archive
-                // Note: archive.append is async, so we clean up after a short delay
-                setTimeout(async () => {
-                  try {
-                    await fs.promises.unlink(tempFilePath);
-                  } catch (e) {
-                    // Ignore cleanup errors
-                  }
-                }, 5000);
-              } catch (fileErr) {
-                logger.warn('Failed to process downloaded file', { remoteFull, err: fileErr });
-                // Clean up temp file on error
-                try { await fs.promises.unlink(tempFilePath); } catch (e) { /* ignore */ }
-              }
-            } else {
-              // ignore other types (links, etc.)
-              logger.info('Skipping remote entry (unsupported type)', { path: remoteFull, type: it.type });
+              files.push({ name: it.name, remoteFull, rel, size: it.size || 0 });
             }
+          }
+          
+          // Process files in batches for better throughput
+          const BATCH_SIZE = 20; // Process 20 files concurrently
+          const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1MB - use memory for small files
+          
+          for (let i = 0; i < files.length; i += BATCH_SIZE) {
+            // Check for cancellation
+            if (runningTasks.get(taskId)?.cancelled) {
+              throw new Error('Task was cancelled');
+            }
+            
+            const batch = files.slice(i, i + BATCH_SIZE);
+            
+            // Process batch in parallel
+            await Promise.all(batch.map(async (file) => {
+              try {
+                if (file.size < SMALL_FILE_THRESHOLD) {
+                  // Small file: download to memory buffer directly
+                  const buffer = await downloadToBufferWithRetry(file.remoteFull);
+                  if (!buffer) return;
+                  
+                  totalBytes += buffer.length;
+                  archive.append(buffer, { name: file.rel });
+                  filesAdded++;
+                } else {
+                  // Large file: use temp file
+                  const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+                  
+                  const downloaded = await downloadWithRetry(file.remoteFull, tempFilePath);
+                  if (!downloaded) return;
+                  
+                  try {
+                    const stat = await fs.promises.stat(tempFilePath);
+                    totalBytes += stat.size;
+                    
+                    const fileStream = fs.createReadStream(tempFilePath);
+                    archive.append(fileStream, { name: file.rel });
+                    filesAdded++;
+                    
+                    // Clean up temp file after it's been added to archive
+                    setTimeout(async () => {
+                      try {
+                        await fs.promises.unlink(tempFilePath);
+                      } catch (e) { /* ignore */ }
+                    }, 5000);
+                  } catch (fileErr) {
+                    logger.warn('Failed to process downloaded file', { remoteFull: file.remoteFull, err: fileErr });
+                    try { await fs.promises.unlink(tempFilePath); } catch (e) { /* ignore */ }
+                  }
+                }
+              } catch (err) {
+                logger.warn('Failed to download file in batch', { remoteFull: file.remoteFull, err });
+              }
+            }));
+            
+            // Log progress every batch
+            if (filesAdded % 100 === 0 || i + BATCH_SIZE >= files.length) {
+              logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts, dir });
+            }
+          }
+          
+          // Recurse into directories sequentially (to avoid too many concurrent connections)
+          for (const d of dirs) {
+            await walk(d.remoteFull, d.rel);
           }
         }
 
