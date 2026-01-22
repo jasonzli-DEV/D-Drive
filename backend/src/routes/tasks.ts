@@ -332,8 +332,14 @@ router.post('/:id/stop', authenticate, async (req: Request, res: Response) => {
     if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
     
     await stopTask(id);
+    logger.info('Task stopped', { taskId: id });
     res.json({ ok: true });
-  } catch (err) {
+  } catch (err: any) {
+    // If task is not running, that's ok - still return success
+    if (err.message === 'Task is not running') {
+      logger.info('Task already stopped', { taskId: req.params.id });
+      return res.json({ ok: true });
+    }
     logger.error('Error stopping task', err);
     res.status(500).json({ error: 'Failed to stop task' });
   }
@@ -349,10 +355,13 @@ router.post('/:id/dequeue', authenticate, async (req: Request, res: Response) =>
     
     const removed = dequeueTask(id);
     if (!removed) {
-      return res.status(400).json({ error: 'Task is not in queue' });
+      // Task not in queue is OK - already dequeued or never queued
+      logger.info('Task already removed from queue', { taskId: id });
+      return res.json({ ok: true });
     }
+    logger.info('Task removed from queue', { taskId: id });
     res.json({ ok: true });
-  } catch (err) {
+  } catch (err: any) {
     logger.error('Error dequeuing task', err);
     res.status(500).json({ error: 'Failed to dequeue task' });
   }
