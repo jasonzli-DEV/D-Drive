@@ -644,7 +644,8 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process files in batches for better throughput
-          const BATCH_SIZE = 20; // Process 20 files concurrently
+          // Higher batch size for small files to reduce per-file SFTP overhead
+          const BATCH_SIZE = 50; // Process 50 files concurrently (was 20)
           const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1MB - use memory for small files
           
           for (let i = 0; i < files.length; i += BATCH_SIZE) {
