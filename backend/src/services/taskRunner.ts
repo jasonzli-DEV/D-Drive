@@ -490,23 +490,24 @@ export async function runTaskNow(taskId: string) {
       throw new Error('Task was cancelled');
     }
     
-    // Pre-scan to count files and estimate total size using fast 'find' command
+    // Pre-scan to count files and estimate total size
     updateProgress({ phase: 'scanning' });
     logger.info('Pre-scanning remote directory for file count...', { taskId, remotePath: task.sftpPath });
     
     let scanFileCount = 0;
     let scanTotalBytes = 0;
     
-    // Use SSH exec to run 'find' command - much faster than recursive SFTP list calls
+    // Try SSH exec for fast scan (works on servers that allow shell commands)
+    let execWorked = false;
     try {
       const sshClient = (sftp as any).client;
       const findResult = await new Promise<string>((resolve, reject) => {
-        // Use find with -type f to get files and their sizes in one command
-        // Output format: size (in bytes) for each file
         const cmd = `find "${task.sftpPath}" -type f -exec stat -c '%s' {} \\; 2>/dev/null`;
+        const timeout = setTimeout(() => reject(new Error('exec timeout')), 5000);
         
         sshClient.exec(cmd, (err: Error | undefined, stream: any) => {
           if (err) {
+            clearTimeout(timeout);
             reject(err);
             return;
           }
@@ -515,17 +516,18 @@ export async function runTaskNow(taskId: string) {
           stream.on('data', (data: Buffer) => {
             output += data.toString();
           });
-          stream.stderr.on('data', (data: Buffer) => {
-            // Ignore stderr (permission errors etc)
-          });
+          stream.stderr.on('data', () => {});
           stream.on('close', () => {
+            clearTimeout(timeout);
             resolve(output);
           });
-          stream.on('error', reject);
+          stream.on('error', (e: Error) => {
+            clearTimeout(timeout);
+            reject(e);
+          });
         });
       });
       
-      // Parse the output - each line is a file size in bytes
       const lines = findResult.trim().split('\n').filter(line => line.length > 0);
       for (const line of lines) {
         const size = parseInt(line, 10);
@@ -534,78 +536,58 @@ export async function runTaskNow(taskId: string) {
           scanTotalBytes += size;
         }
       }
-    } catch (scanErr) {
-      // Fallback: try alternate command syntax (BSD stat vs GNU stat)
-      logger.warn('Fast scan failed, trying alternate command...', { taskId, err: scanErr });
-      try {
-        const sshClient = (sftp as any).client;
-        // BSD stat syntax (macOS)
-        const findResult = await new Promise<string>((resolve, reject) => {
-          const cmd = `find "${task.sftpPath}" -type f -exec stat -f '%z' {} \\; 2>/dev/null`;
-          
-          sshClient.exec(cmd, (err: Error | undefined, stream: any) => {
-            if (err) {
-              reject(err);
-              return;
-            }
-            
-            let output = '';
-            stream.on('data', (data: Buffer) => {
-              output += data.toString();
-            });
-            stream.stderr.on('data', () => {});
-            stream.on('close', () => resolve(output));
-            stream.on('error', reject);
-          });
-        });
+      if (scanFileCount > 0) execWorked = true;
+    } catch (execErr) {
+      logger.info('SSH exec not available, using parallel SFTP scan', { taskId });
+    }
+    
+    // Fallback: parallel SFTP directory listing (for SFTP-only servers)
+    if (!execWorked) {
+      const dirsToScan: string[] = [task.sftpPath];
+      const PARALLEL_SCANS = 10; // Scan up to 10 directories in parallel
+      
+      while (dirsToScan.length > 0 && !runningTasks.get(taskId)?.cancelled) {
+        // Take a batch of directories to scan in parallel
+        const batch = dirsToScan.splice(0, PARALLEL_SCANS);
         
-        const lines = findResult.trim().split('\n').filter(line => line.length > 0);
-        for (const line of lines) {
-          const size = parseInt(line, 10);
-          if (!isNaN(size)) {
-            scanFileCount++;
-            scanTotalBytes += size;
-          }
-        }
-      } catch (fallbackErr) {
-        // Final fallback: use du for total size only (faster than recursive list)
-        logger.warn('Alternate scan failed, trying du...', { taskId, err: fallbackErr });
-        try {
-          const sshClient = (sftp as any).client;
-          const duResult = await new Promise<string>((resolve, reject) => {
-            const cmd = `du -sb "${task.sftpPath}" 2>/dev/null || du -sk "${task.sftpPath}" 2>/dev/null`;
-            
-            sshClient.exec(cmd, (err: Error | undefined, stream: any) => {
-              if (err) {
-                reject(err);
-                return;
-              }
+        const results = await Promise.allSettled(
+          batch.map(async (dir) => {
+            try {
+              const list = await sftp.list(dir);
+              const subdirs: string[] = [];
+              let batchFiles = 0;
+              let batchBytes = 0;
               
-              let output = '';
-              stream.on('data', (data: Buffer) => {
-                output += data.toString();
-              });
-              stream.stderr.on('data', () => {});
-              stream.on('close', () => resolve(output));
-              stream.on('error', reject);
-            });
-          });
-          
-          // Parse du output: "size<tab>path"
-          const match = duResult.match(/^(\d+)/);
-          if (match) {
-            scanTotalBytes = parseInt(match[1], 10);
-            // du -sk returns KB, du -sb returns bytes
-            if (duResult.includes('-sk')) {
-              scanTotalBytes *= 1024;
+              for (const item of list) {
+                if (item.name === '.' || item.name === '..') continue;
+                if (item.type === 'd') {
+                  subdirs.push(path.posix.join(dir, item.name));
+                } else if (item.type === '-') {
+                  batchFiles++;
+                  batchBytes += item.size || 0;
+                }
+              }
+              return { subdirs, files: batchFiles, bytes: batchBytes };
+            } catch (err) {
+              return { subdirs: [], files: 0, bytes: 0 };
             }
+          })
+        );
+        
+        for (const result of results) {
+          if (result.status === 'fulfilled') {
+            dirsToScan.push(...result.value.subdirs);
+            scanFileCount += result.value.files;
+            scanTotalBytes += result.value.bytes;
           }
-          scanFileCount = -1; // Unknown file count
-        } catch (duErr) {
-          logger.warn('All fast scan methods failed, continuing without pre-scan', { taskId, err: duErr });
-          scanFileCount = -1;
-          scanTotalBytes = -1;
         }
+        
+        // Update progress during scan
+        updateProgress({ 
+          totalFiles: scanFileCount, 
+          estimatedTotalBytes: scanTotalBytes,
+          currentDir: batch[0]
+        });
       }
     }
     
