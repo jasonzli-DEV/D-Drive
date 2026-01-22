@@ -49,6 +49,8 @@ import cronValidate from 'cron-validate';
   destinationId: '' as string | null,
   compress: 'NONE',
   maxFiles: 0,
+  skipPrescan: false,
+  excludePaths: '',
   // encrypt override removed; tasks use user's default encrypt setting
 };
 
@@ -196,6 +198,8 @@ export default function TasksPage() {
           // always timestamp filenames for task uploads
           // timestampNames: !!t.timestampNames,
       maxFiles: t.maxFiles || 0,
+      skipPrescan: !!t.skipPrescan,
+      excludePaths: Array.isArray(t.excludePaths) ? t.excludePaths.join(', ') : '',
       
     });
     setOpen(true);
@@ -256,7 +260,10 @@ export default function TasksPage() {
   };
 
   async function save(runNow = false) {
-    const payload = { ...form, timestampNames: true };
+    const excludePathsArray = form.excludePaths
+      ? form.excludePaths.split(',').map(p => p.trim()).filter(Boolean)
+      : [];
+    const payload = { ...form, timestampNames: true, excludePaths: excludePathsArray };
     try {
       // client-side validation (sets inline errors); stop if invalid
       const ok = validateForm(payload);
@@ -736,6 +743,25 @@ export default function TasksPage() {
           </Box>
 
           <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} error={!!errors.maxFiles} helperText={errors.maxFiles || ''} />
+
+          <Box sx={{ mt: 2, mb: 1 }}>
+            <Typography variant="subtitle2">Advanced Options</Typography>
+          </Box>
+          
+          <FormControlLabel 
+            control={<Checkbox checked={form.skipPrescan} onChange={(e) => setForm({ ...form, skipPrescan: e.target.checked })} />} 
+            label="Skip file scan (faster start, no progress percentage)" 
+          />
+          
+          <TextField 
+            label="Exclude paths (comma-separated)" 
+            fullWidth 
+            margin="normal" 
+            value={form.excludePaths} 
+            onChange={(e) => setForm({ ...form, excludePaths: e.target.value })}
+            helperText="Paths to skip, e.g.: bluemap, dynmap, logs"
+            placeholder="bluemap, dynmap, logs"
+          />
 
           {/* Encrypt override removed: tasks will follow user's default encryption setting */}
         </DialogContent>
