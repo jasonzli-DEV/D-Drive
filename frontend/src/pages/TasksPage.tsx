@@ -94,6 +94,7 @@ export default function TasksPage() {
       const resp = await api.get('/tasks/running/progress');
       return resp.data;
     },
+    enabled: true,
     staleTime: 1000,
     refetchInterval: 2000, // Update progress every 2 seconds
   });
