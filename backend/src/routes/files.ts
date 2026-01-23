@@ -636,7 +636,20 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
   try {
     const userId = (req as any).user.userId;
 
-    const bb = new Busboy({ headers: req.headers });
+    let bb: any;
+    try {
+      bb = new Busboy({ headers: req.headers });
+      logger.info('Busboy constructed with `new`');
+    } catch (e) {
+      try {
+        // Some module shapes export a factory function instead of a constructable class
+        bb = Busboy({ headers: req.headers });
+        logger.info('Busboy constructed by calling function');
+      } catch (callErr) {
+        logger.error('Failed to initialize Busboy (new and call both failed):', callErr);
+        throw callErr;
+      }
+    }
 
     let parentId: string | null = null;
     let parentPath: string | null = null;
