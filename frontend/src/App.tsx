@@ -6,6 +6,7 @@ import LoginPage from './pages/LoginPage';
 import DrivePage from './pages/DrivePage';
 import SettingsPage from './pages/SettingsPage';
 import CallbackPage from './pages/CallbackPage';
+import ErrorBoundary from './components/ErrorBoundary';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -27,6 +28,7 @@ function App() {
   }
 
   return (
+    <ErrorBoundary>
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<CallbackPage />} />
@@ -71,6 +73,7 @@ function App() {
       />
     </Routes>
   );
+    </ErrorBoundary>
 }
 
 export default App;
