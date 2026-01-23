@@ -155,7 +155,6 @@ export default function DrivePage() {
       let response;
       try {
         response = await api.post('/files/upload/stream', formData, {
-          headers: { 'Content-Type': 'multipart/form-data' },
           onUploadProgress: (progressEvent) => {
             const percentCompleted = Math.round(
               (progressEvent.loaded * 100) / (progressEvent.total || 1)
@@ -171,7 +170,6 @@ export default function DrivePage() {
         // Fallback: older endpoint that buffers to disk/server-side
         try {
           response = await api.post('/files/upload', formData, {
-            headers: { 'Content-Type': 'multipart/form-data' },
             onUploadProgress: (progressEvent) => {
               const percentCompleted = Math.round(
                 (progressEvent.loaded * 100) / (progressEvent.total || 1)
