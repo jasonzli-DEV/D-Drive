@@ -665,7 +665,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
             }
           }
 
-          // Ensure unique file record (create before uploading chunks so we have fileId)
+            // Ensure unique file record (create before uploading chunks so we have fileId)
           const originalName = filename;
           let uniqueName = await getUniqueName(userId, parentPath, originalName);
           const maxAttempts = 5;
@@ -696,6 +696,27 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
           }
 
           if (!fileRecord) throw new Error('Failed to create file record');
+
+          // Centralized handler to cleanup and respond on stream errors
+          const handleStreamError = async (err: any) => {
+            logger.error('Stream upload error (handler):', err);
+            try {
+              if (fileRecord) {
+                const uploaded = await prisma.fileChunk.findMany({ where: { fileId: fileRecord.id } });
+                for (const c of uploaded) {
+                  try { await deleteChunkFromDiscord(c.messageId, c.channelId); } catch (_) {}
+                }
+                await prisma.fileChunk.deleteMany({ where: { fileId: fileRecord.id } });
+                await prisma.file.delete({ where: { id: fileRecord.id } });
+              }
+            } catch (cleanupErr) {
+              logger.warn('Cleanup after stream error failed (handler):', cleanupErr);
+            }
+            try { fileStream.destroy(); } catch (_) {}
+            if (!res.headersSent) res.status(500).json({ error: `Streaming upload failed: ${err?.message || err}` });
+          };
+
+          logger.info(`Streaming upload started: user=${userId} fileId=${fileRecord.id} name=${fileRecord.name} parent=${parentPath}`);
 
           // Stream processing: accumulate until CHUNK_SIZE, then send
           let bufferQueue: Buffer[] = [];
@@ -750,54 +771,68 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
             }
           };
 
-          fileStream.on('data', async (data: Buffer) => {
-            bufferQueue.push(data);
-            bufferedBytes += data.length;
-            totalBytes += data.length;
+          fileStream.on('data', (data: Buffer) => {
+            (async () => {
+              try {
+                bufferQueue.push(data);
+                bufferedBytes += data.length;
+                totalBytes += data.length;
 
-            // while we have at least CHUNK_SIZE, extract and send
-            while (bufferedBytes >= CHUNK_SIZE) {
-              // build chunkBuffer of CHUNK_SIZE
-              const chunkBuffer = Buffer.alloc(CHUNK_SIZE);
-              let offset = 0;
-              while (offset < CHUNK_SIZE) {
-                const head = bufferQueue[0];
-                const need = Math.min(head.length, CHUNK_SIZE - offset);
-                head.copy(chunkBuffer, offset, 0, need);
-                if (need === head.length) {
-                  bufferQueue.shift();
-                } else {
-                  bufferQueue[0] = head.slice(need);
+                // while we have at least CHUNK_SIZE, extract and send
+                while (bufferedBytes >= CHUNK_SIZE) {
+                  // build chunkBuffer of CHUNK_SIZE
+                  const chunkBuffer = Buffer.alloc(CHUNK_SIZE);
+                  let offset = 0;
+                  while (offset < CHUNK_SIZE) {
+                    const head = bufferQueue[0];
+                    const need = Math.min(head.length, CHUNK_SIZE - offset);
+                    head.copy(chunkBuffer, offset, 0, need);
+                    if (need === head.length) {
+                      bufferQueue.shift();
+                    } else {
+                      bufferQueue[0] = head.slice(need);
+                    }
+                    offset += need;
+                  }
+                  bufferedBytes -= CHUNK_SIZE;
+                  await flushChunk(chunkBuffer);
                 }
-                offset += need;
+              } catch (e) {
+                await handleStreamError(e);
               }
-              bufferedBytes -= CHUNK_SIZE;
-              await flushChunk(chunkBuffer);
-            }
+            })();
           });
 
-          fileStream.on('end', async () => {
-            // flush remaining bytes as final chunk
-            if (bufferedBytes > 0) {
-              const finalBuffer = Buffer.concat(bufferQueue, bufferedBytes);
-              await flushChunk(finalBuffer);
-            }
+          fileStream.on('end', () => {
+            (async () => {
+              try {
+                // flush remaining bytes as final chunk
+                if (bufferedBytes > 0) {
+                  const finalBuffer = Buffer.concat(bufferQueue, bufferedBytes);
+                  await flushChunk(finalBuffer);
+                }
 
-            // update file record size
-            try {
-              await prisma.file.update({ where: { id: fileRecord.id }, data: { size: BigInt(totalBytes) } });
-            } catch (e) {
-              logger.warn('Failed to update file size:', e);
-            }
+                // update file record size
+                try {
+                  await prisma.file.update({ where: { id: fileRecord.id }, data: { size: BigInt(totalBytes) } });
+                } catch (e) {
+                  logger.warn('Failed to update file size:', e);
+                }
 
-            fileProcessed = true;
-            logger.info(`Streaming upload complete for file ${fileRecord.id}, chunks=${chunks.length}`);
-            // respond now (but busboy 'finish' will also fire)
-            res.json({ file: serializeFile(await prisma.file.findUnique({ where: { id: fileRecord.id } })), chunks: chunks.length, storedName: fileRecord.name });
+                fileProcessed = true;
+                logger.info(`Streaming upload complete for file ${fileRecord.id}, chunks=${chunks.length}`);
+                // respond now (but busboy 'finish' will also fire)
+                if (!res.headersSent) {
+                  res.json({ file: serializeFile(await prisma.file.findUnique({ where: { id: fileRecord.id } })), chunks: chunks.length, storedName: fileRecord.name });
+                }
+              } catch (e) {
+                await handleStreamError(e);
+              }
+            })();
           });
 
-          fileStream.on('error', (err: any) => {
-            throw err;
+          fileStream.on('error', async (err: any) => {
+            await handleStreamError(err);
           });
         } catch (err) {
           logger.error('Stream upload error:', err);
