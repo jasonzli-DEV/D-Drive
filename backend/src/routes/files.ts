@@ -14,7 +14,12 @@ const RawBusboy = require('busboy');
 // Prefer the default export, then commonjs export, then common alternate shapes
 const Busboy = (RawBusboy && (RawBusboy.default || RawBusboy || (RawBusboy as any).Busboy || (RawBusboy as any).busboy)) as any;
 try {
-  logger?.info?.('Busboy module type', typeof RawBusboy, Object.keys(RawBusboy || {}));
+  logger.info('Busboy inspect', {
+    typeofRaw: typeof RawBusboy,
+    rawKeys: Object.keys(RawBusboy || {}),
+    typeofBusboy: typeof Busboy,
+    busboyIsFunction: typeof Busboy === 'function',
+  });
 } catch (e) {
   // ignore logging errors at module load
 }
