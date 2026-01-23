@@ -38,7 +38,8 @@ const upload = multer({
   }),
 });
 
-const CHUNK_SIZE = 9 * 1024 * 1024; // 9MB chunks (Discord limit ~10MB, keep margin for overhead)
+// Use 8MB chunks to stay safely under Discord attachment size limits.
+const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
 
 // small helper for delays (used for retry backoff)
 function sleep(ms: number) {
