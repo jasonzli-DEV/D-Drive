@@ -1,8 +1,7 @@
 import { Box, Container, Paper, Button, Typography } from '@mui/material';
 import { HardDrive } from 'lucide-react';
 
-// Discord client ID - will be replaced during Docker build
-const DISCORD_CLIENT_ID = 'VITE' + '_DISCORD' + '_CLIENT' + '_ID' + '_PLACEHOLDER';
+const DISCORD_CLIENT_ID = '1459408684080693320';
 const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
 export default function LoginPage() {
