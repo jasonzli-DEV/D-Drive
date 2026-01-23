@@ -280,7 +280,8 @@ export default function DrivePage() {
     },
     onError: (error: any) => {
       // Ensure UI stays in sync with server when rename fails (e.g. HTTP 409)
-      queryClient.invalidateQueries({ queryKey: ['files'] });
+      // Invalidate the specific folder query so the current folder listing refreshes.
+      queryClient.invalidateQueries({ queryKey: ['files', folderId] });
       if (error?.response?.status === 409) {
         toast.error(error.response?.data?.error || 'A file with that name already exists');
       } else {
