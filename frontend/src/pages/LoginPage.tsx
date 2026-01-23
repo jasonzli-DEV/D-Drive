@@ -1,10 +1,18 @@
 import { Box, Container, Paper, Button, Typography } from '@mui/material';
 import { HardDrive } from 'lucide-react';
+import { useAuth } from '../hooks/useAuth';
+import { Navigate } from 'react-router-dom';
 
 const DISCORD_CLIENT_ID = '1459408684080693320';
 const REDIRECT_URI = 'http://pi.local/auth/callback';
 
 export default function LoginPage() {
+  const { isAuthenticated, loading } = useAuth();
+
+  // Redirect if already authenticated
+  if (loading) return null;
+  if (isAuthenticated) return <Navigate to="/" replace />;
+
   const handleDiscordLogin = () => {
     const authUrl = `https://discord.com/api/oauth2/authorize?client_id=${DISCORD_CLIENT_ID}&redirect_uri=${encodeURIComponent(REDIRECT_URI)}&response_type=code&scope=identify%20email`;
     window.location.href = authUrl;
