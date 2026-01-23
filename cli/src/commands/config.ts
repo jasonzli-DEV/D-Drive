@@ -31,19 +31,20 @@ export async function configCommand(options: ConfigOptions) {
       const rawKey = options.key.replace(/^Bearer\s+/i, '').trim();
       const normalizedKey = rawKey.startsWith('dd_') ? rawKey : `dd_${rawKey}`;
 
-      const response = await axios.get(`${apiUrl}/auth/me`, {
+      // Validate API key by calling a protected endpoint that accepts API keys (authenticate middleware)
+      const validateUrl = apiUrl.replace(/\/$/, '') + '/api-keys';
+      const response = await axios.get(validateUrl, {
         headers: {
           Authorization: `Bearer ${normalizedKey}`,
         },
         timeout: 10000,
       });
-
-      if (response.status === 200 && response.data) {
+      if (response.status === 200) {
         setConfig('apiKey', normalizedKey);
         if (options.url) {
           setConfig('apiUrl', options.url);
         }
-        spinner.succeed(chalk.green(`✓ API key validated and saved! Authenticated as: ${response.data.user?.discordUsername || 'User'}`));
+        spinner.succeed(chalk.green('✓ API key validated and saved!'));
       } else {
         spinner.fail(chalk.red('✗ Invalid API key'));
         process.exit(1);
