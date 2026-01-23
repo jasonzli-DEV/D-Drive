@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -30,6 +30,11 @@ import {
   FormControlLabel,
   Checkbox,
   Tooltip,
+  Breadcrumbs,
+  Link,
+  Chip,
+  Card,
+  CardContent,
 } from '@mui/material';
 import {
   Upload,
@@ -42,6 +47,8 @@ import {
   MoreVertical,
   Edit,
   Lock,
+  Home,
+  ChevronRight,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -56,6 +63,8 @@ interface FileItem {
   mimeType?: string;
   createdAt: string;
   updatedAt: string;
+  parentId?: string | null;
+  path?: string;
 }
 
 interface UploadProgress {
@@ -79,6 +88,9 @@ export default function DrivePage() {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuFile, setMenuFile] = useState<FileItem | null>(null);
   const [encryptFiles, setEncryptFiles] = useState(true);
+  const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
+  const [currentFolder, setCurrentFolder] = useState<FileItem | null>(null);
+  const [breadcrumbs, setBreadcrumbs] = useState<FileItem[]>([]);
 
   // Fetch files
   const { data: files, isLoading } = useQuery({
@@ -89,6 +101,32 @@ export default function DrivePage() {
       return response.data as FileItem[];
     },
   });
+
+  // Fetch current folder details for breadcrumbs
+  const { data: folderDetails } = useQuery({
+    queryKey: ['folder', folderId],
+    queryFn: async () => {
+      if (!folderId) return null;
+      const response = await api.get(`/files/${folderId}`);
+      return response.data as FileItem;
+    },
+    enabled: !!folderId,
+  });
+
+  // Build breadcrumbs from current folder
+  useEffect(() => {
+    const buildBreadcrumbs = () => {
+      const crumbs: FileItem[] = [];
+      if (folderDetails) {
+        crumbs.push(folderDetails);
+        // In a real app, you'd fetch parent folders recursively
+        // For now, we'll just show the current folder
+      }
+      setBreadcrumbs(crumbs);
+      setCurrentFolder(folderDetails || null);
+    };
+    buildBreadcrumbs();
+  }, [folderDetails]);
 
   // Fetch all folders for move dialog
   const { data: allFolders } = useQuery({
@@ -230,6 +268,83 @@ export default function DrivePage() {
     });
   }, [uploadMutation]);
 
+  // Drag and drop handlers for moving files into folders
+  const handleDragStart = (e: React.DragEvent, file: FileItem) => {
+    e.stopPropagation();
+    setDraggedFile(file);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+  };
+
+  const handleDrop = async (e: React.DragEvent, targetFolder: FileItem) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!draggedFile || draggedFile.id === targetFolder.id) {
+      setDraggedFile(null);
+      return;
+    }
+
+    try {
+      await api.patch(`/files/${draggedFile.id}/move`, {
+        targetFolderId: targetFolder.id,
+      });
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      queryClient.invalidateQueries({ queryKey: ['allFolders'] });
+      toast.success(`Moved ${draggedFile.name} to ${targetFolder.name}`);
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Failed to move file');
+    }
+    
+    setDraggedFile(null);
+  };
+
+  // Context menu handlers
+  const handleContextMenu = (e: React.MouseEvent, file: FileItem) => {
+    e.preventDefault();
+    setMenuFile(file);
+    setMenuAnchor(e.currentTarget as HTMLElement);
+  };
+
+  const handleCloseMenu = () => {
+    setMenuAnchor(null);
+    setMenuFile(null);
+  };
+
+  const handleMenuAction = (action: string) => {
+    if (!menuFile) return;
+    
+    switch (action) {
+      case 'rename':
+        setSelectedFile(menuFile);
+        setNewName(menuFile.name);
+        setRenameDialogOpen(true);
+        break;
+      case 'move':
+        setSelectedFile(menuFile);
+        setMoveDialogOpen(true);
+        break;
+      case 'delete':
+        if (window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) {
+          deleteMutation.mutate(menuFile.id);
+        }
+        break;
+      case 'download':
+        if (menuFile.type === 'FILE') {
+          handleDownload(menuFile);
+        }
+        break;
+    }
+    
+    handleCloseMenu();
+  };
+
+
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     noClick: true,
@@ -301,7 +416,7 @@ export default function DrivePage() {
   };
 
   return (
-    <Box {...getRootProps()} sx={{ height: '100%', p: 3 }}>
+    <Box {...getRootProps()} sx={{ height: '100%', p: { xs: 2, sm: 3 }, bgcolor: '#f5f7fa' }}>
       <input {...getInputProps()} />
       
       {isDragActive && (
@@ -312,47 +427,104 @@ export default function DrivePage() {
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(88, 101, 242, 0.1)',
-            border: '3px dashed #5865F2',
+            backgroundColor: 'rgba(88, 101, 242, 0.15)',
+            border: '4px dashed #5865F2',
+            borderRadius: 2,
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
             zIndex: 9999,
+            backdropFilter: 'blur(4px)',
           }}
         >
-          <Typography variant="h4">Drop files here...</Typography>
+          <Box sx={{ textAlign: 'center' }}>
+            <Upload size={64} color="#5865F2" style={{ marginBottom: 16 }} />
+            <Typography variant="h4" color="#5865F2" fontWeight={600}>
+              Drop files here to upload
+            </Typography>
+          </Box>
         </Box>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
-        <Button
-          variant="contained"
-          startIcon={<Upload />}
-          onClick={() => document.getElementById('file-upload')?.click()}
-        >
-          Upload
-        </Button>
-        <input
-          id="file-upload"
-          type="file"
-          hidden
-          multiple
-          onChange={(e) => {
-            if (e.target.files) {
-              Array.from(e.target.files).forEach((file) => {
-                uploadMutation.mutate(file);
-              });
-            }
-          }}
-        />
-        <Button
-          variant="outlined"
-          startIcon={<FolderPlus />}
-          onClick={() => setNewFolderOpen(true)}
-        >
-          New Folder
-        </Button>
-        <Tooltip title="Encrypt files with AES-256 before uploading">
+      {/* Breadcrumb Navigation */}
+      {breadcrumbs.length > 0 && (
+        <Card sx={{ mb: 3, boxShadow: 1 }}>
+          <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+            <Breadcrumbs separator={<ChevronRight size={16} />}>
+              <Link
+                component="button"
+                variant="body2"
+                onClick={() => navigate('/')}
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 0.5,
+                  textDecoration: 'none',
+                  color: 'primary.main',
+                  '&:hover': { textDecoration: 'underline' },
+                }}
+              >
+                <Home size={18} />
+                <Typography>Home</Typography>
+              </Link>
+              {breadcrumbs.map((crumb) => (
+                <Typography key={crumb.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                  <Folder size={18} />
+                  {crumb.name}
+                </Typography>
+              ))}
+            </Breadcrumbs>
+          </CardContent>
+        </Card>
+      )}
+
+      <Card sx={{ mb: 3, boxShadow: 2 }}>
+        <CardContent>
+          <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
+            <Button
+              variant="contained"
+              startIcon={<Upload />}
+              onClick={() => document.getElementById('file-upload')?.click()}
+              sx={{
+                px: 3,
+                py: 1,
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+              }}
+            >
+              Upload Files
+            </Button>
+            <input
+              id="file-upload"
+              type="file"
+              hidden
+              multiple
+              onChange={(e) => {
+                if (e.target.files) {
+                  Array.from(e.target.files).forEach((file) => {
+                    uploadMutation.mutate(file);
+                  });
+                }
+              }}
+            />
+            <Button
+              variant="outlined"
+              startIcon={<FolderPlus />}
+              onClick={() => setNewFolderOpen(true)}
+              sx={{
+                px: 3,
+                py: 1,
+                borderRadius: 2,
+                textTransform: 'none',
+                fontWeight: 600,
+              }}
+            >
+              New Folder
+            </Button>
+            <Tooltip title="Encrypt files with AES-256 before uploading"
+              sx={{ ml: 'auto' }}
+            >
           <FormControlLabel
             control={
               <Checkbox
@@ -370,77 +542,148 @@ export default function DrivePage() {
             sx={{ ml: 1 }}
           />
         </Tooltip>
-      </Box>
+        </CardContent>
+      </Card>
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
           <CircularProgress />
         </Box>
+      ) : files && files.length === 0 ? (
+        <Card sx={{ boxShadow: 2 }}>
+          <CardContent>
+            <Box sx={{ textAlign: 'center', py: 8 }}>
+              <Folder size={64} color="#ccc" style={{ marginBottom: 16 }} />
+              <Typography variant="h6" color="text.secondary" gutterBottom>
+                This folder is empty
+              </Typography>
+              <Typography variant="body2" color="text.secondary">
+                Upload files or create folders to get started
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
       ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Modified</TableCell>
-                <TableCell>Size</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {files?.map((file) => (
-                <TableRow 
-                  key={file.id} 
-                  hover
-                  onClick={() => file.type === 'DIRECTORY' && handleFolderClick(file)}
-                  sx={{ cursor: file.type === 'DIRECTORY' ? 'pointer' : 'default' }}
-                >
-                  <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      {file.type === 'DIRECTORY' ? (
-                        <Folder size={20} color="#FFA000" />
-                      ) : (
-                        <File size={20} color="#666" />
+        <Card sx={{ boxShadow: 2 }}>
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow sx={{ bgcolor: '#fafbfc' }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Modified</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Size</TableCell>
+                  <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {files?.map((file) => (
+                  <TableRow 
+                    key={file.id} 
+                    hover
+                    draggable={file.type === 'FILE'}
+                    onDragStart={(e) => file.type === 'FILE' && handleDragStart(e, file)}
+                    onDragOver={(e) => file.type === 'DIRECTORY' && handleDragOver(e)}
+                    onDrop={(e) => file.type === 'DIRECTORY' && handleDrop(e, file)}
+                    onContextMenu={(e) => handleContextMenu(e, file)}
+                    onClick={() => file.type === 'DIRECTORY' && handleFolderClick(file)}
+                    sx={{
+                      cursor: file.type === 'DIRECTORY' ? 'pointer' : 'default',
+                      bgcolor: file.type === 'DIRECTORY' && draggedFile ? 'rgba(88, 101, 242, 0.05)' : 'transparent',
+                      transition: 'all 0.2s',
+                      '&:hover': {
+                        bgcolor: file.type === 'DIRECTORY' ? 'rgba(88, 101, 242, 0.08)' : 'rgba(0, 0, 0, 0.04)',
+                      },
+                    }}
+                  >
+                    <TableCell>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
+                        {file.type === 'DIRECTORY' ? (
+                          <Folder size={22} color="#FFA000" />
+                        ) : (
+                          <File size={22} color="#666" />
+                        )}
+                        <Typography fontWeight={500}>{file.name}</Typography>
+                      </Box>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
+                        {formatDistance(new Date(file.updatedAt), new Date(), {
+                          addSuffix: true,
+                        })}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Chip
+                        label={file.type === 'FILE' ? formatFileSize(Number(file.size)) : 'Folder'}
+                        size="small"
+                        sx={{
+                          bgcolor: file.type === 'FILE' ? '#e3f2fd' : '#fff3e0',
+                          color: file.type === 'FILE' ? '#1976d2' : '#e65100',
+                          fontWeight: 500,
+                        }}
+                      />
+                    </TableCell>
+                    <TableCell align="right" onClick={(e) => e.stopPropagation()}>
+                      {file.type === 'FILE' && (
+                        <IconButton onClick={() => handleDownload(file)} size="small" sx={{ mr: 0.5 }}>
+                          <Download size={18} />
+                        </IconButton>
                       )}
-                      <Typography>{file.name}</Typography>
-                    </Box>
-                  </TableCell>
-                  <TableCell>
-                    {formatDistance(new Date(file.updatedAt), new Date(), {
-                      addSuffix: true,
-                    })}
-                  </TableCell>
-                  <TableCell>
-                    {file.type === 'FILE' ? formatFileSize(Number(file.size)) : '—'}
-                  </TableCell>
-                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
-                    {file.type === 'FILE' && (
-                      <IconButton onClick={() => handleDownload(file)} size="small">
-                        <Download size={18} />
+                      <IconButton
+                        onClick={(e) => handleOpenMenu(e, file)}
+                        size="small"
+                      >
+                        <MoreVertical size={18} />
                       </IconButton>
-                    )}
-                    <IconButton
-                      onClick={(e) => handleOpenMenu(e, file)}
-                      size="small"
-                    >
-                      <MoreVertical size={18} />
-                    </IconButton>
-                  </TableCell>
+                    </TableCell>
                 </TableRow>
               ))}
-              {files?.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} align="center" sx={{ py: 8 }}>
-                    <Typography color="text.secondary">
-                      No files yet. Upload or drag files here to get started!
-                    </Typography>
-                  </TableCell>
-                </TableRow>
-              )}
             </TableBody>
           </Table>
         </TableContainer>
+      </Card>
       )}
+
+      {/* Context Menu */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleCloseMenu}
+        sx={{
+          '& .MuiPaper-root': {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            minWidth: 200,
+          },
+        }}
+      >
+        {menuFile?.type === 'FILE' && (
+          <MenuItem onClick={() => handleMenuAction('download')}>
+            <ListItemIcon>
+              <Download size={18} />
+            </ListItemIcon>
+            <ListItemText>Download</ListItemText>
+          </MenuItem>
+        )}
+        <MenuItem onClick={() => handleMenuAction('rename')}>
+          <ListItemIcon>
+            <Edit size={18} />
+          </ListItemIcon>
+          <ListItemText>Rename</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction('move')}>
+          <ListItemIcon>
+            <Move size={18} />
+          </ListItemIcon>
+          <ListItemText>Move</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
+          <ListItemIcon sx={{ color: 'inherit' }}>
+            <Trash2 size={18} />
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
 
       <Dialog open={newFolderOpen} onClose={() => setNewFolderOpen(false)}>
         <DialogTitle>Create New Folder</DialogTitle>
