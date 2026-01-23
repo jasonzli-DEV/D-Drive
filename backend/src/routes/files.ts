@@ -433,8 +433,14 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     }
 
     // Ensure new name is unique within the same parent folder (exclude current file)
-    const parentOfFile = file.parentId || null;
-    const uniqueName = await getUniqueName(userId, parentOfFile, name, id);
+    let parentPath: string | null = null;
+    if (file.parentId) {
+      const parent = await prisma.file.findUnique({ where: { id: file.parentId }, select: { path: true } });
+      parentPath = parent?.path || null;
+    } else {
+      parentPath = null;
+    }
+    const uniqueName = await getUniqueName(userId, parentPath, name, id);
 
     const updatedFile = await prisma.file.update({
       where: { id },
@@ -464,8 +470,9 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
     }
 
     // Verify target folder exists if specified
+    let targetFolder: any = null;
     if (parentId) {
-      const targetFolder = await prisma.file.findFirst({
+      targetFolder = await prisma.file.findFirst({
         where: { id: parentId, userId, type: 'DIRECTORY' },
       });
 
@@ -485,8 +492,11 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
     // If moving into same folder, nothing to do
     const targetParent = parentId || null;
 
+    // Determine target parent path for uniqueness checks
+    const targetParentPath = targetFolder ? targetFolder.path : null;
+
     // Ensure name uniqueness in target folder (exclude the file itself)
-    const uniqueName = await getUniqueName(userId, targetParent, file.name, id);
+    const uniqueName = await getUniqueName(userId, targetParentPath, file.name, id);
 
     const updatedFile = await prisma.file.update({
       where: { id },
