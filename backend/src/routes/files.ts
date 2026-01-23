@@ -211,7 +211,8 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
       chunkBuffers.push(buffer);
     }
     
-    let fileData = Buffer.concat(chunkBuffers);
+    // Buffer.concat may produce Buffer<ArrayBufferLike> depending on lib types; cast to plain Buffer
+    let fileData = Buffer.concat(chunkBuffers) as unknown as Buffer;
 
     // Decrypt if encrypted
     if (file.encrypted && file.user.encryptionKey) {
