@@ -757,6 +757,28 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
                   parentId: parentId || null,
                 },
               });
+
+              // Post-create verification: handle rare race where another concurrent
+              // create inserted the same path between our existence check and the
+              // create call. If that happened, generate a new unique name and
+              // update this record so final stored paths remain unique.
+              try {
+                const conflict = await prisma.file.findFirst({
+                  where: { userId, path: fileRecord.path, NOT: { id: fileRecord.id } },
+                });
+                if (conflict) {
+                  const fallbackName = await getUniqueName(userId, parentPath, originalName, fileRecord.id);
+                  const fallbackPath = parentPath ? `${parentPath}/${fallbackName}` : `/${fallbackName}`;
+                  await prisma.file.update({ where: { id: fileRecord.id }, data: { name: fallbackName, path: fallbackPath } });
+                  // mutate in-memory record for downstream processing
+                  fileRecord.name = fallbackName;
+                  fileRecord.path = fallbackPath;
+                }
+              } catch (e) {
+                // best-effort: if this check fails, proceed; uniqueness will be
+                // enforced by DB (and will be handled elsewhere)
+                logger.warn('Post-create uniqueness verification failed:', e);
+              }
             } catch (createErr: any) {
               if (createErr?.code === 'P2002') {
                 uniqueName = await getUniqueName(userId, parentPath, originalName);
