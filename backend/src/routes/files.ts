@@ -546,12 +546,19 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
     }
 
-    const updatedFile = await prisma.file.update({
-      where: { id },
-      data: { name, path: targetPath, updatedAt: new Date() },
-    });
+    try {
+      const updatedFile = await prisma.file.update({
+        where: { id },
+        data: { name, path: targetPath, updatedAt: new Date() },
+      });
 
-    res.json(serializeFile(updatedFile));
+      return res.json(serializeFile(updatedFile));
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        return res.status(409).json({ error: 'A file with that name already exists in the target directory' });
+      }
+      throw e;
+    }
   } catch (error) {
     logger.error('Error renaming file:', error);
     res.status(500).json({ error: 'Failed to rename file' });
@@ -613,12 +620,19 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
       return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
     }
 
-    const updatedFile = await prisma.file.update({
-      where: { id },
-      data: { parentId: targetParent, name: file.name, path: targetPath, updatedAt: new Date() },
-    });
+    try {
+      const updatedFile = await prisma.file.update({
+        where: { id },
+        data: { parentId: targetParent, name: file.name, path: targetPath, updatedAt: new Date() },
+      });
 
-    res.json(serializeFile(updatedFile));
+      return res.json(serializeFile(updatedFile));
+    } catch (e: any) {
+      if (e?.code === 'P2002') {
+        return res.status(409).json({ error: 'A file with the same name already exists in the target folder' });
+      }
+      throw e;
+    }
   } catch (error) {
     logger.error('Error moving file:', error);
     res.status(500).json({ error: 'Failed to move file' });
