@@ -151,20 +151,42 @@ export default function DrivePage() {
       // Add to upload progress
       setUploadProgress(prev => [...prev, { fileName: file.name, progress: 0, status: 'uploading' }]);
 
-      // use streaming endpoint that starts uploading to Discord as data arrives
-      const response = await api.post('/files/upload/stream', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-        onUploadProgress: (progressEvent) => {
-          const percentCompleted = Math.round(
-            (progressEvent.loaded * 100) / (progressEvent.total || 1)
-          );
-          setUploadProgress(prev =>
-            prev.map(p =>
-              p.fileName === file.name ? { ...p, progress: percentCompleted } : p
-            )
-          );
-        },
-      });
+      // Try streaming endpoint first; fallback to legacy endpoint on error
+      let response;
+      try {
+        response = await api.post('/files/upload/stream', formData, {
+          headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (progressEvent) => {
+            const percentCompleted = Math.round(
+              (progressEvent.loaded * 100) / (progressEvent.total || 1)
+            );
+            setUploadProgress(prev =>
+              prev.map(p =>
+                p.fileName === file.name ? { ...p, progress: percentCompleted } : p
+              )
+            );
+          },
+        });
+      } catch (err) {
+        // Fallback: older endpoint that buffers to disk/server-side
+        try {
+          response = await api.post('/files/upload', formData, {
+            headers: { 'Content-Type': 'multipart/form-data' },
+            onUploadProgress: (progressEvent) => {
+              const percentCompleted = Math.round(
+                (progressEvent.loaded * 100) / (progressEvent.total || 1)
+              );
+              setUploadProgress(prev =>
+                prev.map(p =>
+                  p.fileName === file.name ? { ...p, progress: percentCompleted } : p
+                )
+              );
+            },
+          });
+        } catch (err2) {
+          throw err2;
+        }
+      }
       return { data: response.data, fileName: file.name };
     },
     onSuccess: ({ fileName }) => {
