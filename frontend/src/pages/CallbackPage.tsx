@@ -29,7 +29,15 @@ export default function CallbackPage() {
       
       login(token);
       toast.success('Logged in successfully!');
-      navigate('/');
+      // Delay navigation slightly to avoid rapid navigation/throttling
+      // and allow React state to settle (prevents bfcache/navigation races).
+      setTimeout(() => {
+        try {
+          navigate('/', { replace: true });
+        } catch (err) {
+          console.error('Navigation after login failed', err);
+        }
+      }, 150);
     } catch (error) {
       console.error('Auth callback error:', error);
       toast.error('Authentication failed');
