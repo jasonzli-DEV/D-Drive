@@ -72,11 +72,18 @@ async function startServer() {
     discordClient = await initDiscordBot();
     logger.info('Discord bot initialized successfully');
 
-    // Start Express server
-    app.listen(PORT, () => {
+    // Start Express server and disable the default Node request timeout so
+    // long-running streaming uploads aren't cut off with a 408 Request Timeout.
+    const server = app.listen(PORT, () => {
       logger.info(`🚀 D-Drive backend running on port ${PORT}`);
       logger.info(`Environment: ${process.env.NODE_ENV || 'development'}`);
     });
+
+    // Remove idle request timeout (0 = disabled). This prevents Node from
+    // terminating long uploads mid-stream. Keep headersTimeout at Node's
+    // default to avoid abuse during initial headers parsing.
+    server.setTimeout(0);
+    logger.info('Server request timeout disabled (server.setTimeout(0))');
   } catch (error) {
     logger.error('Failed to start server:', error);
     process.exit(1);
