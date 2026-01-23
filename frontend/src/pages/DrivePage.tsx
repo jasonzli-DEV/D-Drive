@@ -394,7 +394,7 @@ export default function DrivePage() {
                 <TableRow 
                   key={file.id} 
                   hover
-                  onClick={() => handleFolderClick(file)}
+                  onClick={() => file.type === 'DIRECTORY' && handleFolderClick(file)}
                   sx={{ cursor: file.type === 'DIRECTORY' ? 'pointer' : 'default' }}
                 >
                   <TableCell>
