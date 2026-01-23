@@ -90,8 +90,9 @@ export async function downloadChunkFromDiscord(
   const attachment = message.attachments.first()!;
   const response = await fetch(attachment.url);
   const arrayBuffer = await response.arrayBuffer();
-  
-  return Buffer.from(arrayBuffer);
+
+  // Force-assert to Node Buffer to satisfy TS typing differences between ArrayBufferLike
+  return Buffer.from(arrayBuffer) as unknown as Buffer;
 }
 
 export async function deleteChunkFromDiscord(
