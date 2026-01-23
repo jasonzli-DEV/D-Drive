@@ -29,13 +29,21 @@ export default function CallbackPage() {
       
       login(token);
       toast.success('Logged in successfully!');
-      // Delay navigation slightly to avoid rapid navigation/throttling
-      // and allow React state to settle (prevents bfcache/navigation races).
+      // Delay slightly to avoid rapid navigation/throttling and allow state to settle.
+      // Use a full-page redirect so injected content-scripts/extensions re-run
+      // against a fresh document, which prevents race conditions leading to
+      // `parentElement` access errors from injected scripts.
       setTimeout(() => {
         try {
-          navigate('/', { replace: true });
+          window.location.replace('/');
         } catch (err) {
-          console.error('Navigation after login failed', err);
+          console.error('Full-page redirect after login failed', err);
+          try {
+            // Fallback to SPA navigation if full redirect fails for some reason
+            navigate('/', { replace: true });
+          } catch (err2) {
+            console.error('Fallback SPA navigation failed', err2);
+          }
         }
       }, 150);
     } catch (error) {
