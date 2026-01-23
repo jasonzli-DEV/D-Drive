@@ -3,6 +3,7 @@ import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { uploadChunkToDiscord, downloadChunkFromDiscord, deleteChunkFromDiscord } from '../services/discord';
 import { logger } from '../utils/logger';
+import { encryptBuffer, decryptBuffer, generateEncryptionKey } from '../utils/crypto';
 import multer from 'multer';
 
 const router = Router();
@@ -92,11 +93,29 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
 router.post('/upload', authenticate, upload.single('file'), async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { path, parentId } = req.body;
+    const { path, parentId, encrypt } = req.body;
     const file = req.file;
 
     if (!file) {
       return res.status(400).json({ error: 'No file provided' });
+    }
+
+    // Get user's encryption key if encryption is requested
+    let encryptionKey: string | null = null;
+    const shouldEncrypt = encrypt === 'true' || encrypt === true;
+    
+    if (shouldEncrypt) {
+      const user = await prisma.user.findUnique({ where: { id: userId } });
+      if (!user?.encryptionKey) {
+        // Generate encryption key for user if not exists
+        encryptionKey = generateEncryptionKey();
+        await prisma.user.update({
+          where: { id: userId },
+          data: { encryptionKey },
+        });
+      } else {
+        encryptionKey = user.encryptionKey;
+      }
     }
 
     // Create file record
@@ -107,20 +126,27 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         size: BigInt(file.size),
         mimeType: file.mimetype,
         type: 'FILE',
+        encrypted: shouldEncrypt,
         userId,
         parentId: parentId || null,
       },
     });
 
+    // Process file buffer - encrypt if needed
+    let processedBuffer = file.buffer;
+    if (shouldEncrypt && encryptionKey) {
+      processedBuffer = encryptBuffer(file.buffer, encryptionKey);
+      logger.info(`File encrypted: ${file.originalname}`);
+    }
+
     // Split file into chunks and upload to Discord
-    const buffer = file.buffer;
-    const totalChunks = Math.ceil(buffer.length / CHUNK_SIZE);
+    const totalChunks = Math.ceil(processedBuffer.length / CHUNK_SIZE);
     const chunks = [];
 
     for (let i = 0; i < totalChunks; i++) {
       const start = i * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, buffer.length);
-      const chunkBuffer = buffer.slice(start, end);
+      const end = Math.min(start + CHUNK_SIZE, processedBuffer.length);
+      const chunkBuffer = processedBuffer.slice(start, end);
       const filename = `${fileRecord.id}_chunk_${i}_${file.originalname}`;
 
       logger.info(`Uploading chunk ${i + 1}/${totalChunks} for file ${file.originalname}`);
@@ -168,6 +194,9 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
         chunks: {
           orderBy: { chunkIndex: 'asc' },
         },
+        user: {
+          select: { encryptionKey: true },
+        },
       },
     });
 
@@ -175,17 +204,34 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
       return res.status(404).json({ error: 'File not found' });
     }
 
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${file.name}"`);
-    res.setHeader('Content-Length', file.size.toString());
-
-    // Stream chunks
+    // Collect all chunks
+    const chunkBuffers: Buffer[] = [];
     for (const chunk of file.chunks) {
       const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
-      res.write(buffer);
+      chunkBuffers.push(buffer);
+    }
+    
+    let fileData = Buffer.concat(chunkBuffers);
+
+    // Decrypt if encrypted
+    if (file.encrypted && file.user.encryptionKey) {
+      try {
+        fileData = decryptBuffer(fileData, file.user.encryptionKey);
+        logger.info(`File decrypted: ${file.name}`);
+      } catch (decryptError) {
+        logger.error('Decryption failed:', decryptError);
+        return res.status(500).json({ error: 'Failed to decrypt file' });
+      }
     }
 
-    res.end();
+    // Sanitize filename to prevent header injection
+    const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
+    
+    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
+    res.setHeader('Content-Length', fileData.length.toString());
+
+    res.send(fileData);
   } catch (error) {
     logger.error('Error downloading file:', error);
     if (!res.headersSent) {
@@ -244,13 +290,21 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     }
 
     // Delete chunks from Discord
-    if (file.chunks.length > 0) {
+    if (file.chunks && file.chunks.length > 0) {
       for (const chunk of file.chunks) {
-        await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
+        try {
+          await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
+        } catch (discordError) {
+          logger.warn(`Failed to delete chunk ${chunk.id} from Discord:`, discordError);
+          // Continue anyway - chunk might already be deleted
+        }
       }
     }
 
-    // Delete from database
+    // Delete chunks from database first (foreign key constraint)
+    await prisma.fileChunk.deleteMany({ where: { fileId: id } });
+
+    // Delete file from database
     await prisma.file.delete({ where: { id } });
 
     res.json({ message: 'File deleted successfully' });
@@ -290,5 +344,87 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
     res.status(500).json({ error: 'Failed to rename file' });
   }
 });
+
+// Move file
+router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+    const { parentId } = req.body;
+
+    const file = await prisma.file.findFirst({
+      where: { id, userId },
+    });
+
+    if (!file) {
+      return res.status(404).json({ error: 'File not found' });
+    }
+
+    // Verify target folder exists if specified
+    if (parentId) {
+      const targetFolder = await prisma.file.findFirst({
+        where: { id: parentId, userId, type: 'DIRECTORY' },
+      });
+
+      if (!targetFolder) {
+        return res.status(404).json({ error: 'Target folder not found' });
+      }
+
+      // Prevent moving folder into itself or its children
+      if (file.type === 'DIRECTORY') {
+        const isChild = await isChildOf(id, parentId);
+        if (isChild || id === parentId) {
+          return res.status(400).json({ error: 'Cannot move folder into itself or its child' });
+        }
+      }
+    }
+
+    const updatedFile = await prisma.file.update({
+      where: { id },
+      data: { parentId: parentId || null, updatedAt: new Date() },
+    });
+
+    res.json(serializeFile(updatedFile));
+  } catch (error) {
+    logger.error('Error moving file:', error);
+    res.status(500).json({ error: 'Failed to move file' });
+  }
+});
+
+// Get all folders (for move dialog)
+router.get('/folders/all', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const folders = await prisma.file.findMany({
+      where: { userId, type: 'DIRECTORY' },
+      select: {
+        id: true,
+        name: true,
+        parentId: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+      orderBy: { name: 'asc' },
+    });
+
+    res.json(folders);
+  } catch (error) {
+    logger.error('Error listing folders:', error);
+    res.status(500).json({ error: 'Failed to list folders' });
+  }
+});
+
+// Helper function to check if targetId is a child of sourceId
+async function isChildOf(sourceId: string, targetId: string): Promise<boolean> {
+  const target = await prisma.file.findUnique({
+    where: { id: targetId },
+    select: { parentId: true },
+  });
+
+  if (!target || !target.parentId) return false;
+  if (target.parentId === sourceId) return true;
+  return isChildOf(sourceId, target.parentId);
+}
 
 export default router;

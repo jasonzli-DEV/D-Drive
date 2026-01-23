@@ -12,9 +12,24 @@ export async function listCommand(remotePath: string = '/', options: ListOptions
   try {
     const api = createApiClient();
     
-    const response = await api.get('/files', {
-      params: { path: remotePath },
-    });
+    // If path is root, don't send parentId (backend returns root-level files)
+    // Otherwise, need to find the folder by path first
+    let params: any = {};
+    
+    if (remotePath && remotePath !== '/') {
+      // First, try to find the folder by path
+      const allFilesRes = await api.get('/files');
+      const targetFolder = findFolderByPath(allFilesRes.data, remotePath);
+      
+      if (targetFolder) {
+        params.parentId = targetFolder.id;
+      } else {
+        spinner.fail(chalk.red(`Folder not found: ${remotePath}`));
+        process.exit(1);
+      }
+    }
+    
+    const response = await api.get('/files', { params });
 
     const files = response.data;
     spinner.stop();
@@ -53,6 +68,18 @@ export async function listCommand(remotePath: string = '/', options: ListOptions
     console.error(chalk.red(error.response?.data?.error || error.message));
     process.exit(1);
   }
+}
+
+function findFolderByPath(files: any[], targetPath: string): any | null {
+  // Simple path matching - looks for folder by name in the path
+  const pathParts = targetPath.split('/').filter(p => p);
+  
+  for (const file of files) {
+    if (file.type === 'DIRECTORY' && file.name === pathParts[0]) {
+      return file;
+    }
+  }
+  return null;
 }
 
 function formatFileSize(bytes: number): string {

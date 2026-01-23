@@ -3,7 +3,12 @@ import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
-const JWT_SECRET = process.env.JWT_SECRET || 'your-secret-key';
+
+// JWT_SECRET must be set in environment - no fallback for security
+const JWT_SECRET = process.env.JWT_SECRET;
+if (!JWT_SECRET) {
+  throw new Error('CRITICAL: JWT_SECRET environment variable is not set. Application cannot start.');
+}
 
 export async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {

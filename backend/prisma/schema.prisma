@@ -16,6 +16,7 @@ model User {
   discriminator String
   avatar        String?
   email         String?
+  encryptionKey String?  // Key for encrypting user files
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -49,17 +50,18 @@ model Session {
 }
 
 model File {
-  id        String   @id @default(uuid())
-  name      String
-  path      String
-  size      BigInt   @default(0)
-  mimeType  String?
-  type      FileType @default(FILE)
-  parentId  String?
-  parent    File?    @relation("FileHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
-  children  File[]   @relation("FileHierarchy")
-  userId    String
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id          String   @id @default(uuid())
+  name        String
+  path        String
+  size        BigInt   @default(0)
+  mimeType    String?
+  type        FileType @default(FILE)
+  encrypted   Boolean  @default(false)
+  parentId    String?
+  parent      File?    @relation("FileHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children    File[]   @relation("FileHierarchy")
+  userId      String
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   
   // Discord storage references
   chunks    FileChunk[]

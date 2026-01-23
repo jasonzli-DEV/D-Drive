@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useState, useCallback } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -19,6 +19,19 @@ import {
   DialogActions,
   TextField,
   CircularProgress,
+  LinearProgress,
+  Snackbar,
+  Alert,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
+  Select,
+  FormControl,
+  InputLabel,
+  FormControlLabel,
+  Checkbox,
+  Tooltip,
 } from '@mui/material';
 import {
   Upload,
@@ -27,6 +40,10 @@ import {
   File,
   Download,
   Trash2,
+  Move,
+  MoreVertical,
+  Edit,
+  Lock,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -43,11 +60,27 @@ interface FileItem {
   updatedAt: string;
 }
 
+interface UploadProgress {
+  fileName: string;
+  progress: number;
+  status: 'uploading' | 'success' | 'error';
+}
+
 export default function DrivePage() {
   const { folderId } = useParams();
+  const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [newFolderOpen, setNewFolderOpen] = useState(false);
   const [folderName, setFolderName] = useState('');
+  const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+  const [moveDialogOpen, setMoveDialogOpen] = useState(false);
+  const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
+  const [targetFolderId, setTargetFolderId] = useState<string>('');
+  const [renameDialogOpen, setRenameDialogOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
+  const [menuFile, setMenuFile] = useState<FileItem | null>(null);
+  const [encryptFiles, setEncryptFiles] = useState(true);
 
   // Fetch files
   const { data: files, isLoading } = useQuery({
@@ -55,6 +88,15 @@ export default function DrivePage() {
     queryFn: async () => {
       const params = folderId ? `?parentId=${folderId}` : '';
       const response = await api.get(`/files${params}`);
+      return response.data as FileItem[];
+    },
+  });
+
+  // Fetch all folders for move dialog
+  const { data: allFolders } = useQuery({
+    queryKey: ['allFolders'],
+    queryFn: async () => {
+      const response = await api.get('/files/folders/all');
       return response.data as FileItem[];
     },
   });
@@ -68,6 +110,10 @@ export default function DrivePage() {
         formData.append('parentId', folderId);
       }
       formData.append('path', `/${file.name}`);
+      formData.append('encrypt', encryptFiles.toString());
+
+      // Add to upload progress
+      setUploadProgress(prev => [...prev, { fileName: file.name, progress: 0, status: 'uploading' }]);
 
       const response = await api.post('/files/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
@@ -75,16 +121,34 @@ export default function DrivePage() {
           const percentCompleted = Math.round(
             (progressEvent.loaded * 100) / (progressEvent.total || 1)
           );
-          console.log('Upload progress:', percentCompleted);
+          setUploadProgress(prev =>
+            prev.map(p =>
+              p.fileName === file.name ? { ...p, progress: percentCompleted } : p
+            )
+          );
         },
       });
-      return response.data;
+      return { data: response.data, fileName: file.name };
     },
-    onSuccess: () => {
+    onSuccess: ({ fileName }) => {
+      setUploadProgress(prev =>
+        prev.map(p =>
+          p.fileName === fileName ? { ...p, status: 'success', progress: 100 } : p
+        )
+      );
       queryClient.invalidateQueries({ queryKey: ['files'] });
       toast.success('File uploaded successfully!');
+      // Remove from progress after 3 seconds
+      setTimeout(() => {
+        setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
+      }, 3000);
     },
-    onError: (error: any) => {
+    onError: (error: any, file: File) => {
+      setUploadProgress(prev =>
+        prev.map(p =>
+          p.fileName === file.name ? { ...p, status: 'error' } : p
+        )
+      );
       toast.error(error.response?.data?.error || 'Upload failed');
     },
   });
@@ -114,26 +178,103 @@ export default function DrivePage() {
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       await api.delete(`/files/${id}`);
+      return id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
       toast.success('Deleted successfully!');
+      handleCloseMenu();
     },
     onError: (error: any) => {
       toast.error(error.response?.data?.error || 'Delete failed');
     },
   });
 
-  const onDrop = (acceptedFiles: File[]) => {
+  // Move file mutation
+  const moveMutation = useMutation({
+    mutationFn: async ({ fileId, newParentId }: { fileId: string; newParentId: string | null }) => {
+      const response = await api.patch(`/files/${fileId}/move`, { parentId: newParentId });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      toast.success('File moved successfully!');
+      setMoveDialogOpen(false);
+      setSelectedFile(null);
+      setTargetFolderId('');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to move file');
+    },
+  });
+
+  // Rename file mutation
+  const renameMutation = useMutation({
+    mutationFn: async ({ fileId, name }: { fileId: string; name: string }) => {
+      const response = await api.patch(`/files/${fileId}`, { name });
+      return response.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      toast.success('Renamed successfully!');
+      setRenameDialogOpen(false);
+      setSelectedFile(null);
+      setNewName('');
+    },
+    onError: (error: any) => {
+      toast.error(error.response?.data?.error || 'Failed to rename');
+    },
+  });
+
+  const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach((file) => {
       uploadMutation.mutate(file);
     });
-  };
+  }, [uploadMutation]);
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     noClick: true,
   });
+
+  const handleOpenMenu = (event: React.MouseEvent<HTMLElement>, file: FileItem) => {
+    setMenuAnchor(event.currentTarget);
+    setMenuFile(file);
+  };
+
+  const handleCloseMenu = () => {
+    setMenuAnchor(null);
+    setMenuFile(null);
+  };
+
+  const handleMoveClick = () => {
+    if (menuFile) {
+      setSelectedFile(menuFile);
+      setMoveDialogOpen(true);
+    }
+    handleCloseMenu();
+  };
+
+  const handleRenameClick = () => {
+    if (menuFile) {
+      setSelectedFile(menuFile);
+      setNewName(menuFile.name);
+      setRenameDialogOpen(true);
+    }
+    handleCloseMenu();
+  };
+
+  const handleDeleteClick = () => {
+    if (menuFile) {
+      deleteMutation.mutate(menuFile.id);
+    }
+  };
+
+  const handleFolderClick = (file: FileItem) => {
+    if (file.type === 'DIRECTORY') {
+      navigate(`/drive/${file.id}`);
+    }
+  };
 
   const handleDownload = async (file: FileItem) => {
     try {
@@ -185,7 +326,7 @@ export default function DrivePage() {
         </Box>
       )}
 
-      <Box sx={{ mb: 3, display: 'flex', gap: 2 }}>
+      <Box sx={{ mb: 3, display: 'flex', gap: 2, alignItems: 'center' }}>
         <Button
           variant="contained"
           startIcon={<Upload />}
@@ -213,6 +354,24 @@ export default function DrivePage() {
         >
           New Folder
         </Button>
+        <Tooltip title="Encrypt files with AES-256 before uploading">
+          <FormControlLabel
+            control={
+              <Checkbox
+                checked={encryptFiles}
+                onChange={(e) => setEncryptFiles(e.target.checked)}
+                icon={<Lock size={20} />}
+                checkedIcon={<Lock size={20} />}
+                sx={{
+                  color: 'text.secondary',
+                  '&.Mui-checked': { color: 'success.main' },
+                }}
+              />
+            }
+            label="Encrypt"
+            sx={{ ml: 1 }}
+          />
+        </Tooltip>
       </Box>
 
       {isLoading ? (
@@ -232,7 +391,12 @@ export default function DrivePage() {
             </TableHead>
             <TableBody>
               {files?.map((file) => (
-                <TableRow key={file.id} hover>
+                <TableRow 
+                  key={file.id} 
+                  hover
+                  onClick={() => handleFolderClick(file)}
+                  sx={{ cursor: file.type === 'DIRECTORY' ? 'pointer' : 'default' }}
+                >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {file.type === 'DIRECTORY' ? (
@@ -251,17 +415,17 @@ export default function DrivePage() {
                   <TableCell>
                     {file.type === 'FILE' ? formatFileSize(Number(file.size)) : '—'}
                   </TableCell>
-                  <TableCell align="right">
+                  <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                     {file.type === 'FILE' && (
                       <IconButton onClick={() => handleDownload(file)} size="small">
                         <Download size={18} />
                       </IconButton>
                     )}
                     <IconButton
-                      onClick={() => deleteMutation.mutate(file.id)}
+                      onClick={(e) => handleOpenMenu(e, file)}
                       size="small"
                     >
-                      <Trash2 size={18} />
+                      <MoreVertical size={18} />
                     </IconButton>
                   </TableCell>
                 </TableRow>
@@ -308,6 +472,140 @@ export default function DrivePage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Context Menu */}
+      <Menu
+        anchorEl={menuAnchor}
+        open={Boolean(menuAnchor)}
+        onClose={handleCloseMenu}
+      >
+        <MenuItem onClick={handleRenameClick}>
+          <ListItemIcon>
+            <Edit size={18} />
+          </ListItemIcon>
+          <ListItemText>Rename</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleMoveClick}>
+          <ListItemIcon>
+            <Move size={18} />
+          </ListItemIcon>
+          <ListItemText>Move</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleDeleteClick} sx={{ color: 'error.main' }}>
+          <ListItemIcon>
+            <Trash2 size={18} color="red" />
+          </ListItemIcon>
+          <ListItemText>Delete</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* Move Dialog */}
+      <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>Move "{selectedFile?.name}"</DialogTitle>
+        <DialogContent>
+          <FormControl fullWidth sx={{ mt: 2 }}>
+            <InputLabel>Destination Folder</InputLabel>
+            <Select
+              value={targetFolderId}
+              label="Destination Folder"
+              onChange={(e) => setTargetFolderId(e.target.value)}
+            >
+              <MenuItem value="">Root (My Drive)</MenuItem>
+              {allFolders?.filter(f => f.id !== selectedFile?.id).map((folder) => (
+                <MenuItem key={folder.id} value={folder.id}>
+                  📁 {folder.name}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setMoveDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => selectedFile && moveMutation.mutate({ 
+              fileId: selectedFile.id, 
+              newParentId: targetFolderId || null 
+            })}
+            variant="contained"
+          >
+            Move
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Rename Dialog */}
+      <Dialog open={renameDialogOpen} onClose={() => setRenameDialogOpen(false)}>
+        <DialogTitle>Rename "{selectedFile?.name}"</DialogTitle>
+        <DialogContent>
+          <TextField
+            autoFocus
+            margin="dense"
+            label="New Name"
+            fullWidth
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && newName && selectedFile) {
+                renameMutation.mutate({ fileId: selectedFile.id, name: newName });
+              }
+            }}
+          />
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setRenameDialogOpen(false)}>Cancel</Button>
+          <Button
+            onClick={() => selectedFile && renameMutation.mutate({ fileId: selectedFile.id, name: newName })}
+            variant="contained"
+            disabled={!newName}
+          >
+            Rename
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Upload Progress */}
+      {uploadProgress.length > 0 && (
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            width: 350,
+            p: 2,
+            zIndex: 1000,
+          }}
+          elevation={6}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            Uploading Files
+          </Typography>
+          {uploadProgress.map((item) => (
+            <Box key={item.fileName} sx={{ mb: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                  {item.fileName}
+                </Typography>
+                <Typography variant="body2" color={
+                  item.status === 'success' ? 'success.main' :
+                  item.status === 'error' ? 'error.main' : 'text.secondary'
+                }>
+                  {item.status === 'success' ? '✓' : 
+                   item.status === 'error' ? '✗' : 
+                   `${item.progress}%`}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={item.progress}
+                color={
+                  item.status === 'success' ? 'success' :
+                  item.status === 'error' ? 'error' : 'primary'
+                }
+              />
+            </Box>
+          ))}
+        </Paper>
+      )}
     </Box>
   );
 }
