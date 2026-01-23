@@ -118,17 +118,44 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       }
     }
 
-    // Create file record
+    // Ensure filename is unique within the target parent folder by appending
+    // " (1)", " (2)", ... before the extension when duplicates exist.
+    const targetParentId = parentId || null;
+    const originalName = file.originalname;
+
+    // Helper to split name and extension
+    function splitName(name: string) {
+      const lastDot = name.lastIndexOf('.');
+      if (lastDot === -1) return { base: name, ext: '' };
+      return { base: name.substring(0, lastDot), ext: name.substring(lastDot) };
+    }
+
+    const { base, ext } = splitName(originalName);
+
+    // Check for existing file with same name in the same folder
+    let newName = originalName;
+    let counter = 1;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const existing = await prisma.file.findFirst({
+        where: { userId, parentId: targetParentId, name: newName },
+      });
+      if (!existing) break;
+      newName = `${base} (${counter})${ext}`;
+      counter += 1;
+    }
+
+    // Create file record with unique name
     const fileRecord = await prisma.file.create({
       data: {
-        name: file.originalname,
-        path: path || `/${file.originalname}`,
+        name: newName,
+        path: path || `/${newName}`,
         size: BigInt(file.size),
         mimeType: file.mimetype,
         type: 'FILE',
         encrypted: shouldEncrypt,
         userId,
-        parentId: parentId || null,
+        parentId: targetParentId,
       },
     });
 
