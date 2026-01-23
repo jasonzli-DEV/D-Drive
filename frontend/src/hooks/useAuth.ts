@@ -13,7 +13,7 @@ export function useAuth() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const lastAuthCheckRef = useRef<number | null>(null);
-  const retryTimeoutRef = useRef<any>(null);
+  const retryTimeoutRef = useRef<number | null>(null);
   const retryCountRef = useRef<number>(0);
 
   useEffect(() => {
@@ -52,7 +52,7 @@ export function useAuth() {
         if (retries < 4) {
           const delay = Math.pow(2, retries) * 1000; // exponential backoff: 1s,2s,4s...
           retryCountRef.current = retries + 1;
-          retryTimeoutRef.current = setTimeout(() => checkAuth(), delay) as unknown as NodeJS.Timeout;
+          retryTimeoutRef.current = window.setTimeout(() => checkAuth(), delay);
           return;
         }
       } else {
