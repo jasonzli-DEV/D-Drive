@@ -671,7 +671,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
       if (fieldname === 'encrypt') shouldEncrypt = val === 'true';
     });
 
-    bb.on('file', (fieldname: string, fileStream: any, filename: string, encoding: string, mimetype: string) => {
+    bb.on('file', (fieldname: string, fileStream: any, filename: any, encoding: string, mimetype: string) => {
       (async () => {
         try {
           // Resolve parentPath from DB if parentId provided (server authoritative)
@@ -691,8 +691,13 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
             }
           }
 
-            // Ensure unique file record (create before uploading chunks so we have fileId)
-          const originalName = filename;
+            // Normalize filename: some Busboy builds pass an object with { filename, encoding, mimeType }
+            // instead of a plain string. Extract `.filename` when present, otherwise coerce to string.
+            const originalName = (typeof filename === 'string')
+              ? filename
+              : (filename && typeof filename.filename === 'string')
+                ? filename.filename
+                : String(filename || 'file');
           let uniqueName = await getUniqueName(userId, parentPath, originalName);
           const maxAttempts = 5;
           let attempt = 0;
