@@ -1,0 +1,68 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: ddrive-postgres
+    environment:
+      POSTGRES_USER: ddrive
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-changeme}
+      POSTGRES_DB: ddrive
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    networks:
+      - ddrive-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ddrive"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: ddrive-backend
+    environment:
+      NODE_ENV: production
+      PORT: 5000
+      DATABASE_URL: postgresql://ddrive:${POSTGRES_PASSWORD:-changeme}@postgres:5432/ddrive
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET}
+      DISCORD_BOT_TOKEN: ${DISCORD_BOT_TOKEN}
+      JWT_SECRET: ${JWT_SECRET}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3000}
+    ports:
+      - "5000:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - ddrive-network
+    volumes:
+      - ./backend/logs:/app/logs
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:5000}
+    container_name: ddrive-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - backend
+    networks:
+      - ddrive-network
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+
+networks:
+  ddrive-network:
+    driver: bridge

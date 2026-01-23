@@ -1,0 +1,94 @@
+// Prisma schema file for D-Drive database
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id            String   @id @default(uuid())
+  discordId     String   @unique
+  username      String
+  discriminator String
+  avatar        String?
+  email         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  files       File[]
+  apiKeys     ApiKey[]
+  sessions    Session[]
+}
+
+model ApiKey {
+  id        String   @id @default(uuid())
+  key       String   @unique
+  name      String
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime @default(now())
+  lastUsed  DateTime?
+
+  @@index([userId])
+}
+
+model Session {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model File {
+  id        String   @id @default(uuid())
+  name      String
+  path      String
+  size      BigInt   @default(0)
+  mimeType  String?
+  type      FileType @default(FILE)
+  parentId  String?
+  parent    File?    @relation("FileHierarchy", fields: [parentId], references: [id], onDelete: Cascade)
+  children  File[]   @relation("FileHierarchy")
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Discord storage references
+  chunks    FileChunk[]
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, path])
+  @@index([userId])
+  @@index([parentId])
+  @@index([path])
+}
+
+model FileChunk {
+  id              String   @id @default(uuid())
+  fileId          String
+  file            File     @relation(fields: [fileId], references: [id], onDelete: Cascade)
+  chunkIndex      Int
+  messageId       String
+  channelId       String
+  attachmentUrl   String
+  size            Int
+  createdAt       DateTime @default(now())
+
+  @@unique([fileId, chunkIndex])
+  @@index([fileId])
+}
+
+enum FileType {
+  FILE
+  DIRECTORY
+}
