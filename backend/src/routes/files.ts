@@ -8,6 +8,9 @@ import multer from 'multer';
 import fs from 'fs';
 import os from 'os';
 import path from 'path';
+// @ts-ignore
+const Busboy = require('busboy');
+import crypto from 'crypto';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -614,3 +617,201 @@ async function isChildOf(sourceId: string, targetId: string): Promise<boolean> {
 }
 
 export default router;
+
+// Streaming upload endpoint (starts uploading chunks to Discord while client uploads)
+router.post('/upload/stream', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+
+    const bb = new Busboy({ headers: req.headers });
+
+    let parentId: string | null = null;
+    let parentPath: string | null = null;
+    let shouldEncrypt = false;
+    let encryptionKey: string | null = null;
+
+    let fileProcessed = false;
+
+    // Will hold the created file record
+    let fileRecord: any = null;
+    const chunks: any[] = [];
+
+    // gather fields
+    bb.on('field', async (fieldname: string, val: string) => {
+      if (fieldname === 'parentId') parentId = val || null;
+      if (fieldname === 'path') parentPath = val || null;
+      if (fieldname === 'encrypt') shouldEncrypt = val === 'true' || val === true;
+    });
+
+    bb.on('file', (fieldname: string, fileStream: any, filename: string, encoding: string, mimetype: string) => {
+      (async () => {
+        try {
+          // Resolve parentPath from DB if parentId provided (server authoritative)
+          if (parentId) {
+            const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
+            parentPath = parent?.path || null;
+          }
+
+          // Prepare encryption key if requested
+          if (shouldEncrypt) {
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user?.encryptionKey) {
+              encryptionKey = generateEncryptionKey();
+              await prisma.user.update({ where: { id: userId }, data: { encryptionKey } });
+            } else {
+              encryptionKey = user.encryptionKey;
+            }
+          }
+
+          // Ensure unique file record (create before uploading chunks so we have fileId)
+          const originalName = filename;
+          let uniqueName = await getUniqueName(userId, parentPath, originalName);
+          const maxAttempts = 5;
+          let attempt = 0;
+          while (!fileRecord && attempt < maxAttempts) {
+            try {
+              const computedPath = parentPath ? `${parentPath}/${uniqueName}` : `/${uniqueName}`;
+              fileRecord = await prisma.file.create({
+                data: {
+                  name: uniqueName,
+                  path: computedPath,
+                  size: BigInt(0), // will update later
+                  mimeType: mimetype,
+                  type: 'FILE',
+                  encrypted: shouldEncrypt,
+                  userId,
+                  parentId: parentId || null,
+                },
+              });
+            } catch (createErr: any) {
+              if (createErr?.code === 'P2002') {
+                uniqueName = await getUniqueName(userId, parentPath, originalName);
+                attempt += 1;
+                continue;
+              }
+              throw createErr;
+            }
+          }
+
+          if (!fileRecord) throw new Error('Failed to create file record');
+
+          // Stream processing: accumulate until CHUNK_SIZE, then send
+          let bufferQueue: Buffer[] = [];
+          let bufferedBytes = 0;
+          let chunkCounter = 0;
+          let totalBytes = 0;
+
+          // helper to flush a chunk (plaintext chunkBuffer)
+          const flushChunk = async (chunkBuffer: Buffer) => {
+            // optionally encrypt per-chunk
+            let toSend = chunkBuffer;
+            if (shouldEncrypt && encryptionKey) {
+              toSend = encryptBuffer(chunkBuffer, encryptionKey);
+            }
+
+            // pause stream while uploading to reduce memory pressure
+            fileStream.pause();
+            try {
+              const filenameForDiscord = `${fileRecord.id}_chunk_${chunkCounter}_${fileRecord.name}`;
+              const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(filenameForDiscord, toSend);
+
+              const created = await prisma.fileChunk.create({
+                data: {
+                  fileId: fileRecord.id,
+                  chunkIndex: chunkCounter,
+                  messageId,
+                  channelId,
+                  attachmentUrl,
+                  size: chunkBuffer.length,
+                },
+              });
+              chunks.push(created);
+              chunkCounter += 1;
+            } finally {
+              fileStream.resume();
+            }
+          };
+
+          fileStream.on('data', async (data: Buffer) => {
+            bufferQueue.push(data);
+            bufferedBytes += data.length;
+            totalBytes += data.length;
+
+            // while we have at least CHUNK_SIZE, extract and send
+            while (bufferedBytes >= CHUNK_SIZE) {
+              // build chunkBuffer of CHUNK_SIZE
+              const chunkBuffer = Buffer.alloc(CHUNK_SIZE);
+              let offset = 0;
+              while (offset < CHUNK_SIZE) {
+                const head = bufferQueue[0];
+                const need = Math.min(head.length, CHUNK_SIZE - offset);
+                head.copy(chunkBuffer, offset, 0, need);
+                if (need === head.length) {
+                  bufferQueue.shift();
+                } else {
+                  bufferQueue[0] = head.slice(need);
+                }
+                offset += need;
+              }
+              bufferedBytes -= CHUNK_SIZE;
+              await flushChunk(chunkBuffer);
+            }
+          });
+
+          fileStream.on('end', async () => {
+            // flush remaining bytes as final chunk
+            if (bufferedBytes > 0) {
+              const finalBuffer = Buffer.concat(bufferQueue, bufferedBytes);
+              await flushChunk(finalBuffer);
+            }
+
+            // update file record size
+            try {
+              await prisma.file.update({ where: { id: fileRecord.id }, data: { size: BigInt(totalBytes) } });
+            } catch (e) {
+              logger.warn('Failed to update file size:', e);
+            }
+
+            fileProcessed = true;
+            logger.info(`Streaming upload complete for file ${fileRecord.id}, chunks=${chunks.length}`);
+            // respond now (but busboy 'finish' will also fire)
+            res.json({ file: serializeFile(await prisma.file.findUnique({ where: { id: fileRecord.id } })), chunks: chunks.length, storedName: fileRecord.name });
+          });
+
+          fileStream.on('error', (err: any) => {
+            throw err;
+          });
+        } catch (err) {
+          logger.error('Stream upload error:', err);
+          // best-effort cleanup
+          try {
+            if (fileRecord) {
+              const uploaded = await prisma.fileChunk.findMany({ where: { fileId: fileRecord.id } });
+              for (const c of uploaded) {
+                try { await deleteChunkFromDiscord(c.messageId, c.channelId); } catch (_) {}
+              }
+              await prisma.fileChunk.deleteMany({ where: { fileId: fileRecord.id } });
+              await prisma.file.delete({ where: { id: fileRecord.id } });
+            }
+          } catch (cleanupErr) {
+            logger.warn('Cleanup after stream error failed:', cleanupErr);
+          }
+          if (!res.headersSent) res.status(500).json({ error: 'Streaming upload failed' });
+        }
+      })();
+    });
+
+    bb.on('finish', () => {
+      if (!fileProcessed) {
+        // no file processed (maybe client didn't send file)
+        return res.status(400).json({ error: 'No file uploaded' });
+      }
+      // otherwise response already sent on file end
+    });
+
+    req.pipe(bb);
+  } catch (error) {
+    logger.error('Error in streaming upload endpoint:', error);
+    res.status(500).json({ error: 'Failed to handle streaming upload' });
+  }
+});

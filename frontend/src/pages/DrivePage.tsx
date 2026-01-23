@@ -140,17 +140,19 @@ export default function DrivePage() {
   const uploadMutation = useMutation({
     mutationFn: async (file: File) => {
       const formData = new FormData();
-      formData.append('file', file);
+      // append metadata first so server-side stream parser can read fields before file
       if (folderId) {
         formData.append('parentId', folderId);
       }
       formData.append('path', `/${file.name}`);
       formData.append('encrypt', encryptFiles.toString());
+      formData.append('file', file);
 
       // Add to upload progress
       setUploadProgress(prev => [...prev, { fileName: file.name, progress: 0, status: 'uploading' }]);
 
-      const response = await api.post('/files/upload', formData, {
+      // use streaming endpoint that starts uploading to Discord as data arrives
+      const response = await api.post('/files/upload/stream', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
         onUploadProgress: (progressEvent) => {
           const percentCompleted = Math.round(
