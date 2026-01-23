@@ -87,6 +87,8 @@ async function uploadSingleFile(
   const formData = new FormData();
   formData.append('file', fs.createReadStream(filePath));
   formData.append('path', destination);
+  // Ensure CLI uploads follow frontend behavior and request server-side encryption by default
+  formData.append('encrypt', 'true');
 
   let progressBar: ProgressBar | null = null;
 
