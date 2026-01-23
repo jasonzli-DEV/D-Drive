@@ -29,7 +29,7 @@ function App() {
 
   return (
     <ErrorBoundary>
-    <Routes>
+      <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<CallbackPage />} />
       
@@ -71,9 +71,9 @@ function App() {
           )
         }
       />
-    </Routes>
-  );
+      </Routes>
     </ErrorBoundary>
+  );
 }
 
 export default App;
