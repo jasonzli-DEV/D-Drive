@@ -5,10 +5,22 @@ import { uploadChunkToDiscord, downloadChunkFromDiscord, deleteChunkFromDiscord 
 import { logger } from '../utils/logger';
 import { encryptBuffer, decryptBuffer, generateEncryptionKey } from '../utils/crypto';
 import multer from 'multer';
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
 
 const router = Router();
 const prisma = new PrismaClient();
-const upload = multer({ storage: multer.memoryStorage() });
+// Use disk storage to avoid buffering large files in memory on the Pi
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: os.tmpdir(),
+    filename: (_req, file, cb) => {
+      const unique = `${Date.now()}-${Math.random().toString(36).slice(2)}-${file.originalname}`;
+      cb(null, unique);
+    },
+  }),
+});
 
 const CHUNK_SIZE = 9 * 1024 * 1024; // 9MB chunks (Discord limit ~10MB, keep margin for overhead)
 
@@ -153,11 +165,15 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
     // Resolve the parent path string (use explicit `path` if provided, otherwise derive it from `parentId`).
     const originalName = file.originalname;
     let parentPath: string | null = null;
-    if (path) {
-      parentPath = path as string;
-    } else if (parentId) {
+    // Prefer the explicit parentId (server-side source of truth) when provided.
+    // If parentId is present, derive the parentPath from the DB and ignore any
+    // client-supplied `path` value to avoid mismatches that can lead to
+    // duplicate-name anomalies.
+    if (parentId) {
       const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
       parentPath = parent?.path || null;
+    } else if (path) {
+      parentPath = path as string;
     } else {
       parentPath = null;
     }
@@ -203,31 +219,45 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
       throw new Error('Failed to create unique file record after multiple attempts');
     }
 
-    // Process file buffer - encrypt if needed
-    let processedBuffer = file.buffer;
-    if (shouldEncrypt && encryptionKey) {
-      processedBuffer = encryptBuffer(file.buffer, encryptionKey);
-      logger.info(`File encrypted: ${file.originalname}`);
-    }
-
-    // Split file into chunks and upload to Discord. Use a sequential chunkCounter
-    // so chunkIndex increases for each stored piece regardless of slicing.
+    // Process file on disk to avoid high memory usage. We will read the
+    // uploaded temp file in CHUNK_SIZE blocks and stream each block to
+    // Discord. If encryption is requested we create a temporary encrypted
+    // file on disk (streaming encryption would be ideal, but the current
+    // helper operates on buffers so we write an encrypted temp file).
+    const tmpPath = (file as any).path as string;
+    let processingPath = tmpPath;
     const chunks: any[] = [];
     const uploadName = fileRecord.name;
 
     try {
+      // If encryption requested, read file and write encrypted temp file
+      if (shouldEncrypt && encryptionKey) {
+        logger.info(`Encrypting uploaded file to temp file: ${file.originalname}`);
+        const raw = await fs.promises.readFile(tmpPath);
+        const encrypted = encryptBuffer(raw, encryptionKey);
+        const encPath = `${tmpPath}.enc`;
+        await fs.promises.writeFile(encPath, encrypted);
+        processingPath = encPath;
+      }
+
+      const fd = await fs.promises.open(processingPath, 'r');
+      const stat = await fd.stat();
+      const totalSize = stat.size;
+
       let offset = 0;
       let chunkCounter = 0;
-      while (offset < processedBuffer.length) {
-        const end = Math.min(offset + CHUNK_SIZE, processedBuffer.length);
-        const chunkBuffer = processedBuffer.slice(offset, end);
-        const filename = `${fileRecord.id}_chunk_${chunkCounter}_${uploadName}`;
 
-        logger.info(`Uploading chunk ${chunkCounter + 1} for file ${uploadName} (bytes=${chunkBuffer.length})`);
+      while (offset < totalSize) {
+        const readSize = Math.min(CHUNK_SIZE, totalSize - offset);
+        const buffer = Buffer.alloc(readSize);
+        await fd.read(buffer, 0, readSize, offset);
+
+        const filename = `${fileRecord.id}_chunk_${chunkCounter}_${uploadName}`;
+        logger.info(`Uploading chunk ${chunkCounter + 1} for file ${uploadName} (bytes=${buffer.length})`);
 
         const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(
           filename,
-          chunkBuffer
+          buffer
         );
 
         const chunk = await prisma.fileChunk.create({
@@ -237,19 +267,55 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
             messageId,
             channelId,
             attachmentUrl,
-            size: chunkBuffer.length,
+            size: buffer.length,
           },
         });
 
         chunks.push(chunk);
 
+        // Move to next chunk
         chunkCounter += 1;
-        offset = end;
+        offset += readSize;
       }
+
+      await fd.close();
+
+      // Clean up temp files (original upload and encrypted temp if created)
+      try {
+        if (processingPath && processingPath !== tmpPath) {
+          await fs.promises.unlink(processingPath);
+        }
+        if (tmpPath) {
+          await fs.promises.unlink(tmpPath);
+        }
+      } catch (rmErr) {
+        logger.warn('Failed to remove temp upload files:', rmErr);
+      }
+
+      logger.info(`File uploaded successfully: ${uploadName} (${chunks.length} chunks)`);
+
+      // Return the created file (with stored name) and chunk count
+      const storedFile = await prisma.file.findUnique({ where: { id: fileRecord.id } });
+
+      return res.json({
+        file: serializeFile(storedFile),
+        chunks: chunks.length,
+        storedName: uploadName,
+      });
     } catch (uploadError: any) {
       logger.error(`Failed uploading chunks for file ${fileRecord.id}:`, uploadError);
+
       // Attempt to clean up any uploaded chunks (best-effort)
       try {
+        // Delete discord messages for created chunks
+        const uploadedChunks = await prisma.fileChunk.findMany({ where: { fileId: fileRecord.id } });
+        for (const c of uploadedChunks) {
+          try {
+            await deleteChunkFromDiscord(c.messageId, c.channelId);
+          } catch (e) {
+            logger.warn('Failed to delete chunk from Discord during rollback:', e);
+          }
+        }
         await prisma.fileChunk.deleteMany({ where: { fileId: fileRecord.id } });
       } catch (cleanupErr) {
         logger.warn('Failed to cleanup file chunks after upload error:', cleanupErr);
@@ -261,19 +327,20 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         logger.warn('Failed to delete file record after upload error:', cleanupErr);
       }
 
+      // Remove any temp files
+      try {
+        if (processingPath && processingPath !== tmpPath) {
+          await fs.promises.unlink(processingPath).catch(() => null);
+        }
+        if (tmpPath) {
+          await fs.promises.unlink(tmpPath).catch(() => null);
+        }
+      } catch (rmErr) {
+        logger.warn('Failed to remove temp files during rollback:', rmErr);
+      }
+
       return res.status(500).json({ error: `Failed to upload file: ${uploadError?.message || uploadError}` });
     }
-
-    logger.info(`File uploaded successfully: ${uploadName} (${chunks.length} chunks)`);
-
-    // Return the created file (with stored name) and chunk count
-    const storedFile = await prisma.file.findUnique({ where: { id: fileRecord.id } });
-
-    res.json({
-      file: serializeFile(storedFile),
-      chunks: chunks.length,
-      storedName: uploadName,
-    });
   } catch (error) {
     logger.error('Error uploading file:', error);
     res.status(500).json({ error: 'Failed to upload file' });
