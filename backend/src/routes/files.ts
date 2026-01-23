@@ -11,7 +11,13 @@ import path from 'path';
 // Import Busboy with interop guard (handles CJS vs ESM default export)
 // @ts-ignore
 const RawBusboy = require('busboy');
-const Busboy = (RawBusboy && (RawBusboy.default || RawBusboy)) as any;
+// Prefer the default export, then commonjs export, then common alternate shapes
+const Busboy = (RawBusboy && (RawBusboy.default || RawBusboy || (RawBusboy as any).Busboy || (RawBusboy as any).busboy)) as any;
+try {
+  logger?.info?.('Busboy module type', typeof RawBusboy, Object.keys(RawBusboy || {}));
+} catch (e) {
+  // ignore logging errors at module load
+}
 import crypto from 'crypto';
 
 const router = Router();
