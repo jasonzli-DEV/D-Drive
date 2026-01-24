@@ -129,6 +129,35 @@ Response:
 }
 ```
 
+#### Streaming Upload (recommended for large files)
+```
+POST /files/upload/stream
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+Notes:
+- This endpoint accepts a multipart/form-data upload and streams the incoming file to the server without buffering the entire file to disk. The server uploads file chunks to the storage backend (Discord) as they arrive.
+- Prefer sending `parentId` (the destination folder ID) rather than a client-supplied `path`. When `parentId` is omitted the server will create the file at root — client-supplied `path` values are not trusted and may be ignored to avoid path/parentId inconsistencies.
+- Form fields:
+  - `file` (required): file to upload
+  - `parentId` (optional): destination folder ID (server-authoritative)
+  - `encrypt` (optional): `true` to enable server-side AES-256 encryption of the stored chunks
+
+Behavior:
+- The server splits uploads into ~8MB chunks and stores each chunk as separate objects; the endpoint returns once all chunks are stored and the file record is persisted.
+- The server disables request timeouts for this route so long-running uploads are supported.
+
+Example (cURL):
+```bash
+curl -X POST http://localhost:5000/api/files/upload/stream \
+  -H "Authorization: Bearer dd_your_api_key" \
+  -F "parentId=<folder_id>" \
+  -F "encrypt=true" \
+  -F "file=@/path/to/large-file.iso"
+```
+
+
 #### Download File
 ```
 GET /files/:id/download

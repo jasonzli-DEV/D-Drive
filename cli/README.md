@@ -40,6 +40,8 @@ Upload a single file:
 d-drive upload ./myfile.txt /backups/
 ```
 
+Note: For very large files the server exposes a streaming upload endpoint (`POST /api/files/upload/stream`) that accepts multipart uploads and streams chunks directly to the storage backend without full buffering. Use the API streaming endpoint (see `docs/API.md`) for multi-GB uploads or when you need more robust handling for long uploads.
+
 Upload a directory recursively:
 
 ```bash
