@@ -69,7 +69,7 @@ app.get('/api/health', (req, res) => {
 app.use(errorHandler);
 
 // Initialize Discord bot
-let discordClient: Client;
+let discordClient: Client | null = null;
 
 async function startServer() {
   try {

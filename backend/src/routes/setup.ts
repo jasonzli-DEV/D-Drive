@@ -175,7 +175,7 @@ router.post('/validate-discord', async (req, res) => {
       });
     }
     
-    const botUser = await response.json();
+    const botUser = await response.json() as { username: string; id: string };
     
     // If guild ID provided, check bot has access
     let guildValid = true;
