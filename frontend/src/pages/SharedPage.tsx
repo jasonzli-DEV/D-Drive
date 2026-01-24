@@ -29,6 +29,7 @@ import {
   ListItemText,
   TextField,
   LinearProgress,
+  Paper,
 } from '@mui/material';
 import { 
   Folder, 
@@ -764,7 +765,8 @@ export default function SharedPage() {
   const files = tab === 0 ? sharedWithMe : sharedByMe;
 
   return (
-    <Box sx={{ p: 3 }}>
+    <Box>
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
       <Typography variant="h4" gutterBottom>Shared</Typography>
 
       <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
@@ -777,7 +779,7 @@ export default function SharedPage() {
           <CircularProgress />
         </Box>
       ) : !files || files.length === 0 ? (
-        <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', color: 'text.secondary' }}>
           <File size={48} style={{ opacity: 0.5, marginBottom: 16 }} />
           <Typography variant="h6">
             {tab === 0 ? 'No files shared with you' : 'You haven\'t shared any files'}
@@ -909,6 +911,7 @@ export default function SharedPage() {
           </Button>
         </DialogActions>
       </Dialog>
+      </Paper>
     </Box>
   );
 }
