@@ -414,7 +414,7 @@ export async function runTaskNow(taskId: string) {
     
     // Increase max listeners to prevent warnings during parallel downloads
     // Each parallel download adds listeners, so we need more than the default 10
-    sftp.client.setMaxListeners(50);
+    sftp.client.setMaxListeners(200);
 
     // Attempt connections based on task auth preferences. If both methods are allowed,
     // try password first then private key (password may be desired by some servers).
@@ -449,7 +449,7 @@ export async function runTaskNow(taskId: string) {
           try { await sftp.end(); } catch (endErr) { /* ignore */ }
           // Create new client and connect
           sftp = new SftpClient();
-          sftp.client.setMaxListeners(50); // Increase for parallel downloads
+          sftp.client.setMaxListeners(200); // Increase for parallel downloads
           await sftp.connect(workingConfig);
           logger.info('SFTP reconnected successfully', { taskId });
           return true;
@@ -568,7 +568,7 @@ export async function runTaskNow(taskId: string) {
       // Increase max listeners to prevent warnings during parallel scans
       const sshClient = (sftp as any).client;
       if (sshClient && typeof sshClient.setMaxListeners === 'function') {
-        sshClient.setMaxListeners(50);
+        sshClient.setMaxListeners(200);
       }
       
       while (dirsToScan.length > 0 && !runningTasks.get(taskId)?.cancelled) {
@@ -652,6 +652,20 @@ export async function runTaskNow(taskId: string) {
       let totalBytes = 0;
       let reconnectAttempts = 0;
       const MAX_RECONNECTS = 10; // Allow up to 10 reconnections per task
+      
+      // Track archive errors - must be set up BEFORE piping
+      let archiveError: Error | null = null;
+      archive.on('error', (err) => {
+        logger.error('Archive stream error', { taskId, err });
+        archiveError = err;
+      });
+      archive.on('warning', (err) => {
+        logger.warn('Archive warning', { taskId, err: err.message });
+      });
+      output.on('error', (err) => {
+        logger.error('Output stream error', { taskId, err });
+        archiveError = err;
+      });
 
       // Pipe archive to file
       archive.pipe(output);
@@ -797,8 +811,8 @@ export async function runTaskNow(taskId: string) {
           
           // Process files in batches for better throughput
           // Higher batch size for small files to reduce per-file SFTP overhead
-          const BATCH_SIZE = 50; // Process 50 files concurrently (was 20)
-          const SMALL_FILE_THRESHOLD = 1024 * 1024; // 1MB - use memory for small files
+          const BATCH_SIZE = 100; // Process 100 files concurrently (increased from 50)
+          const SMALL_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB - use memory for small files (increased from 1MB)
           
           for (let i = 0; i < files.length; i += BATCH_SIZE) {
             // Check for cancellation
@@ -859,15 +873,17 @@ export async function runTaskNow(taskId: string) {
               reconnects: reconnectAttempts,
             });
             
-            // Log progress every 100 files 
-            if (filesAdded % 100 === 0 || i + BATCH_SIZE >= files.length) {
+            // Log progress every 500 files (reduced frequency)
+            if (filesAdded % 500 === 0 || i + BATCH_SIZE >= files.length) {
               logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts, dir });
             }
           }
           
-          // Recurse into directories sequentially (to avoid too many concurrent connections)
-          for (const d of dirs) {
-            await walk(d.remoteFull, d.rel);
+          // Process directories - parallelize leaf directories, recurse sequentially for deep trees
+          const DIR_BATCH_SIZE = 5; // Process up to 5 directories in parallel
+          for (let i = 0; i < dirs.length; i += DIR_BATCH_SIZE) {
+            const dirBatch = dirs.slice(i, i + DIR_BATCH_SIZE);
+            await Promise.all(dirBatch.map(d => walk(d.remoteFull, d.rel)));
           }
         }
 
@@ -877,20 +893,66 @@ export async function runTaskNow(taskId: string) {
       // Stream all files into archive
       await streamRemoteToArchive(task.sftpPath);
       
+      // Check if any archive errors occurred during streaming
+      if (archiveError) {
+        throw new Error(`Archive creation failed: ${archiveError.message}`);
+      }
+      
       logger.info('Finalizing archive', { taskId, filesAdded, totalBytes: formatBytes(totalBytes) });
       updateProgress({ phase: 'archiving', filesProcessed: filesAdded, totalBytes });
       
-      // Finalize the archive
-      await archive.finalize();
-      
-      // Wait for output stream to finish writing
+      // Finalize the archive - create a promise that handles both completion and errors
       await new Promise<void>((resolve, reject) => {
-        output.on('close', () => resolve());
-        output.on('error', (e) => reject(e));
+        // Check for errors that already occurred
+        if (archiveError) {
+          reject(archiveError);
+          return;
+        }
+        
+        let resolved = false;
+        
+        output.on('close', () => {
+          if (!resolved) {
+            resolved = true;
+            resolve();
+          }
+        });
+        
+        output.on('error', (e) => {
+          if (!resolved) {
+            resolved = true;
+            reject(e);
+          }
+        });
+        
+        archive.on('error', (e) => {
+          if (!resolved) {
+            resolved = true;
+            reject(e);
+          }
+        });
+        
+        // Call finalize after setting up listeners
+        archive.finalize().catch((e) => {
+          if (!resolved) {
+            resolved = true;
+            reject(e);
+          }
+        });
       });
       
-      // Get final archive size
-      const archiveStat = await fs.promises.stat(archivePath);
+      // Verify the archive file exists and has content
+      let archiveStat;
+      try {
+        archiveStat = await fs.promises.stat(archivePath);
+      } catch (statErr) {
+        throw new Error(`Archive file not found after creation: ${archivePath}`);
+      }
+      
+      if (archiveStat.size === 0) {
+        throw new Error(`Archive file is empty: ${archivePath}`);
+      }
+      
       logger.info('Archive created', { 
         taskId, 
         archivePath, 
