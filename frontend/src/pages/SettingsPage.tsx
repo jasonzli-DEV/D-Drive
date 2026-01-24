@@ -98,6 +98,13 @@ export default function SettingsPage() {
     }
   };
 
+  const maskKey = (k: string) => {
+    if (!k) return '';
+    const visible = 5;
+    if (k.length <= visible) return k;
+    return k.substring(0, visible) + '*'.repeat(k.length - visible);
+  };
+
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>
@@ -137,13 +144,7 @@ export default function SettingsPage() {
                   <TableCell>{key.name}</TableCell>
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <code>{key.key.substring(0, 20)}...</code>
-                      <IconButton
-                        size="small"
-                        onClick={() => copyToClipboard(key.key)}
-                      >
-                        <Copy size={16} />
-                      </IconButton>
+                      <code>{maskKey(key.key)}</code>
                     </Box>
                   </TableCell>
                   <TableCell>
@@ -194,7 +195,7 @@ export default function SettingsPage() {
       >
         <DialogTitle>Create API Key</DialogTitle>
         <DialogContent>
-          {newKey ? (
+              {newKey ? (
             <Box>
               <Typography variant="body2" color="text.secondary" gutterBottom>
                 Your API key has been created. Copy it now - you won't be able to see it again!
@@ -213,8 +214,11 @@ export default function SettingsPage() {
               <Button
                 fullWidth
                 variant="contained"
-                startIcon={<Copy />}
-                onClick={() => copyToClipboard(newKey)}
+                    startIcon={<Copy />}
+                    onClick={async () => {
+                      if (!newKey) return;
+                      await copyToClipboard(newKey);
+                    }}
                 sx={{ mt: 2 }}
               >
                 Copy to Clipboard
