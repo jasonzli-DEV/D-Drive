@@ -8,7 +8,7 @@ interface Config {
 const config = new Conf<Config>({
   projectName: 'd-drive',
   defaults: {
-    apiUrl: 'http://localhost:5000/api',
+    apiUrl: 'https://localhost/api',
   },
 });
 
