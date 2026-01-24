@@ -366,7 +366,7 @@ export default function SharedPage() {
       // For videos, use direct URL for streaming
       if (isVideo) {
         const token = localStorage.getItem('token');
-        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const baseUrl = import.meta.env.VITE_API_URL || '/api';
         const videoUrl = `${baseUrl}/shares/file/${current.id}/download?inline=1${token ? `&token=${encodeURIComponent(token)}` : ''}`;
         loadedPreviewIdRef.current = current.id;
         setPreviewBlobUrl(videoUrl);

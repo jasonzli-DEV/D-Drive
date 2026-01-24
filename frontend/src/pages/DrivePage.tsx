@@ -243,7 +243,7 @@ export default function DrivePage() {
         // This allows seeking and efficient playback without downloading entire file first
         if (isVideo) {
           const token = localStorage.getItem('token');
-          const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          const baseUrl = import.meta.env.VITE_API_URL || '/api';
           // Use direct URL with auth token in query string for video element
           const videoUrl = `${baseUrl}/files/${current.id}/download?inline=1${token ? `&token=${encodeURIComponent(token)}` : ''}`;
           if (active) {

@@ -126,7 +126,8 @@ JWT_SECRET=${JWT_SECRET}
 
 # URLs (adjust if running on different host/port)
 FRONTEND_URL=http://localhost
-VITE_API_URL=http://localhost:5000
+# Use /api for Docker deployment (nginx proxies to backend)
+VITE_API_URL=/api
 
 # Discord Configuration (set via web setup wizard)
 # DISCORD_CLIENT_ID=
