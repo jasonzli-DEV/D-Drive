@@ -1,18 +1,6 @@
 import { useState, useEffect } from 'react';
 import api from '../lib/api';
 
-interface SetupStatus {
-  setupRequired: boolean;
-  configured: {
-    database: boolean;
-    jwt: boolean;
-    discordClient: boolean;
-    discordBot: boolean;
-    discordGuild: boolean;
-    discordChannel: boolean;
-  };
-}
-
 interface ValidationResult {
   valid: boolean;
   bot?: {
