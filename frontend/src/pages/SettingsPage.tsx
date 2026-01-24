@@ -71,12 +71,7 @@ export default function SettingsPage() {
 
   
 
-  const maskKey = (k: string) => {
-    if (!k) return '';
-    const visible = 8; // show first 8 chars (e.g. dd_abcde)
-    if (k.length <= visible) return k;
-    return k.substring(0, visible) + '*'.repeat(k.length - visible);
-  };
+  // Server returns masked keys in the list; display as-provided
 
   return (
     <Container maxWidth="lg" sx={{ py: 4 }}>
@@ -116,9 +111,9 @@ export default function SettingsPage() {
                 <TableRow key={key.id}>
                   <TableCell>{key.name}</TableCell>
                   <TableCell>
-                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                      <code>{maskKey(key.key)}</code>
-                    </Box>
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                        <code>{key.key}</code>
+                      </Box>
                   </TableCell>
                   <TableCell>
                     {formatDistance(new Date(key.createdAt), new Date(), {

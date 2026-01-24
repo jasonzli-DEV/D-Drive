@@ -24,11 +24,13 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
       orderBy: { createdAt: 'desc' },
     });
 
-    // Mask API keys - only show prefix and last 4 characters
-    const maskedKeys = apiKeys.map(apiKey => ({
-      ...apiKey,
-      key: `${apiKey.key.substring(0, 3)}${'*'.repeat(20)}${apiKey.key.slice(-4)}`,
-    }));
+    // Mask API keys - show first 8 characters and mask the rest
+    const maskedKeys = apiKeys.map(apiKey => {
+      const visible = 8;
+      if (!apiKey.key) return { ...apiKey, key: '' };
+      const masked = apiKey.key.length <= visible ? apiKey.key : apiKey.key.substring(0, visible) + '*'.repeat(apiKey.key.length - visible);
+      return { ...apiKey, key: masked };
+    });
 
     res.json(maskedKeys);
   } catch (error) {
@@ -46,6 +48,12 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     if (!name) {
       return res.status(400).json({ error: 'API key name is required' });
     }
+
+      // Prevent duplicate key names per user
+      const existing = await prisma.apiKey.findFirst({ where: { userId, name } });
+      if (existing) {
+        return res.status(409).json({ error: 'API key name already exists' });
+      }
 
     const key = generateApiKey();
 
