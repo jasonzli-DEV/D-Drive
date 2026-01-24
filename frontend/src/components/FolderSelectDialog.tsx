@@ -53,13 +53,10 @@ export default function FolderSelectDialog({ open, onClose, onSelect, title }: P
   // Create folder mutation
   const createFolderMutation = useMutation({
     mutationFn: async (name: string) => {
-      const formData = new FormData();
-      formData.append('name', name);
-      formData.append('type', 'DIRECTORY');
-      if (currentFolderId) {
-        formData.append('parentId', currentFolderId);
-      }
-      const response = await api.post('/files/upload', formData);
+      const response = await api.post('/files/directory', {
+        name,
+        parentId: currentFolderId || undefined,
+      });
       return response.data;
     },
     onSuccess: () => {
