@@ -1,225 +1,271 @@
-# D-Drive CLI
+# D-Drive CLI v2.2.0
 
 Command-line tool for D-Drive cloud storage.
 
-**Version: 2.0.0 LTS**
+```
+╔═══════════════════════════════════════╗
+║  D-Drive CLI v2.2.0                   ║
+║  Discord-based cloud storage          ║
+╚═══════════════════════════════════════╝
+```
 
 ## Installation
 
 ```bash
+# Install globally
 npm install -g d-drive-cli
+
+# Or use npx
+npx d-drive-cli
 ```
 
-## Configuration
+After installation, you can use either command:
+- `d-drive` - Full command name
+- `drive` - Short alias
 
-First, configure your API key:
+## Quick Start
 
 ```bash
-d-drive config --key YOUR_API_KEY
+# Interactive configuration (recommended)
+drive config
+
+# Or set API key directly
+drive config --key YOUR_API_KEY --url https://your-server/api
+
+# Check connection
+drive info
+
+# Upload a file
+drive upload ./backup.zip
+
+# List files
+drive ls
+
+# Download a file
+drive download /backup.zip ./local-backup.zip
 ```
 
-You can get an API key from the D-Drive web interface at Settings → API Keys.
+## Commands
 
-Optional: Set a custom API URL:
-
-```bash
-d-drive config --url https://your-ddrive-instance.com/api
-```
-
-View current configuration:
+### Configuration
 
 ```bash
-d-drive config --list
-```
+# Interactive setup
+drive config
 
-## Usage
+# Set API key
+drive config --key dd_your_api_key
 
-### Upload Files
+# Set API URL
+drive config --url https://your-server/api
 
-Upload a single file:
-
-```bash
-d-drive upload ./myfile.txt /backups/
-```
-
-Note: For very large files the server exposes a streaming upload endpoint (`POST /api/files/upload/stream`) that accepts multipart uploads and streams chunks directly to the storage backend without full buffering. Use the API streaming endpoint (see `docs/API.md`) for multi-GB uploads or when you need more robust handling for long uploads.
-
-Upload a directory recursively:
-
-```bash
-d-drive upload ./myproject /backups/projects/ -r
-```
-
-### Download Files
-
-Download a file:
-
-```bash
-d-drive download /backups/myfile.txt ./restored.txt
-```
-
-### List Files
-
-List files in root:
-
-```bash
-d-drive list
+# View current config
+drive config --list
 # or
-d-drive ls
+drive config -l
 ```
 
-List files in a directory:
+### File Operations
+
+#### Upload
 
 ```bash
-d-drive list /backups
+# Upload single file
+drive upload ./file.txt
+
+# Upload to specific folder
+drive upload ./file.txt /backups/
+
+# Upload directory recursively
+drive upload ./myproject /backups/ -r
+
+# Upload with encryption
+drive upload ./sensitive.txt -e
 ```
 
-Long format with details:
+#### Download
 
 ```bash
-d-drive list /backups -l
+# Download file
+drive download /backups/file.txt
+
+# Download to specific location
+drive download /backups/file.txt ./local-file.txt
 ```
 
-### Delete Files
-
-Delete a file:
+#### List
 
 ```bash
-d-drive delete /backups/old-file.txt
+# List root directory
+drive ls
+
+# List specific directory
+drive ls /backups
+
+# Long format with details
+drive ls -l
+drive ls /backups -l
 ```
 
-Force delete without confirmation:
+#### Delete
 
 ```bash
-d-drive delete /backups/old-file.txt -f
+# Delete file (with confirmation)
+drive rm /old-file.txt
+
+# Force delete without confirmation
+drive rm /old-file.txt -f
+
+# Delete directory recursively
+drive rm /old-folder -r
 ```
+
+#### Copy
+
+```bash
+# Create a copy of a file
+drive cp /backups/file.txt
+# Creates: /backups/file (1).txt
+```
+
+### Task Management
+
+D-Drive supports SFTP backup tasks that can be managed via CLI.
+
+```bash
+# List all tasks
+drive tasks ls
+
+# Run a task immediately
+drive tasks run <task-id>
+
+# Stop a running task
+drive tasks stop <task-id>
+
+# Enable/disable a task
+drive tasks enable <task-id>
+drive tasks disable <task-id>
+
+# Delete a task
+drive tasks rm <task-id>
+drive tasks rm <task-id> -f  # Force delete
+```
+
+### Info & Status
+
+```bash
+# Show connection status and user info
+drive info
+```
+
+Output:
+```
+Connection Status:
+─────────────────────────────────
+API URL:   https://your-server/api
+API Key:   ✓ Configured
+Status:    ✓ Connected
+User:      YourUsername
+─────────────────────────────────
+```
+
+### Interactive Mode
+
+```bash
+# Start interactive mode
+drive interactive
+# or
+drive i
+```
+
+Interactive mode provides a menu-driven interface for all operations.
+
+## Getting Your API Key
+
+1. Open D-Drive web interface
+2. Go to **Settings** (gear icon)
+3. Scroll to **API Keys** section
+4. Click **Create API Key**
+5. Copy the key (starts with `dd_`)
+6. Use in CLI: `drive config --key dd_your_key`
 
 ## Examples
 
-### Automated Backups
+### Backup a Project
 
-Create a backup script:
+```bash
+# Create a backup of your project
+drive upload ./my-project /backups/my-project/ -r
+
+# List backups
+drive ls /backups/my-project -l
+```
+
+### Automated Backup Script
 
 ```bash
 #!/bin/bash
 # backup.sh
 
-# Backup database
-pg_dump mydb > /tmp/backup.sql
-d-drive upload /tmp/backup.sql /backups/database/backup-$(date +%Y%m%d).sql
-
-# Backup config files
-d-drive upload /etc/myapp /backups/config/ -r
-
-# Cleanup
-rm /tmp/backup.sql
+DATE=$(date +%Y-%m-%d)
+drive upload ./data "/backups/$DATE/"
+echo "Backup completed: $DATE"
 ```
 
-Add to crontab for daily backups:
+### Download and Restore
 
 ```bash
-0 2 * * * /path/to/backup.sh
+# Download latest backup
+drive download /backups/2026-01-24/data.tar.gz ./restore/
+
+# Extract
+tar -xzf ./restore/data.tar.gz
 ```
 
-### Continuous Integration
+## Environment Variables
 
-Upload build artifacts from CI/CD:
-
-```yaml
-# .github/workflows/deploy.yml
-- name: Upload build artifacts
-  run: |
-    npm run build
-    d-drive upload ./dist /releases/${{ github.sha }}/ -r
-```
-
-## Options
-
-### Global Options
-
-- `--version` - Show version number
-- `--help` - Show help
-
-### Upload Options
-
-- `-r, --recursive` - Upload directory recursively
-- `--no-progress` - Disable progress bar
-
-### Download Options
-
-- `--no-progress` - Disable progress bar
-
-### List Options
-
-- `-l, --long` - Use long listing format
-
-### Delete Options
-
-- `-f, --force` - Force deletion without confirmation
-- `-r, --recursive` - Delete directory recursively
-
----
-
-## Task Management
-
-D-Drive supports automated SFTP backup tasks. Use the CLI to manage them:
-
-### List Tasks
+You can also configure the CLI using environment variables:
 
 ```bash
-d-drive tasks list
-# or
-d-drive tasks ls
+export DDRIVE_API_KEY=dd_your_api_key
+export DDRIVE_API_URL=https://your-server/api
 ```
 
-### Run a Task Immediately
+## Troubleshooting
 
-```bash
-d-drive tasks run <taskId>
-```
+### "Cannot connect to server"
+- Check your API URL is correct
+- Ensure the server is running
+- Verify network connectivity
 
-### Stop a Running Task
+### "Invalid API key"
+- Generate a new API key in Settings
+- Ensure the key starts with `dd_`
+- Check for extra spaces or characters
 
-```bash
-d-drive tasks stop <taskId>
-```
+### "Permission denied"
+- Verify you're logged in with the correct account
+- Check file/folder permissions in D-Drive
 
-### Enable/Disable a Task
+## Changelog
 
-```bash
-d-drive tasks enable <taskId>
-d-drive tasks disable <taskId>
-```
+### v2.2.0
+- Added `drive` command alias for easier use
+- Interactive mode with menu-driven interface
+- `drive info` command for connection status
+- Interactive configuration wizard
+- Better error messages
+- Colorized output
+- Added `cp` alias for copy command
+- Added `up` and `dl` aliases
 
-### Delete a Task
+### v2.1.0
+- Task management commands
+- Encryption support
+- Progress bars
 
-```bash
-d-drive tasks delete <taskId>
-
-# Force delete without confirmation
-d-drive tasks delete <taskId> -f
-```
-
-### Task Examples
-
-```bash
-# List all tasks with status
-$ d-drive tasks list
-● Daily Server Backup [RUNNING]
-  ID: abc123
-  Schedule: 0 2 * * *
-  SFTP: backupuser@backup.example.com:22/backups
-  Destination: /backups/server
-  Last Run: 1/20/2026, 2:00:00 AM (2m 15s)
-
-# Run a backup task manually
-$ d-drive tasks run abc123
-
-# Stop a running task
-$ d-drive tasks stop abc123
-```
-
----
+### v2.0.0
+- Initial release with upload/download/list/delete
 
 ## License
 

@@ -25,7 +25,7 @@ export async function configCommand(options: ConfigOptions) {
     try {
       // Normalize and test the API key by calling the /auth/me endpoint
       const config = getConfig();
-      const apiUrl = options.url || config.apiUrl || 'http://localhost:5000/api';
+      const apiUrl = options.url || config.apiUrl || 'https://localhost/api';
 
       // Accept keys entered with or without the `dd_` prefix, and strip any accidental "Bearer " prefix
       const rawKey = options.key.replace(/^Bearer\s+/i, '').trim();

@@ -1,10 +1,11 @@
 {
   "name": "d-drive-cli",
-  "version": "2.1.0",
-  "description": "D-Drive CLI tool for developers (LTS)",
+  "version": "2.2.0",
+  "description": "D-Drive CLI tool for developers - Discord cloud storage",
   "main": "dist/index.js",
   "bin": {
-    "d-drive": "./dist/index.js"
+    "d-drive": "./dist/index.js",
+    "drive": "./dist/index.js"
   },
   "scripts": {
     "build": "tsc",
