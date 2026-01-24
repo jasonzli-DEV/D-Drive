@@ -665,6 +665,77 @@ async function isChildOf(sourceId: string, targetId: string): Promise<boolean> {
 
 export default router;
 
+// Make a copy of a file (creates a new File record and duplicates chunk refs)
+router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
+  try {
+    const userId = (req as any).user.userId;
+    const { id } = req.params;
+
+    const file = await prisma.file.findFirst({
+      where: { id, userId },
+      include: { chunks: true },
+    });
+
+    if (!file) return res.status(404).json({ error: 'File not found' });
+
+    // Determine parent path
+    let parentPath: string | null = null;
+    if (file.parentId) {
+      const parent = await prisma.file.findUnique({ where: { id: file.parentId }, select: { path: true } });
+      parentPath = parent?.path || null;
+    }
+
+    // Build candidate names and paths, auto-number if necessary
+    const baseName = `Copy of ${file.name}`;
+    let candidateName = baseName;
+    let candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
+    let counter = 2;
+    while (await prisma.file.findFirst({ where: { userId, path: candidatePath } })) {
+      candidateName = `Copy of (${counter}) ${file.name}`;
+      candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
+      counter += 1;
+    }
+
+    // Create new file record and duplicate chunk references (pointing to same attachments)
+    const created = await prisma.$transaction(async (tx) => {
+      const newFile = await tx.file.create({
+        data: {
+          name: candidateName,
+          path: candidatePath,
+          size: file.size,
+          mimeType: file.mimeType,
+          type: file.type,
+          encrypted: file.encrypted,
+          parentId: file.parentId || null,
+          userId,
+        },
+      });
+
+      if (file.chunks && file.chunks.length > 0) {
+        for (const chunk of file.chunks) {
+          await tx.fileChunk.create({
+            data: {
+              fileId: newFile.id,
+              chunkIndex: chunk.chunkIndex,
+              messageId: chunk.messageId,
+              channelId: chunk.channelId,
+              attachmentUrl: chunk.attachmentUrl,
+              size: chunk.size,
+            },
+          });
+        }
+      }
+
+      return newFile;
+    });
+
+    return res.status(201).json(serializeFile(created));
+  } catch (error) {
+    logger.error('Error copying file:', error);
+    res.status(500).json({ error: 'Failed to copy file' });
+  }
+});
+
 // Streaming upload endpoint (starts uploading chunks to Discord while client uploads)
 router.post('/upload/stream', authenticate, async (req: Request, res: Response) => {
   try {

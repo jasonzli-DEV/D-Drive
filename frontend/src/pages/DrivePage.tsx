@@ -41,6 +41,7 @@ import {
   Download,
   Trash2,
   Move,
+  Copy,
   MoreVertical,
   Edit,
   Home,
@@ -96,6 +97,20 @@ export default function DrivePage() {
       const params = folderId ? `?parentId=${folderId}` : '';
       const response = await api.get(`/files${params}`);
       return response.data as FileItem[];
+    },
+  });
+
+  const copyMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const resp = await api.post(`/files/${id}/copy`);
+      return resp.data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['files'] });
+      toast.success('Copy created');
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to copy file');
     },
   });
 
@@ -430,6 +445,10 @@ export default function DrivePage() {
           handleDownload(menuFile);
         }
         break;
+      case 'copy':
+        // create a copy of the file
+        copyMutation.mutate(menuFile.id);
+        break;
     }
     
     handleCloseMenu();
@@ -736,6 +755,12 @@ export default function DrivePage() {
             <ListItemText>Download</ListItemText>
           </MenuItem>
         )}
+        <MenuItem onClick={() => handleMenuAction('copy')}>
+          <ListItemIcon>
+            <Copy size={18} />
+          </ListItemIcon>
+          <ListItemText>Make a copy</ListItemText>
+        </MenuItem>
         <MenuItem onClick={() => handleMenuAction('rename')}>
           <ListItemIcon>
             <Edit size={18} />
