@@ -56,7 +56,11 @@ app.use((req, res, next) => {
 // Routes
 app.use('/api', routes);
 
-// Health check - also under /api
+// Health check endpoints
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
