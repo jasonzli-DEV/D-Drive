@@ -146,6 +146,12 @@ export default function Layout({ children }: LayoutProps) {
                   </ListItemIcon>
                   <ListItemText primary={"Home"} />
                 </ListItemButton>
+                <ListItemButton onClick={() => navigate('/tasks') }>
+                  <ListItemIcon>
+                    <Play size={18} />
+                  </ListItemIcon>
+                  <ListItemText primary={"Tasks"} />
+                </ListItemButton>
             </List>
           </Box>
         )}

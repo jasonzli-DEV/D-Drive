@@ -7,6 +7,7 @@ import DrivePage from './pages/DrivePage';
 import SettingsPage from './pages/SettingsPage';
 import CallbackPage from './pages/CallbackPage';
 import ErrorBoundary from './components/ErrorBoundary';
+import TasksPage from './pages/TasksPage';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -65,6 +66,18 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <SettingsPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/tasks"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <TasksPage />
             </Layout>
           ) : (
             <Navigate to="/login" replace />
