@@ -89,6 +89,8 @@ export default function DrivePage() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [uploadFolders, setUploadFolders] = useState<FolderUploadProgress[]>([]);
   const fileLoadedRef = useRef<Record<string, number>>({});
+  const folderPrevProgressRef = useRef<Record<string, number>>({});
+  const folderErrorShownRef = useRef<Record<string, boolean>>({});
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string>('');
@@ -206,8 +208,10 @@ export default function DrivePage() {
       formData.append('encrypt', encryptFiles.toString());
       formData.append('file', file);
 
-      // Add to upload progress (file-level)
-      setUploadProgress(prev => [...prev, { fileName: file.name, progress: 0, status: 'uploading' }]);
+      // Add to upload progress (file-level) only for non-folder uploads
+      if (!folderKey) {
+        setUploadProgress(prev => [...prev, { fileName: file.name, progress: 0, status: 'uploading' }]);
+      }
 
       // Initialize per-file loaded tracker for folder aggregation
       const fileKey = `${folderKey || 'root'}::${file.name}`;
@@ -243,12 +247,24 @@ export default function DrivePage() {
               const delta = progressEvent.loaded - prevLoaded;
               fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
               if (delta > 0) {
+                let newProgressValue = 0;
                 setUploadFolders(prev => prev.map(f => {
                   if (f.folderKey !== folderKey) return f;
                   const uploadedBytes = Math.min(f.uploadedBytes + delta, f.totalBytes || Number.MAX_SAFE_INTEGER);
                   const progress = f.totalBytes ? Math.round((uploadedBytes * 100) / f.totalBytes) : 0;
+                  newProgressValue = progress;
                   return { ...f, uploadedBytes, progress };
                 }));
+
+                const prevProg = folderPrevProgressRef.current[folderKey] || 0;
+                if (newProgressValue === 100 && prevProg < 100) {
+                  folderPrevProgressRef.current[folderKey] = 100;
+                  setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
+                  toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+                  setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
+                } else {
+                  folderPrevProgressRef.current[folderKey] = newProgressValue;
+                }
               }
             }
           },
@@ -273,12 +289,24 @@ export default function DrivePage() {
                   const delta = progressEvent.loaded - prevLoaded;
                   fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
                   if (delta > 0) {
+                    let newProgressValue = 0;
                     setUploadFolders(prev => prev.map(f => {
                       if (f.folderKey !== folderKey) return f;
                       const uploadedBytes = Math.min(f.uploadedBytes + delta, f.totalBytes || Number.MAX_SAFE_INTEGER);
                       const progress = f.totalBytes ? Math.round((uploadedBytes * 100) / f.totalBytes) : 0;
+                      newProgressValue = progress;
                       return { ...f, uploadedBytes, progress };
                     }));
+
+                    const prevProg = folderPrevProgressRef.current[folderKey] || 0;
+                    if (newProgressValue === 100 && prevProg < 100) {
+                      folderPrevProgressRef.current[folderKey] = 100;
+                      setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
+                      toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+                      setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
+                    } else {
+                      folderPrevProgressRef.current[folderKey] = newProgressValue;
+                    }
                   }
                 }
               },
@@ -292,40 +320,50 @@ export default function DrivePage() {
     onSuccess: (_data, vars) => {
       const fileName = (vars as any).file?.name;
       const folderKey = (vars as any).folderKey;
-      setUploadProgress(prev =>
-        prev.map(p =>
-          p.fileName === fileName ? { ...p, status: 'success', progress: 100 } : p
-        )
-      );
-      if (folderKey) {
-        // If a folder finished a child upload, we don't automatically mark folder as complete
-        // until its progress reaches 100 via onUploadProgress. But if this file was the last
-        // one and server returned quickly without progress events, ensure folder is marked.
-        setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, progress: 100, status: 'success', uploadedBytes: f.totalBytes } : f));
-        // Remove folder entry after short delay
+      if (!folderKey) {
+        setUploadProgress(prev =>
+          prev.map(p =>
+            p.fileName === fileName ? { ...p, status: 'success', progress: 100 } : p
+          )
+        );
+        toast.success('File uploaded successfully!');
+        // Remove from progress after 3 seconds
         setTimeout(() => {
-          setUploadFolders(prev => prev.filter(f => f.folderKey !== folderKey));
-        }, 1500);
+          setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
+        }, 3000);
+      } else {
+        // For folder uploads, only mark folder as complete if not already done (handle cases with few/no progress events)
+        const prevProg = folderPrevProgressRef.current[folderKey] || 0;
+        if (prevProg < 100) {
+          folderPrevProgressRef.current[folderKey] = 100;
+          setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
+          // Only show one toast per folder completion
+          if (!folderErrorShownRef.current[folderKey]) {
+            toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
+          }
+          setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
+        }
       }
       queryClient.invalidateQueries({ queryKey: ['files'] });
-      toast.success('File uploaded successfully!');
-      // Remove from progress after 3 seconds
-      setTimeout(() => {
-        setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
-      }, 3000);
     },
     onError: (error: any, vars: { file: File; folderKey?: string }) => {
       const file = vars.file;
       const folderKey = (vars as any).folderKey;
-      setUploadProgress(prev =>
-        prev.map(p =>
-          p.fileName === file.name ? { ...p, status: 'error' } : p
-        )
-      );
-      if (folderKey) {
+      if (!folderKey) {
+        setUploadProgress(prev =>
+          prev.map(p =>
+            p.fileName === file.name ? { ...p, status: 'error' } : p
+          )
+        );
+        toast.error(error.response?.data?.error || 'Upload failed');
+      } else {
+        // mark folder errored and show only one toast per folder
         setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'error' } : f));
+        if (!folderErrorShownRef.current[folderKey]) {
+          folderErrorShownRef.current[folderKey] = true;
+          toast.error(error.response?.data?.error || 'Folder upload failed');
+        }
       }
-      toast.error(error.response?.data?.error || 'Upload failed');
     },
   }
   );
