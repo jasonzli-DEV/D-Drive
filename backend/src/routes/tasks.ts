@@ -108,9 +108,9 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'maxFiles must be >= 0' });
     }
 
-    // Validate cron if present
-    if (req.body.cron) {
-      try { parser.parseExpression(req.body.cron); } catch (e) { return res.status(400).json({ error: 'Invalid cron expression' }); }
+    // Validate cron if present (basic check)
+    if (req.body.cron && !isValidCronExpression(req.body.cron)) {
+      return res.status(400).json({ error: 'Invalid cron expression' });
     }
 
     const updated = await prisma.task.update({ where: { id }, data: req.body });
