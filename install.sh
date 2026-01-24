@@ -108,9 +108,9 @@ clone_or_update_repo() {
 generate_secrets() {
     log_info "Generating secure secrets..."
     
-    # Generate random strings for secrets
-    JWT_SECRET=$(openssl rand -base64 32 2>/dev/null || head -c 32 /dev/urandom | base64)
-    POSTGRES_PASSWORD=$(openssl rand -base64 24 2>/dev/null || head -c 24 /dev/urandom | base64)
+    # Generate random strings for secrets (alphanumeric only to avoid URL encoding issues)
+    JWT_SECRET=$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p | head -c 64)
+    POSTGRES_PASSWORD=$(openssl rand -hex 16 2>/dev/null || head -c 16 /dev/urandom | xxd -p | head -c 32)
     
     # Create .env file with generated secrets (Discord config will be set via UI)
     if [ ! -f .env ]; then
