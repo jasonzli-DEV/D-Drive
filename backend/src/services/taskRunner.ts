@@ -45,6 +45,17 @@ async function bufferFromStream(stream: any): Promise<Buffer> {
   });
 }
 
+function pad(n: number) { return n.toString().padStart(2, '0'); }
+function formatTimestamp(d: Date) {
+  const month = d.getMonth() + 1;
+  const day = d.getDate();
+  const year = d.getFullYear();
+  const hh = pad(d.getHours());
+  const mm = pad(d.getMinutes());
+  const ss = pad(d.getSeconds());
+  return `${month}-${day}-${year}.${hh}:${mm}:${ss}`;
+}
+
 // Run task now: connect to SFTP, download entries, optionally compress, encrypt, and store
 export async function runTaskNow(taskId: string) {
   try {
@@ -111,7 +122,8 @@ export async function runTaskNow(taskId: string) {
     if (task.compress === 'NONE' || task.compress === null) {
       uploadEntries = downloaded;
     } else {
-      const archiveName = `${task.name || 'backup'}_${new Date().toISOString()}`;
+      const timestamp = formatTimestamp(new Date());
+      const archiveName = `${timestamp}.${(task.name || 'backup')}`;
       const archivePath = path.join(tmpDir, `${archiveName}${task.compress === 'ZIP' ? '.zip' : '.tar.gz'}`);
 
       const output = fs.createWriteStream(archivePath);
@@ -135,7 +147,7 @@ export async function runTaskNow(taskId: string) {
 
     if (task.compress === 'NONE' || task.compress === null) {
       const baseFolderName = task.name || 'backup';
-      const folderBase = task.timestampNames ? `${new Date().toISOString()}_${baseFolderName}` : baseFolderName;
+      const folderBase = task.timestampNames ? `${formatTimestamp(new Date())}.${baseFolderName}` : baseFolderName;
 
       const parentPath = task.destinationId ? (await prisma.file.findUnique({ where: { id: task.destinationId }, select: { path: true } }))?.path : null;
       let candidateName = folderBase;
@@ -161,7 +173,9 @@ export async function runTaskNow(taskId: string) {
 
     // For each upload entry, store it using storage helper into the chosen parent (folder or destination)
     for (const entry of uploadEntries) {
-      const nameToUse = (task.compress === 'NONE' || task.compress === null) ? entry.name : (task.timestampNames ? `${new Date().toISOString()}_${entry.name}` : entry.name);
+      const nameToUse = (task.compress === 'NONE' || task.compress === null)
+        ? entry.name
+        : (task.timestampNames ? `${formatTimestamp(new Date())}.${entry.name}` : entry.name);
       await storeBufferAsFile(task.userId, targetParentId, nameToUse, entry.buffer, undefined, shouldEncrypt);
     }
 

@@ -162,6 +162,7 @@ export default function TasksPage() {
               <TableCell>Name</TableCell>
               <TableCell>Enabled</TableCell>
               <TableCell>Destination</TableCell>
+              <TableCell>Last Run</TableCell>
               <TableCell>Compress</TableCell>
               <TableCell>Encrypt</TableCell>
               <TableCell>Max Files</TableCell>
@@ -173,7 +174,8 @@ export default function TasksPage() {
               <TableRow key={t.id}>
                 <TableCell>{t.name}</TableCell>
                 <TableCell>{t.enabled ? 'Yes' : 'No'}</TableCell>
-                <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '-'}</TableCell>
+                <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '/'}</TableCell>
+                <TableCell>{t.lastRun ? new Date(t.lastRun).toLocaleString() : '-'}</TableCell>
                 <TableCell>{t.compress}</TableCell>
                 <TableCell>{t.encrypt ? 'Yes' : 'No'}</TableCell>
                 <TableCell>{t.maxFiles || 0}</TableCell>
@@ -210,7 +212,7 @@ export default function TasksPage() {
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
             <Button variant="outlined" onClick={() => setDestDialogOpen(true)} sx={{ mb: 1 }}>
-              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || 'Selected folder') : '(root)'}
+              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || 'Selected folder') : '/'}
             </Button>
           </Box>
 
