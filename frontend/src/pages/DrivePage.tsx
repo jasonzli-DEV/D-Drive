@@ -578,39 +578,33 @@ export default function DrivePage() {
         return true;
       });
 
-      // Group files by their folder path so we can aggregate progress per-folder.
-      const groups = new Map<string, File[]>();
+      // Treat the selected directory as one top-level folder upload so we only
+      // show a single folder progress entry. Still create nested folders on
+      // the server for each file's path.
+      const firstRel = (filtered[0] as any)?.webkitRelativePath || '';
+      const baseFolderKey = firstRel ? firstRel.split('/')[0] : 'root';
+      const totalBytes = filtered.reduce((s, it) => s + (it.size || 0), 0);
+
+      // initialize single folder progress entry for the whole selection
+      setUploadFolders(prev => {
+        if (prev.find(p => p.folderKey === baseFolderKey)) return prev;
+        return [...prev, { folderKey: baseFolderKey, folderName: baseFolderKey || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
+      });
+
+      // For each file, create necessary nested folders then upload into that folder
       for (const f of filtered) {
         const rel = (f as any).webkitRelativePath || f.name;
         const parts = rel.split('/');
         const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-        const arr = groups.get(folderPath) || [];
-        arr.push(f as File);
-        groups.set(folderPath, arr);
-      }
-
-      // For each folder group, ensure the folder path exists once, then upload files into it
-      for (const [folderPath, filesInFolder] of groups.entries()) {
         try {
           const targetParent = await ensureFolderPath(folderId || null, folderPath);
-
-          // compute total bytes for folder
-          const totalBytes = filesInFolder.reduce((s, it) => s + (it.size || 0), 0);
-          const folderKey = folderPath || 'root';
-
-          // initialize folder progress entry
-          setUploadFolders(prev => {
-            if (prev.find(p => p.folderKey === folderKey)) return prev;
-            return [...prev, { folderKey, folderName: folderPath || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
-          });
-
-          // upload each file, passing folder metadata so mutation updates folder progress
-          for (const f2 of filesInFolder) {
-            uploadMutation.mutate({ file: f2 as File, parentId: targetParent || null, folderKey, folderTotalBytes: totalBytes });
-          }
+          uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey, folderTotalBytes: totalBytes });
         } catch (err) {
           console.error('Folder upload child error:', err);
-          toast.error('Failed to upload some folder contents');
+          if (!folderErrorShownRef.current[baseFolderKey]) {
+            folderErrorShownRef.current[baseFolderKey] = true;
+            toast.error('Failed to upload some folder contents');
+          }
         }
       }
 
