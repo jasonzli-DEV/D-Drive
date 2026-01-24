@@ -1,6 +1,12 @@
 import request from 'supertest';
 import express from 'express';
 import { errorHandler } from '../errorHandler';
+import { logger } from '../../utils/logger';
+
+// Silence logger output during tests
+jest.spyOn(logger, 'error').mockImplementation(() => logger);
+jest.spyOn(logger, 'warn').mockImplementation(() => logger);
+jest.spyOn(logger, 'info').mockImplementation(() => logger);
 
 describe('Error Handler Middleware', () => {
   let app: express.Application;
