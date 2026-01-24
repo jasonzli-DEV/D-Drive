@@ -194,10 +194,10 @@ export default function DrivePage() {
   });
 
   // Upload file mutation
-  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null; folderKey?: string }>(
+  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null; folderKey?: string; fileKey?: string }>(
     {
-    // accepts { file: File, parentId?: string | null, folderKey?: string }
-    mutationFn: async ({ file, parentId, folderKey }: { file: File; parentId?: string | null; folderKey?: string }) => {
+    // accepts { file: File, parentId?: string | null, folderKey?: string, fileKey?: string }
+    mutationFn: async ({ file, parentId, folderKey, fileKey: fileKeyParam }: { file: File; parentId?: string | null; folderKey?: string; fileKey?: string }) => {
       const formData = new FormData();
       // append metadata first so server-side stream parser can read fields before file
       if (parentId) {
@@ -214,9 +214,9 @@ export default function DrivePage() {
       }
 
       // Initialize per-file loaded tracker for folder aggregation
-      const fileKey = `${folderKey || 'root'}::${file.name}`;
+      const fileIdentifier = `${folderKey || 'root'}::${fileKeyParam || file.name}`;
       if (folderKey) {
-        fileLoadedRef.current[fileKey] = 0;
+        fileLoadedRef.current[fileIdentifier] = 0;
       }
 
       // Try streaming endpoint first; fallback to legacy endpoint on error
@@ -235,7 +235,7 @@ export default function DrivePage() {
 
             // Update folder-level progress by delta bytes
             if (folderKey) {
-              const fileKeyLocal = fileKey;
+              const fileKeyLocal = fileIdentifier;
               const prevLoaded = fileLoadedRef.current[fileKeyLocal] || 0;
               const delta = progressEvent.loaded - prevLoaded;
               fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
@@ -277,7 +277,7 @@ export default function DrivePage() {
                 );
 
                 if (folderKey) {
-                  const fileKeyLocal = fileKey;
+                  const fileKeyLocal = fileIdentifier;
                   const prevLoaded = fileLoadedRef.current[fileKeyLocal] || 0;
                   const delta = progressEvent.loaded - prevLoaded;
                   fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
@@ -584,26 +584,31 @@ export default function DrivePage() {
         return [...prev, { folderKey: baseFolderKey, folderName: baseFolderKey || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
       });
 
+      // Remove any existing per-file progress entries matching files in this selection
+      const selectedNames = new Set(filtered.map(f => (f as any).webkitRelativePath || f.name));
+      setUploadProgress(prev => prev.filter(p => !selectedNames.has(p.fileName)));
+
       // initialize refs to avoid multiple toasts and to track previous progress
       folderPrevProgressRef.current[baseFolderKey] = 0;
       folderErrorShownRef.current[baseFolderKey] = false;
 
       // For each file, create necessary nested folders then upload into that folder
           for (const f of filtered) {
-        const rel = (f as any).webkitRelativePath || f.name;
-        const parts = rel.split('/');
-        const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
-        try {
-          const targetParent = await ensureFolderPath(folderId || null, folderPath);
-          uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey });
-        } catch (err) {
-          console.error('Folder upload child error:', err);
-          if (!folderErrorShownRef.current[baseFolderKey]) {
-            folderErrorShownRef.current[baseFolderKey] = true;
-            toast.error('Failed to upload some folder contents');
+            const rel = (f as any).webkitRelativePath || f.name;
+            const parts = rel.split('/');
+            const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+            try {
+              const targetParent = await ensureFolderPath(folderId || null, folderPath);
+              // pass the full relative path as fileKey so tracking is unique per file path
+              uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey, fileKey: rel });
+            } catch (err) {
+              console.error('Folder upload child error:', err);
+              if (!folderErrorShownRef.current[baseFolderKey]) {
+                folderErrorShownRef.current[baseFolderKey] = true;
+                toast.error('Failed to upload some folder contents');
+              }
+            }
           }
-        }
-      }
 
       setTimeout(() => { if (inp.parentNode) inp.parentNode.removeChild(inp); }, 0);
     };
