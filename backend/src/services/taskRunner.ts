@@ -6,6 +6,7 @@ import fs from 'fs';
 import os from 'os';
 import path from 'path';
 import { storeBufferAsFile } from './storage';
+import { deleteChunkFromDiscord } from './discord';
 
 const prisma = new PrismaClient();
 
@@ -24,8 +25,26 @@ export async function pruneOldBackups(userId: string, destinationId: string, max
     const toDelete = files.slice(maxFiles);
     for (const f of toDelete) {
       try {
-        // delete via prisma to ensure cascades (chunks) are removed
-        await prisma.file.delete({ where: { id: f.id } });
+        // Fetch chunks for this file so we can remove messages from Discord first
+        const chunks = await prisma.fileChunk.findMany({ where: { fileId: f.id } });
+
+        // Attempt to delete each chunk message from Discord (best-effort with abort on hard failure)
+        for (const c of chunks) {
+          try {
+            await deleteChunkFromDiscord(c.messageId, c.channelId);
+          } catch (err) {
+            logger.error('Failed to delete chunk from Discord while pruning; aborting prune for this file', { fileId: f.id, chunkId: c.id, err });
+            // Don't continue deleting DB rows for this file if we couldn't remove its remote storage
+            throw err;
+          }
+        }
+
+        // All Discord messages removed for this file; now delete DB rows in transaction
+        await prisma.$transaction(async (tx) => {
+          await tx.fileChunk.deleteMany({ where: { fileId: f.id } });
+          await tx.file.delete({ where: { id: f.id } });
+        });
+
         logger.info('Pruned old backup', { fileId: f.id, name: f.name });
       } catch (err) {
         logger.warn('Failed to prune backup', { fileId: f.id, err });
