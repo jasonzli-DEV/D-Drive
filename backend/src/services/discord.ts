@@ -4,6 +4,8 @@ import { logger } from '../utils/logger';
 let discordClient: Client;
 let storageChannelId: string;
 
+export const DISCORD_MAX = 8 * 1024 * 1024; // 8MB (conservative)
+
 export async function initDiscordBot(): Promise<Client> {
   const client = new Client({
     intents: [
@@ -54,10 +56,9 @@ export async function uploadChunkToDiscord(
     throw new Error('Invalid storage channel');
   }
 
-  const DISCORD_MAX = 10 * 1024 * 1024; // Discord ~10MB limit per attachment
-
+  // Double-check size against conservative DISCORD_MAX to avoid 413 from API
   if (buffer.length > DISCORD_MAX) {
-    logger.error(`Attachment ${filename} too large for Discord upload: ${buffer.length} bytes`);
+    logger.error(`Attachment ${filename} too large for Discord upload: ${buffer.length} bytes (limit=${DISCORD_MAX})`);
     const err: any = new Error('Attachment exceeds Discord size limit');
     err.code = 'DISCORD_SIZE_EXCEEDED';
     throw err;

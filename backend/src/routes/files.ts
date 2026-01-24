@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { PrismaClient } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
-import { uploadChunkToDiscord, downloadChunkFromDiscord, deleteChunkFromDiscord } from '../services/discord';
+import { uploadChunkToDiscord, downloadChunkFromDiscord, deleteChunkFromDiscord, DISCORD_MAX } from '../services/discord';
 import { logger } from '../utils/logger';
 import { encryptBuffer, decryptBuffer, generateEncryptionKey } from '../utils/crypto';
 import multer from 'multer';
@@ -52,6 +52,18 @@ function splitName(name: string) {
   const lastDot = name.lastIndexOf('.');
   if (lastDot === -1) return { base: name, ext: '' };
   return { base: name.substring(0, lastDot), ext: name.substring(lastDot) };
+}
+
+// Split a Buffer into parts no larger than `partSize`
+function splitBuffer(buf: Buffer, partSize: number): Buffer[] {
+  const parts: Buffer[] = [];
+  let offset = 0;
+  while (offset < buf.length) {
+    const end = Math.min(offset + partSize, buf.length);
+    parts.push(buf.slice(offset, end));
+    offset = end;
+  }
+  return parts;
 }
 
 // Compute a unique filename within a parent folder for a user by appending
@@ -730,8 +742,11 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
 
     if (!node) return res.status(404).json({ error: 'File not found' });
 
+    logger.info('Copy requested', { userId, fileId: id, nodeType: node.type, parentId: node.parentId, path: node.path });
+
     // Helper: copy a single file by downloading each chunk and re-uploading to Discord
     const copyFile = async (tx: any, src: any, targetParentId: string | null, parentPath: string | null, renameForTopLevel: boolean) => {
+      logger.info('Copying file', { srcId: src.id, srcName: src.name, targetParentId, parentPath, renameForTopLevel });
       // Determine name
       let nameToUse = src.name;
       if (renameForTopLevel) {
@@ -756,21 +771,51 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
 
       // Duplicate chunks by re-uploading attachments to Discord so copied file has its own messages
       if (src.chunks && src.chunks.length > 0) {
+        // Create new chunk rows by re-downloading each original chunk and
+        // re-uploading. If an original chunk buffer is larger than the
+        // allowed Discord upload limit, split it into multiple uploads so
+        // the copy can succeed instead of failing with a 413.
+        let newChunkIndex = 0;
         for (const chunk of src.chunks) {
+          logger.info('Copying chunk', { chunkId: chunk.id, messageId: chunk.messageId, channelId: chunk.channelId });
           // download original chunk buffer
           const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
-          // upload to Discord to create a fresh message/attachment
-          const uploaded = await uploadChunkToDiscord(src.name, buffer);
-          await tx.fileChunk.create({
-            data: {
-              fileId: newFile.id,
-              chunkIndex: chunk.chunkIndex,
-              messageId: uploaded.messageId,
-              channelId: uploaded.channelId,
-              attachmentUrl: uploaded.attachmentUrl,
-              size: buffer.length,
-            },
-          });
+
+          // If buffer fits under DISCORD_MAX, upload as a single attachment.
+          if (buffer.length <= DISCORD_MAX) {
+            const uploaded = await uploadChunkToDiscord(src.name, buffer);
+            await tx.fileChunk.create({
+              data: {
+                fileId: newFile.id,
+                chunkIndex: newChunkIndex,
+                messageId: uploaded.messageId,
+                channelId: uploaded.channelId,
+                attachmentUrl: uploaded.attachmentUrl,
+                size: buffer.length,
+              },
+            });
+            newChunkIndex += 1;
+            continue;
+          }
+
+          // Otherwise split into multiple parts and upload each part
+          const parts = splitBuffer(buffer, DISCORD_MAX);
+          for (let i = 0; i < parts.length; i++) {
+            const part = parts[i];
+            const partName = `${src.name}.part${i}`;
+            const uploaded = await uploadChunkToDiscord(partName, part);
+            await tx.fileChunk.create({
+              data: {
+                fileId: newFile.id,
+                chunkIndex: newChunkIndex,
+                messageId: uploaded.messageId,
+                channelId: uploaded.channelId,
+                attachmentUrl: uploaded.attachmentUrl,
+                size: part.length,
+              },
+            });
+            newChunkIndex += 1;
+          }
         }
       }
 
@@ -779,6 +824,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
 
     // Recursive directory copy
     const copyDirectory = async (tx: any, srcDirId: string, targetParentId: string | null, parentPath: string | null, renameForTopLevel = true) => {
+      logger.info('Copying directory', { srcDirId, targetParentId, parentPath, renameForTopLevel });
       const srcDir = await prisma.file.findUnique({ where: { id: srcDirId }, include: { children: true } });
       if (!srcDir) throw new Error('Source directory not found');
       // For the top-level directory copy, prefix with "Copy of ...". For nested
