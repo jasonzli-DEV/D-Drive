@@ -21,14 +21,21 @@ fi
 if [ ! -f ".env" ]; then
     echo "📝 Creating .env file from template..."
     cp .env.example .env
-    echo "⚠️  IMPORTANT: Edit .env with your Discord credentials before proceeding!"
+    
+    # Set default values to avoid build warnings
+    if ! grep -q "VITE_DISCORD_CLIENT_ID=" .env; then
+        echo "VITE_DISCORD_CLIENT_ID=placeholder" >> .env
+    fi
+    
+    echo "⚠️  IMPORTANT: Edit .env with your Discord credentials!"
     echo ""
     echo "You need:"
     echo "  1. Discord Client ID and Secret (OAuth)"
     echo "  2. Discord Bot Token"
     echo "  3. Discord Server ID and Channel ID"
     echo ""
-    read -p "Press Enter when you've configured .env, or Ctrl+C to exit..."
+    echo "For now, continuing with placeholder values..."
+    sleep 2
 fi
 
 # Detect OS
@@ -80,45 +87,61 @@ install_docker_mac() {
     # Check if Homebrew is installed
     if ! command -v brew &> /dev/null; then
         echo "📦 Installing Homebrew first..."
-        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        
+        # Add Homebrew to PATH for this session
+        if [[ -f "/opt/homebrew/bin/brew" ]]; then
+            eval "$(/opt/homebrew/bin/brew shellenv)"
+        elif [[ -f "/usr/local/bin/brew" ]]; then
+            eval "$(/usr/local/bin/brew shellenv)"
+        fi
     fi
     
     # Install Docker Desktop via Homebrew
     brew install --cask docker
     
     echo "✅ Docker Desktop installed"
-    echo "⚠️  Please start Docker Desktop from Applications, then re-run this script"
+    echo "🚀 Starting Docker Desktop..."
     open -a Docker
+    
+    # Wait for Docker to start
+    echo "⏳ Waiting for Docker to start (this may take 30-60 seconds)..."
+    for i in {1..60}; do
+        if docker ps &> /dev/null; then
+            echo "✅ Docker is ready!"
+            return 0
+        fi
+        sleep 2
+        echo -n "."
+    done
+    
+    echo ""
+    echo "⚠️  Docker is taking longer than expected to start"
+    echo "Please wait for Docker Desktop to fully start, then re-run this script"
     exit 0
 }
 
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "❌ Docker is not installed"
-    echo ""
-    read -p "Would you like to install Docker automatically? (y/n): " -n 1 -r
+    echo "🔧 Installing Docker automatically..."
     echo ""
     
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        case $OS in
-            linux)
-                install_docker_linux
-                echo "🔄 Please log out and back in, then re-run this script"
-                exit 0
-                ;;
-            mac)
-                install_docker_mac
-                ;;
-            *)
-                echo "❌ Automatic installation not supported on this OS"
-                echo "Please install Docker manually from: https://docs.docker.com/get-docker/"
-                exit 1
-                ;;
-        esac
-    else
-        echo "Install Docker from: https://docs.docker.com/get-docker/"
-        exit 1
-    fi
+    case $OS in
+        linux)
+            install_docker_linux
+            echo "🔄 Please log out and back in, then re-run this script"
+            exit 0
+            ;;
+        mac)
+            install_docker_mac
+            ;;
+        *)
+            echo "❌ Automatic installation not supported on this OS"
+            echo "Please install Docker manually from: https://docs.docker.com/get-docker/"
+            exit 1
+            ;;
+    esac
 fi
 
 # Check if Docker Compose is available (either as plugin or standalone)
