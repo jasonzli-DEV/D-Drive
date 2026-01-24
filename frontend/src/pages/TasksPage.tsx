@@ -100,6 +100,7 @@ export default function TasksPage() {
       id: t.id,
       name: t.name || '',
       enabled: !!t.enabled,
+      cron: t.cron || '* * * * *',
       sftpHost: t.sftpHost || '',
       sftpPort: t.sftpPort || 22,
       sftpUser: t.sftpUser || '',
