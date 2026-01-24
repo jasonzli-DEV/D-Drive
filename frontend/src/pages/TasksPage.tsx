@@ -32,6 +32,7 @@ import FolderSelectDialog from '../components/FolderSelectDialog';
   id: undefined as string | undefined,
   name: '',
   enabled: true,
+  cron: '* * * * *',
   sftpHost: '',
   sftpPort: 22,
   sftpUser: '',
@@ -42,7 +43,6 @@ import FolderSelectDialog from '../components/FolderSelectDialog';
   authPrivateKey: true,
   destinationId: '' as string | null,
   compress: 'NONE',
-  timestampNames: true,
   maxFiles: 0,
   encrypt: false,
 };
@@ -110,7 +110,8 @@ export default function TasksPage() {
       authPrivateKey: t.authPrivateKey === undefined ? true : !!t.authPrivateKey,
       destinationId: t.destinationId || '',
       compress: t.compress || 'NONE',
-      timestampNames: !!t.timestampNames,
+          // always timestamp filenames for task uploads
+          // timestampNames: !!t.timestampNames,
       maxFiles: t.maxFiles || 0,
       encrypt: !!t.encrypt,
     });
@@ -118,7 +119,7 @@ export default function TasksPage() {
   }
 
   async function save() {
-    const payload = { ...form };
+    const payload = { ...form, timestampNames: true };
     if (form.id) {
       await updateMutation.mutateAsync(payload);
     } else {
@@ -171,6 +172,7 @@ export default function TasksPage() {
         <DialogTitle>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
         <DialogContent>
           <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText="e.g. 0 2 * * * (daily at 02:00)" />
           <FormControlLabel control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
 
           <Box sx={{ display: 'flex', gap: 2 }}>
@@ -215,8 +217,6 @@ export default function TasksPage() {
               <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} />
             )}
           </Box>
-
-          <FormControlLabel control={<Checkbox checked={form.timestampNames} onChange={(e) => setForm({ ...form, timestampNames: e.target.checked })} />} label="Timestamp filenames" />
 
           <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} />
 
