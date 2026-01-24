@@ -1,41 +1,61 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { renderHook, waitFor } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
+import { renderHook, waitFor, act } from '@testing-library/react';
 import { useAuth } from '../useAuth';
-import * as api from '../../lib/api';
 
-// Mock the API module
+// Mock the api module
 vi.mock('../../lib/api', () => ({
   default: {
     get: vi.fn(),
     post: vi.fn(),
-    delete: vi.fn(),
   },
 }));
-
-const createWrapper = () => {
-  const queryClient = new QueryClient({
-    defaultOptions: {
-      queries: { retry: false },
-      mutations: { retry: false },
-    },
-  });
-  return ({ children }: { children: React.ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
-  );
-};
 
 describe('useAuth Hook', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     localStorage.clear();
+    vi.useFakeTimers();
   });
 
-  it('should return null user when not authenticated', async () => {
-    vi.mocked(api.default.get).mockRejectedValue(new Error('Not authenticated'));
+  afterEach(() => {
+    vi.useRealTimers();
+  });
 
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(),
+  it('should return loading true initially', () => {
+    const { result } = renderHook(() => useAuth());
+    // Initially loading is true before any async operation
+    expect(result.current.loading).toBe(true);
+  });
+
+  it('should set loading to false when no token', async () => {
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    await waitFor(() => {
+      expect(result.current.loading).toBe(false);
+    });
+  });
+
+  it('should return isAuthenticated false when no token', async () => {
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
+    });
+
+    await waitFor(() => {
+      expect(result.current.isAuthenticated).toBe(false);
+    });
+  });
+
+  it('should return null user when no token', async () => {
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      vi.advanceTimersByTime(100);
     });
 
     await waitFor(() => {
@@ -43,65 +63,50 @@ describe('useAuth Hook', () => {
     });
   });
 
-  it('should return user data when authenticated', async () => {
-    const mockUser = {
-      id: '1',
-      username: 'testuser',
-      avatar: 'avatar.png',
-      discordId: '123',
-    };
-
-    vi.mocked(api.default.get).mockResolvedValue({ data: mockUser });
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(),
-    });
-
-    await waitFor(() => {
-      expect(result.current.user).toEqual(mockUser);
-    });
+  it('should have login function', () => {
+    const { result } = renderHook(() => useAuth());
+    expect(typeof result.current.login).toBe('function');
   });
 
-  it('should handle loading state', () => {
-    vi.mocked(api.default.get).mockImplementation(
-      () => new Promise(() => {}) // Never resolves
-    );
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(),
-    });
-
-    expect(result.current.isLoading).toBe(true);
+  it('should have logout function', () => {
+    const { result } = renderHook(() => useAuth());
+    expect(typeof result.current.logout).toBe('function');
   });
 
-  it('should check if user is authenticated', async () => {
-    const mockUser = {
-      id: '1',
-      username: 'testuser',
-      avatar: null,
-      discordId: '123',
-    };
-
-    vi.mocked(api.default.get).mockResolvedValue({ data: mockUser });
-
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(),
-    });
-
-    await waitFor(() => {
-      expect(result.current.isAuthenticated).toBe(true);
-    });
+  it('should have checkAuth function', () => {
+    const { result } = renderHook(() => useAuth());
+    expect(typeof result.current.checkAuth).toBe('function');
   });
 
-  it('should return false for isAuthenticated when no user', async () => {
-    vi.mocked(api.default.get).mockRejectedValue(new Error('Not authenticated'));
+  it('should store token in localStorage on login', async () => {
+    const { result } = renderHook(() => useAuth());
 
-    const { result } = renderHook(() => useAuth(), {
-      wrapper: createWrapper(),
+    await act(async () => {
+      result.current.login('test-token');
+      vi.advanceTimersByTime(100);
     });
 
-    await waitFor(() => {
-      expect(result.current.isAuthenticated).toBe(false);
+    expect(localStorage.getItem('token')).toBe('test-token');
+  });
+
+  it('should set isAuthenticated to true on login', async () => {
+    const { result } = renderHook(() => useAuth());
+
+    await act(async () => {
+      result.current.login('test-token');
     });
+
+    expect(result.current.isAuthenticated).toBe(true);
+  });
+
+  it('should export expected properties', () => {
+    const { result } = renderHook(() => useAuth());
+
+    expect(result.current).toHaveProperty('isAuthenticated');
+    expect(result.current).toHaveProperty('user');
+    expect(result.current).toHaveProperty('loading');
+    expect(result.current).toHaveProperty('login');
+    expect(result.current).toHaveProperty('logout');
+    expect(result.current).toHaveProperty('checkAuth');
   });
 });

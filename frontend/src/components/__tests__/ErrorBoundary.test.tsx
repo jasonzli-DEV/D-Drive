@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { BrowserRouter } from 'react-router-dom';
 import ErrorBoundary from '../ErrorBoundary';
@@ -23,7 +23,6 @@ describe('ErrorBoundary', () => {
   });
 
   it('should render error UI when child component throws', () => {
-    // Suppress console.error for this test
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
@@ -39,7 +38,7 @@ describe('ErrorBoundary', () => {
     spy.mockRestore();
   });
 
-  it('should display error message in error state', () => {
+  it('should display generic error message in error state', () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
 
     render(
@@ -50,7 +49,8 @@ describe('ErrorBoundary', () => {
       </BrowserRouter>
     );
 
-    expect(screen.getByText(/test error/i)).toBeInTheDocument();
+    // The ErrorBoundary shows a generic message, not the actual error
+    expect(screen.getByText(/unexpected error/i)).toBeInTheDocument();
 
     spy.mockRestore();
   });
@@ -68,6 +68,22 @@ describe('ErrorBoundary', () => {
 
     const reloadButton = screen.getByRole('button', { name: /reload/i });
     expect(reloadButton).toBeInTheDocument();
+
+    spy.mockRestore();
+  });
+
+  it('should show sorry message in error state', () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    render(
+      <BrowserRouter>
+        <ErrorBoundary>
+          <ThrowError />
+        </ErrorBoundary>
+      </BrowserRouter>
+    );
+
+    expect(screen.getByText(/sorry/i)).toBeInTheDocument();
 
     spy.mockRestore();
   });

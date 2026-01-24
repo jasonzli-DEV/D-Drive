@@ -3,11 +3,12 @@ import { formatDistance, format, isValid, parseISO } from 'date-fns';
 
 describe('Date Formatting Functions', () => {
   describe('formatDistance', () => {
-    it('should format time difference in seconds', () => {
+    it('should format time difference less than a minute', () => {
       const now = new Date();
       const past = new Date(now.getTime() - 30 * 1000);
       const result = formatDistance(past, now, { addSuffix: true });
-      expect(result).toContain('second');
+      // date-fns rounds to nearest unit, 30 seconds shows as "less than a minute" or "1 minute"
+      expect(result).toMatch(/minute|less than/i);
     });
 
     it('should format time difference in minutes', () => {
@@ -29,6 +30,13 @@ describe('Date Formatting Functions', () => {
       const past = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
       const result = formatDistance(past, now, { addSuffix: true });
       expect(result).toContain('day');
+    });
+
+    it('should include suffix when addSuffix is true', () => {
+      const now = new Date();
+      const past = new Date(now.getTime() - 60 * 60 * 1000);
+      const result = formatDistance(past, now, { addSuffix: true });
+      expect(result).toContain('ago');
     });
   });
 
@@ -53,6 +61,16 @@ describe('Date Formatting Functions', () => {
       const result = format(date, 'MMM d, yyyy h:mm a');
       expect(result).toBe('Jan 15, 2024 10:30 AM');
     });
+
+    it('should format year correctly', () => {
+      const date = new Date(2024, 5, 20);
+      expect(format(date, 'yyyy')).toBe('2024');
+    });
+
+    it('should format month correctly', () => {
+      const date = new Date(2024, 5, 20);
+      expect(format(date, 'MMMM')).toBe('June');
+    });
   });
 
   describe('parseISO', () => {
@@ -70,6 +88,11 @@ describe('Date Formatting Functions', () => {
       const date = parseISO('not-a-date');
       expect(isValid(date)).toBe(false);
     });
+
+    it('should parse datetime with timezone', () => {
+      const date = parseISO('2024-06-15T14:30:00+05:00');
+      expect(isValid(date)).toBe(true);
+    });
   });
 
   describe('isValid', () => {
@@ -83,6 +106,10 @@ describe('Date Formatting Functions', () => {
 
     it('should return false for NaN', () => {
       expect(isValid(NaN)).toBe(false);
+    });
+
+    it('should return true for parsed valid date', () => {
+      expect(isValid(parseISO('2024-01-15'))).toBe(true);
     });
   });
 });
