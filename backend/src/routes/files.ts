@@ -458,17 +458,40 @@ router.post('/directory', authenticate, async (req: Request, res: Response) => {
       parentPath = parent?.path || null;
     }
 
-    const dirPath = parentPath ? `${parentPath}/${name}` : `/${name}`;
+    // Ensure directory name is unique within the target parent. Use the
+    // same numeric-suffix strategy as files ("name (1)") to avoid merging
+    // uploads into existing folders unexpectedly.
+    let uniqueName = await getUniqueName(userId, parentPath, name);
+    const maxAttempts = 5;
+    let attempt = 0;
+    let directory: any = null;
+    while (!directory && attempt < maxAttempts) {
+      try {
+        const dirPath = parentPath ? `${parentPath}/${uniqueName}` : `/${uniqueName}`;
+        directory = await prisma.file.create({
+          data: {
+            name: uniqueName,
+            path: dirPath,
+            type: 'DIRECTORY',
+            userId,
+            parentId: parentId || null,
+          },
+        });
+      } catch (createErr: any) {
+        if (createErr?.code === 'P2002') {
+          // Collision — compute another unique name and retry
+          uniqueName = await getUniqueName(userId, parentPath, name);
+          attempt += 1;
+          continue;
+        }
+        throw createErr;
+      }
+    }
 
-    const directory = await prisma.file.create({
-      data: {
-        name,
-        path: dirPath,
-        type: 'DIRECTORY',
-        userId,
-        parentId: parentId || null,
-      },
-    });
+    if (!directory) {
+      logger.error('Failed to create unique directory after multiple attempts');
+      return res.status(500).json({ error: 'Failed to create directory' });
+    }
 
     res.json(serializeFile(directory));
   } catch (error) {
