@@ -1581,13 +1581,13 @@ export default function DrivePage() {
       {/* top action buttons removed — New/+ menu available in left sidebar */}
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
           <CircularProgress />
         </Box>
       ) : files && files.length === 0 ? (
-        <Card sx={{ boxShadow: 2 }}>
+        <Card sx={{ boxShadow: 2, minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <CardContent>
-            <Box sx={{ textAlign: 'center', py: 8 }}>
+            <Box sx={{ textAlign: 'center' }}>
               <Folder size={64} color="#ccc" style={{ marginBottom: 16 }} />
               <Typography variant="h6" color="text.secondary" gutterBottom>
                 This folder is empty
