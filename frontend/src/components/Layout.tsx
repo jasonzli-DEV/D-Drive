@@ -69,13 +69,13 @@ export default function Layout({ children }: LayoutProps) {
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
-          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 48, height: 48 }}>
-            <Settings size={20} />
+          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 44, height: 44 }}>
+            <Settings size={22} />
           </IconButton>
 
-          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 48, height: 48 }}>
+          <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 44, height: 44 }}>
             <Avatar
-              sx={{ width: 48, height: 48 }}
+              sx={{ width: 40, height: 40 }}
               src={
                 user?.avatarUrl ? user.avatarUrl :
                 user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined
@@ -96,7 +96,7 @@ export default function Layout({ children }: LayoutProps) {
               </Typography>
             </MenuItem>
             <MenuItem onClick={handleSettings}>
-              <Settings style={{ marginRight: 8 }} size={18} />
+              <Settings style={{ marginRight: 8 }} size={20} />
               Settings
             </MenuItem>
             <MenuItem onClick={handleLogout}>
