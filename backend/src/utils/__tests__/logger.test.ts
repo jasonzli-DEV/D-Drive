@@ -1,5 +1,22 @@
 import { logger } from '../logger';
 
+// Store original transports and silence them during tests
+const originalTransports = logger.transports;
+
+beforeAll(() => {
+  // Silence all transports during tests
+  logger.transports.forEach(transport => {
+    transport.silent = true;
+  });
+});
+
+afterAll(() => {
+  // Restore transports after tests
+  logger.transports.forEach(transport => {
+    transport.silent = false;
+  });
+});
+
 describe('Logger Utils', () => {
   describe('logger methods exist', () => {
     it('should have info method', () => {
