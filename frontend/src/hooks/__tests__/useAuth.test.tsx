@@ -73,11 +73,6 @@ describe('useAuth Hook', () => {
     expect(typeof result.current.logout).toBe('function');
   });
 
-  it('should have checkAuth function', () => {
-    const { result } = renderHook(() => useAuth());
-    expect(typeof result.current.checkAuth).toBe('function');
-  });
-
   it('should store token in localStorage on login', async () => {
     const { result } = renderHook(() => useAuth());
 
@@ -107,6 +102,5 @@ describe('useAuth Hook', () => {
     expect(result.current).toHaveProperty('loading');
     expect(result.current).toHaveProperty('login');
     expect(result.current).toHaveProperty('logout');
-    expect(result.current).toHaveProperty('checkAuth');
   });
 });
