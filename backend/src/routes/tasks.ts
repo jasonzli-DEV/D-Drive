@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { PrismaClient, CompressFormat } from '@prisma/client';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import { runTaskNow } from '../services/taskRunner';
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -111,8 +112,8 @@ router.post('/:id/run', authenticate, async (req: Request, res: Response) => {
     const { id } = req.params;
     const task = await prisma.task.findUnique({ where: { id } });
     if (!task || task.userId !== userId) return res.status(404).json({ error: 'Not found' });
-
-    // TODO: enqueue actual runner job. For now just update lastRun.
+    // Execute the runner now and update lastRun when complete.
+    await runTaskNow(id);
     const updated = await prisma.task.update({ where: { id }, data: { lastRun: new Date() } });
     res.json({ ok: true, task: updated });
   } catch (err) {
