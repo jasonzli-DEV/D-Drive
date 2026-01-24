@@ -1,4 +1,4 @@
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from './hooks/useAuth';
 import { Box, CircularProgress } from '@mui/material';
 import Layout from './components/Layout';
@@ -13,12 +13,33 @@ import RecycleBinPage from './pages/RecycleBinPage';
 import SharedPage from './pages/SharedPage';
 import StarredPage from './pages/StarredPage';
 import SetupPage from './pages/SetupPage';
+import { useState, useEffect } from 'react';
+import api from './lib/api';
 
 function App() {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, loading: authLoading } = useAuth();
+  const location = useLocation();
+  const [setupStatus, setSetupStatus] = useState<{ checked: boolean; required: boolean }>({
+    checked: false,
+    required: false,
+  });
 
-  // Show loading spinner while checking authentication
-  if (loading) {
+  // Check setup status on mount
+  useEffect(() => {
+    const checkSetup = async () => {
+      try {
+        const response = await api.get<{ setupRequired: boolean }>('/setup/status');
+        setSetupStatus({ checked: true, required: response.data.setupRequired });
+      } catch (err) {
+        // If setup status check fails, assume setup is complete (server might not be responding)
+        setSetupStatus({ checked: true, required: false });
+      }
+    };
+    checkSetup();
+  }, []);
+
+  // Show loading spinner while checking setup and auth
+  if (!setupStatus.checked || authLoading) {
     return (
       <Box
         sx={{
@@ -26,11 +47,22 @@ function App() {
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
+          bgcolor: '#0a0e1a',
         }}
       >
         <CircularProgress size={60} />
       </Box>
     );
+  }
+
+  // If setup is required, redirect all routes to /setup (except /setup itself)
+  if (setupStatus.required && location.pathname !== '/setup') {
+    return <Navigate to="/setup" replace />;
+  }
+
+  // If setup is complete and user is on /setup, redirect to login
+  if (!setupStatus.required && location.pathname === '/setup') {
+    return <Navigate to="/login" replace />;
   }
 
   return (

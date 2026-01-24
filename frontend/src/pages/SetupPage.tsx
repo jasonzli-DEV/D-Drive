@@ -41,23 +41,11 @@ export default function SetupPage() {
     discordChannelId: '',
   });
 
+  // No need to check setup status here - App.tsx handles the redirect
+  // Just mark loading as false immediately
   useEffect(() => {
-    checkSetupStatus();
+    setLoading(false);
   }, []);
-
-  const checkSetupStatus = async () => {
-    try {
-      const response = await api.get<SetupStatus>('/setup/status');
-      if (!response.data.setupRequired) {
-        // Setup already complete, redirect to login
-        window.location.href = '/login';
-      }
-      setLoading(false);
-    } catch (err) {
-      setError('Failed to check setup status');
-      setLoading(false);
-    }
-  };
 
   const validateDiscord = async () => {
     setValidating(true);
