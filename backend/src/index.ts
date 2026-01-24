@@ -53,6 +53,34 @@ app.use((req, res, next) => {
   next();
 });
 
+// Setup requirement check middleware - blocks all API routes except /api/setup/* and /api/health
+// when Discord is not configured
+app.use('/api', (req, res, next) => {
+  // Always allow setup routes and health checks
+  if (req.path.startsWith('/setup') || req.path === '/health') {
+    return next();
+  }
+  
+  // Check if Discord is configured
+  const hasDiscordConfig = !!(
+    process.env.DISCORD_CLIENT_ID &&
+    process.env.DISCORD_CLIENT_SECRET &&
+    process.env.DISCORD_BOT_TOKEN &&
+    process.env.DISCORD_GUILD_ID &&
+    process.env.DISCORD_CHANNEL_ID
+  );
+  
+  if (!hasDiscordConfig) {
+    return res.status(503).json({
+      error: 'Setup required',
+      message: 'D-Drive is not configured. Please complete the setup first.',
+      setupRequired: true,
+    });
+  }
+  
+  next();
+});
+
 // Routes
 app.use('/api', routes);
 
