@@ -44,7 +44,7 @@ import FolderSelectDialog from '../components/FolderSelectDialog';
   destinationId: '' as string | null,
   compress: 'NONE',
   maxFiles: 0,
-  encrypt: false,
+  // encrypt override removed; tasks use user's default encrypt setting
 };
 
 export default function TasksPage() {
@@ -242,7 +242,7 @@ export default function TasksPage() {
 
           <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} />
 
-          <FormControlLabel control={<Checkbox checked={form.encrypt} onChange={(e) => setForm({ ...form, encrypt: e.target.checked })} />} label="Encrypt (override user's default)" />
+          {/* Encrypt override removed: tasks will follow user's default encryption setting */}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
