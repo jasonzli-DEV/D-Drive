@@ -194,10 +194,10 @@ export default function DrivePage() {
   });
 
   // Upload file mutation
-  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null; folderKey?: string; folderTotalBytes?: number }>(
+  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null; folderKey?: string }>(
     {
-    // accepts { file: File, parentId?: string | null, folderKey?: string, folderTotalBytes?: number }
-    mutationFn: async ({ file, parentId, folderKey, folderTotalBytes }: { file: File; parentId?: string | null; folderKey?: string; folderTotalBytes?: number }) => {
+    // accepts { file: File, parentId?: string | null, folderKey?: string }
+    mutationFn: async ({ file, parentId, folderKey }: { file: File; parentId?: string | null; folderKey?: string }) => {
       const formData = new FormData();
       // append metadata first so server-side stream parser can read fields before file
       if (parentId) {
@@ -589,13 +589,13 @@ export default function DrivePage() {
       folderErrorShownRef.current[baseFolderKey] = false;
 
       // For each file, create necessary nested folders then upload into that folder
-      for (const f of filtered) {
+          for (const f of filtered) {
         const rel = (f as any).webkitRelativePath || f.name;
         const parts = rel.split('/');
         const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
         try {
           const targetParent = await ensureFolderPath(folderId || null, folderPath);
-          uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey, folderTotalBytes: totalBytes });
+          uploadMutation.mutate({ file: f as File, parentId: targetParent || null, folderKey: baseFolderKey });
         } catch (err) {
           console.error('Folder upload child error:', err);
           if (!folderErrorShownRef.current[baseFolderKey]) {
