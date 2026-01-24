@@ -862,6 +862,8 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
     };
 
     // Perform copy inside transaction; external uploads will occur but DB changes are transactional
+    // Increase transaction timeout because copying re-uploads chunks and may take longer than the
+    // default interactive transaction timeout (5s). Keep network I/O minimal where possible.
     const created = await prisma.$transaction(async (tx) => {
       if (node.type === 'DIRECTORY') {
         // Copy directory and its contents
@@ -871,7 +873,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
         const parentPath = node.parentId ? (await prisma.file.findUnique({ where: { id: node.parentId }, select: { path: true } }))?.path || null : null;
         return await copyFile(tx, node, node.parentId || null, parentPath, true);
       }
-    });
+    }, { timeout: 120000 });
 
     return res.status(201).json(serializeFile(created));
   } catch (error) {
