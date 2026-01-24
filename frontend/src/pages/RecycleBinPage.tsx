@@ -20,6 +20,10 @@ import {
   CircularProgress,
   Tooltip,
   useTheme,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import { Trash2, RotateCcw, Folder, File, AlertTriangle } from 'lucide-react';
 import { formatDistance } from 'date-fns';
@@ -45,11 +49,30 @@ function formatBytes(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+function getDaysUntilDeletion(deletedAt: string): { days: number; isUrgent: boolean } {
+  const deletedDate = new Date(deletedAt);
+  const now = new Date();
+  const deleteAfterDays = 30;
+  const deleteDate = new Date(deletedDate.getTime() + deleteAfterDays * 24 * 60 * 60 * 1000);
+  const daysLeft = Math.ceil((deleteDate.getTime() - now.getTime()) / (24 * 60 * 60 * 1000));
+  return { days: Math.max(0, daysLeft), isUrgent: daysLeft <= 7 };
+}
+
 export default function RecycleBinPage() {
   const queryClient = useQueryClient();
   const theme = useTheme();
   const [emptyDialogOpen, setEmptyDialogOpen] = useState(false);
   const [deleteDialogFile, setDeleteDialogFile] = useState<DeletedFile | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; item: DeletedFile } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent, file: DeletedFile) => {
+    e.preventDefault();
+    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, item: file });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
 
   const { data: files, isLoading } = useQuery({
     queryKey: ['recycleBin'],
@@ -147,7 +170,7 @@ export default function RecycleBinPage() {
               </TableHead>
               <TableBody>
                 {files.map((file) => (
-                  <TableRow key={file.id} hover>
+                  <TableRow key={file.id} hover onContextMenu={(e) => handleContextMenu(e, file)}>
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {file.type === 'DIRECTORY' ? (
@@ -167,11 +190,28 @@ export default function RecycleBinPage() {
                       {file.type === 'DIRECTORY' ? '-' : formatBytes(parseInt(file.size))}
                     </TableCell>
                     <TableCell>
-                      <Tooltip title={new Date(file.deletedAt).toLocaleString()}>
-                        <span>
-                          {formatDistance(new Date(file.deletedAt), new Date(), { addSuffix: true })}
-                        </span>
-                      </Tooltip>
+                      {(() => {
+                        const { days, isUrgent } = getDaysUntilDeletion(file.deletedAt);
+                        return (
+                          <Box>
+                            <Tooltip title={new Date(file.deletedAt).toLocaleString()}>
+                              <span>
+                                {formatDistance(new Date(file.deletedAt), new Date(), { addSuffix: true })}
+                              </span>
+                            </Tooltip>
+                            <Typography 
+                              variant="caption" 
+                              display="block" 
+                              sx={{ 
+                                color: isUrgent ? 'error.main' : 'text.secondary',
+                                fontWeight: isUrgent ? 600 : 400,
+                              }}
+                            >
+                              {days === 0 ? 'Deletes today' : `${days} day${days !== 1 ? 's' : ''} until auto-delete`}
+                            </Typography>
+                          </Box>
+                        );
+                      })()}
                     </TableCell>
                     <TableCell align="right">
                       <Tooltip title="Restore">
@@ -201,6 +241,23 @@ export default function RecycleBinPage() {
             </Table>
           </TableContainer>
         )}
+
+        {/* Context Menu */}
+        <Menu
+          open={contextMenu !== null}
+          onClose={closeContextMenu}
+          anchorReference="anchorPosition"
+          anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+        >
+          <MenuItem onClick={() => { contextMenu && restoreMutation.mutate(contextMenu.item.id); closeContextMenu(); }}>
+            <ListItemIcon><RotateCcw size={18} /></ListItemIcon>
+            <ListItemText>Restore</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={() => { contextMenu && setDeleteDialogFile(contextMenu.item); closeContextMenu(); }}>
+            <ListItemIcon><Trash2 size={18} color={theme.palette.error.main} /></ListItemIcon>
+            <ListItemText>Delete permanently</ListItemText>
+          </MenuItem>
+        </Menu>
       </Paper>
 
       {/* Empty Recycle Bin Dialog */}

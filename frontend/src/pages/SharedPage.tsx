@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -28,6 +28,7 @@ import {
   ListItemIcon,
   ListItemText,
   TextField,
+  LinearProgress,
 } from '@mui/material';
 import { 
   Folder, 
@@ -37,11 +38,15 @@ import {
   Eye, 
   Edit, 
   ChevronRight,
+  ChevronLeft,
   Home,
   Trash,
   FolderPlus,
   Pencil,
   Upload,
+  Play,
+  Image,
+  FileText,
 } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import toast from 'react-hot-toast';
@@ -120,6 +125,64 @@ export default function SharedPage() {
   const [createFolderDialog, setCreateFolderDialog] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
   const [deleteDialog, setDeleteDialog] = useState<FolderFile | null>(null);
+
+  // Media preview state
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [previewList, setPreviewList] = useState<FolderFile[]>([]);
+  const [previewBlobUrl, setPreviewBlobUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
+  const [videoLoadProgress, setVideoLoadProgress] = useState(0);
+  const loadedPreviewIdRef = useRef<string | null>(null);
+
+  // Helper functions for file types
+  const isImageFile = (f: FolderFile) => {
+    if (f.mimeType && f.mimeType.startsWith('image/')) return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'heic'].includes(ext);
+  };
+
+  const isVideoFile = (f: FolderFile) => {
+    if (f.mimeType && f.mimeType.startsWith('video/')) return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ['mp4', 'mov', 'webm', 'ogg', 'mkv', 'avi', 'm4v'].includes(ext);
+  };
+
+  const isPdfFile = (f: FolderFile) => {
+    if (f.mimeType && f.mimeType === 'application/pdf') return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ext === 'pdf';
+  };
+
+  const canPreview = (f: FolderFile) => isImageFile(f) || isVideoFile(f) || isPdfFile(f);
+
+  const openPreview = (file: FolderFile, files: FolderFile[]) => {
+    const previewableFiles = files.filter(f => f.type === 'FILE' && canPreview(f));
+    if (previewableFiles.length === 0) return;
+    
+    const idx = previewableFiles.findIndex(f => f.id === file.id);
+    setPreviewList(previewableFiles);
+    setPreviewIndex(Math.max(0, idx));
+    setPreviewOpen(true);
+  };
+
+  const closePreview = () => {
+    loadedPreviewIdRef.current = null;
+    setPreviewOpen(false);
+    setPreviewBlobUrl(null);
+    setPreviewError(null);
+  };
+
+  const showPrevPreview = () => {
+    loadedPreviewIdRef.current = null;
+    setPreviewIndex(i => Math.max(0, i - 1));
+  };
+
+  const showNextPreview = () => {
+    loadedPreviewIdRef.current = null;
+    setPreviewIndex(i => Math.min(previewList.length - 1, i + 1));
+  };
 
   // Files shared with me
   const { data: sharedWithMe, isLoading: loadingWithMe } = useQuery({
@@ -282,6 +345,55 @@ export default function SharedPage() {
     e.target.value = '';
   };
 
+  // Effect to load preview content
+  const loadPreview = async () => {
+    if (!previewOpen) return;
+    const current = previewList[previewIndex];
+    if (!current) return;
+    
+    // Skip if we already loaded this
+    if (loadedPreviewIdRef.current === current.id && previewBlobUrl) return;
+    
+    setPreviewError(null);
+    setPreviewLoading(true);
+    setPreviewBlobUrl(null);
+    setVideoLoadProgress(0);
+
+    try {
+      const isVideo = isVideoFile(current);
+      
+      // For videos, use direct URL for streaming
+      if (isVideo) {
+        const token = localStorage.getItem('token');
+        const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+        const videoUrl = `${baseUrl}/shares/file/${current.id}/download?inline=1${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+        loadedPreviewIdRef.current = current.id;
+        setPreviewBlobUrl(videoUrl);
+        setPreviewLoading(false);
+        return;
+      }
+
+      // For images/PDFs, fetch blob
+      const response = await api.get(`/shares/file/${current.id}/download`, {
+        responseType: 'blob',
+      });
+      
+      const blob = response.data as Blob;
+      const url = URL.createObjectURL(blob);
+      loadedPreviewIdRef.current = current.id;
+      setPreviewBlobUrl(url);
+      setPreviewLoading(false);
+    } catch (err: any) {
+      setPreviewError(err?.response?.data?.error || 'Failed to load preview');
+      setPreviewLoading(false);
+    }
+  };
+
+  // Auto-load preview when dialog opens or index changes  
+  if (previewOpen && previewList[previewIndex] && loadedPreviewIdRef.current !== previewList[previewIndex].id) {
+    loadPreview();
+  }
+
   const isLoading = currentFolder ? loadingFolder : (tab === 0 ? loadingWithMe : loadingByMe);
   const permission = currentFolder?.permission || folderContents?.permission;
   const canEdit = permission === 'EDIT';
@@ -374,13 +486,25 @@ export default function SharedPage() {
                   key={file.id} 
                   hover
                   onContextMenu={(e) => handleContextMenu(e, file)}
-                  onDoubleClick={() => file.type === 'DIRECTORY' && navigateToFolder(file)}
-                  sx={{ cursor: file.type === 'DIRECTORY' ? 'pointer' : 'default' }}
+                  onDoubleClick={() => {
+                    if (file.type === 'DIRECTORY') {
+                      navigateToFolder(file);
+                    } else if (canPreview(file)) {
+                      openPreview(file, files);
+                    }
+                  }}
+                  sx={{ cursor: file.type === 'DIRECTORY' || canPreview(file) ? 'pointer' : 'default' }}
                 >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {file.type === 'DIRECTORY' ? (
                         <Folder size={20} style={{ color: theme.palette.warning.main }} />
+                      ) : isImageFile(file) ? (
+                        <Image size={20} style={{ color: theme.palette.info.main }} />
+                      ) : isVideoFile(file) ? (
+                        <Play size={20} style={{ color: theme.palette.error.main }} />
+                      ) : isPdfFile(file) ? (
+                        <FileText size={20} style={{ color: theme.palette.warning.dark }} />
                       ) : (
                         <File size={20} style={{ color: theme.palette.primary.main }} />
                       )}
@@ -398,6 +522,13 @@ export default function SharedPage() {
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right">
+                    {file.type === 'FILE' && canPreview(file) && (
+                      <Tooltip title="Preview">
+                        <IconButton size="small" onClick={() => openPreview(file, files)}>
+                          <Eye size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {file.type === 'FILE' && (
                       <Tooltip title="Download">
                         <IconButton size="small" onClick={() => handleDownload(file.id, file.name)}>
@@ -450,6 +581,12 @@ export default function SharedPage() {
             <MenuItem onClick={() => { handleDownload(contextMenu.item!.id, contextMenu.item!.name); closeContextMenu(); }}>
               <ListItemIcon><Download size={18} /></ListItemIcon>
               <ListItemText>Download</ListItemText>
+            </MenuItem>
+          )}
+          {contextMenu?.item?.type === 'FILE' && canPreview(contextMenu.item) && (
+            <MenuItem onClick={() => { openPreview(contextMenu.item!, files); closeContextMenu(); }}>
+              <ListItemIcon><Eye size={18} /></ListItemIcon>
+              <ListItemText>Preview</ListItemText>
             </MenuItem>
           )}
           {canEdit && (
@@ -536,6 +673,88 @@ export default function SharedPage() {
               Delete
             </Button>
           </DialogActions>
+        </Dialog>
+
+        {/* Preview Dialog */}
+        <Dialog fullWidth maxWidth="xl" open={previewOpen} onClose={closePreview}>
+          <Box tabIndex={0} onKeyDown={(e) => {
+            if (e.key === 'ArrowLeft') showPrevPreview();
+            if (e.key === 'ArrowRight') showNextPreview();
+            if (e.key === 'Escape') closePreview();
+          }} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 480 }}>
+            <IconButton onClick={showPrevPreview} disabled={previewIndex <= 0} sx={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+              <ChevronLeft />
+            </IconButton>
+            <Box sx={{ maxWidth: '90%', maxHeight: '80%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {previewList[previewIndex] ? (
+                previewLoading ? (
+                  <CircularProgress />
+                ) : previewError ? (
+                  <Typography color="error">{previewError}</Typography>
+                ) : isPdfFile(previewList[previewIndex]) ? (
+                  previewBlobUrl ? (
+                    <embed
+                      src={previewBlobUrl}
+                      type="application/pdf"
+                      title={previewList[previewIndex].name}
+                      style={{ width: '100%', height: '80vh', border: 0 }}
+                    />
+                  ) : null
+                ) : previewBlobUrl ? (
+                  isVideoFile(previewList[previewIndex]) ? (
+                    <Box sx={{ width: '100%', position: 'relative' }}>
+                      {videoLoadProgress > 0 && videoLoadProgress < 100 && (
+                        <Box sx={{ position: 'absolute', top: 10, left: 10, right: 10, zIndex: 1 }}>
+                          <LinearProgress variant="determinate" value={videoLoadProgress} />
+                          <Typography variant="caption" sx={{ color: 'white', textShadow: '0 0 4px black' }}>
+                            Loading: {Math.round(videoLoadProgress)}%
+                          </Typography>
+                        </Box>
+                      )}
+                      <video
+                        src={previewBlobUrl}
+                        controls
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        onProgress={(e) => {
+                          const video = e.currentTarget;
+                          if (video.buffered.length > 0) {
+                            const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                            const duration = video.duration;
+                            if (duration > 0) {
+                              setVideoLoadProgress((bufferedEnd / duration) * 100);
+                            }
+                          }
+                        }}
+                        onLoadedData={() => setVideoLoadProgress(100)}
+                      />
+                    </Box>
+                  ) : (
+                    <img
+                      src={previewBlobUrl}
+                      alt={previewList[previewIndex].name}
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                    />
+                  )
+                ) : null
+              ) : null}
+            </Box>
+            <IconButton onClick={showNextPreview} disabled={previewIndex >= previewList.length - 1} sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+              <ChevronRight />
+            </IconButton>
+            <IconButton onClick={closePreview} sx={{ position: 'absolute', right: 8, top: 8 }}>
+              <X />
+            </IconButton>
+            {previewList[previewIndex] && (
+              <Box sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', textAlign: 'center' }}>
+                <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                  {previewList[previewIndex].name}
+                </Typography>
+                <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                  {previewIndex + 1} / {previewList.length}
+                </Typography>
+              </Box>
+            )}
+          </Box>
         </Dialog>
       </Box>
     );

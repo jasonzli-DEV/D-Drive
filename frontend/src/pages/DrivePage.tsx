@@ -134,7 +134,7 @@ export default function DrivePage() {
   // Share dialog state
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareUsername, setShareUsername] = useState('');
-  const [sharePermission, setSharePermission] = useState<'VIEW' | 'EDIT' | 'ADMIN'>('VIEW');
+  const [sharePermission, setSharePermission] = useState<'VIEW' | 'EDIT'>('VIEW');
   // Track which file ID we've loaded to prevent redundant fetches
   const loadedImageIdRef = useRef<string | null>(null);
 
@@ -2041,12 +2041,11 @@ export default function DrivePage() {
             label="Permission"
             fullWidth
             value={sharePermission}
-            onChange={(e) => setSharePermission(e.target.value as 'VIEW' | 'EDIT' | 'ADMIN')}
+            onChange={(e) => setSharePermission(e.target.value as 'VIEW' | 'EDIT')}
             SelectProps={{ native: true }}
           >
-            <option value="VIEW">View only - Can view and download</option>
-            <option value="EDIT">Edit - Can view, download, and rename</option>
-            <option value="ADMIN">Admin - Full control including delete and reshare</option>
+            <option value="VIEW">View only - Can view, download, and preview media</option>
+            <option value="EDIT">Edit - Can also upload, create folders, rename, and delete</option>
           </TextField>
         </DialogContent>
         <DialogActions>

@@ -69,10 +69,111 @@ export default function TasksPage() {
       const interval = (cronParser as any).parseExpression(expr);
       const next = interval.next().toDate();
       const parts = expr.trim().split(/\s+/);
-      const m = parts[0].match(/^\*\/(\d+)$/);
-      if (m) return `At every ${m[1]}th minute — next: ${next.toLocaleString()}`;
-      if (parts[0] === '0' && /^[0-2]?\d$/.test(parts[1])) return `Daily at ${parts[1].padStart(2, '0')}:00 — next: ${next.toLocaleString()}`;
-      return `Next run: ${next.toLocaleString()}`;
+      if (parts.length !== 5) return `Next run: ${next.toLocaleString()}`;
+      
+      const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+      
+      // Build human-readable description
+      const descriptions: string[] = [];
+      
+      // Every X minutes
+      const minStep = minute.match(/^\*\/(\d+)$/);
+      if (minStep) {
+        descriptions.push(`Every ${minStep[1]} minute${minStep[1] === '1' ? '' : 's'}`);
+      }
+      // Every X hours
+      const hourStep = hour.match(/^\*\/(\d+)$/);
+      if (hourStep) {
+        descriptions.push(`every ${hourStep[1]} hour${hourStep[1] === '1' ? '' : 's'}`);
+      }
+      
+      // Specific minute(s)
+      if (!minStep && minute !== '*') {
+        const mins = minute.split(',');
+        if (mins.length === 1 && /^\d+$/.test(mins[0])) {
+          // Single minute - handled with hour below
+        } else if (minute.includes('-')) {
+          const [start, end] = minute.split('-');
+          descriptions.push(`Minutes ${start}-${end}`);
+        } else if (mins.length > 1) {
+          descriptions.push(`At minutes ${mins.join(', ')}`);
+        }
+      }
+      
+      // Specific hour(s)
+      if (!hourStep && hour !== '*') {
+        const hrs = hour.split(',');
+        const minVal = /^\d+$/.test(minute) ? minute.padStart(2, '0') : '00';
+        if (hrs.length === 1 && /^\d+$/.test(hrs[0])) {
+          const h = parseInt(hrs[0]);
+          const ampm = h >= 12 ? 'PM' : 'AM';
+          const h12 = h === 0 ? 12 : h > 12 ? h - 12 : h;
+          descriptions.push(`At ${h12}:${minVal} ${ampm}`);
+        } else if (hour.includes('-')) {
+          const [start, end] = hour.split('-');
+          descriptions.push(`Hours ${start}-${end}`);
+        } else if (hrs.length > 1) {
+          descriptions.push(`At hours ${hrs.join(', ')}`);
+        }
+      }
+      
+      // Day of month
+      if (dayOfMonth !== '*') {
+        const dayStep = dayOfMonth.match(/^\*\/(\d+)$/);
+        if (dayStep) {
+          descriptions.push(`every ${dayStep[1]} day${dayStep[1] === '1' ? '' : 's'}`);
+        } else if (dayOfMonth.includes('-')) {
+          const [start, end] = dayOfMonth.split('-');
+          descriptions.push(`on days ${start}-${end}`);
+        } else if (dayOfMonth.includes(',')) {
+          descriptions.push(`on days ${dayOfMonth}`);
+        } else {
+          const d = parseInt(dayOfMonth);
+          const suffix = d === 1 || d === 21 || d === 31 ? 'st' : d === 2 || d === 22 ? 'nd' : d === 3 || d === 23 ? 'rd' : 'th';
+          descriptions.push(`on the ${d}${suffix}`);
+        }
+      }
+      
+      // Month
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      if (month !== '*') {
+        const monthStep = month.match(/^\*\/(\d+)$/);
+        if (monthStep) {
+          descriptions.push(`every ${monthStep[1]} month${monthStep[1] === '1' ? '' : 's'}`);
+        } else if (month.includes(',')) {
+          const mons = month.split(',').map(m => monthNames[parseInt(m) - 1] || m);
+          descriptions.push(`in ${mons.join(', ')}`);
+        } else if (month.includes('-')) {
+          const [start, end] = month.split('-');
+          descriptions.push(`${monthNames[parseInt(start) - 1] || start} to ${monthNames[parseInt(end) - 1] || end}`);
+        } else {
+          descriptions.push(`in ${monthNames[parseInt(month) - 1] || month}`);
+        }
+      }
+      
+      // Day of week
+      const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      if (dayOfWeek !== '*') {
+        if (dayOfWeek === '1-5' || dayOfWeek === 'MON-FRI') {
+          descriptions.push('on weekdays');
+        } else if (dayOfWeek === '0,6' || dayOfWeek === '6,0' || dayOfWeek === 'SAT,SUN') {
+          descriptions.push('on weekends');
+        } else if (dayOfWeek.includes(',')) {
+          const days = dayOfWeek.split(',').map(d => dayNames[parseInt(d)] || d);
+          descriptions.push(`on ${days.join(', ')}`);
+        } else if (dayOfWeek.includes('-')) {
+          const [start, end] = dayOfWeek.split('-');
+          descriptions.push(`${dayNames[parseInt(start)] || start} to ${dayNames[parseInt(end)] || end}`);
+        } else {
+          descriptions.push(`on ${dayNames[parseInt(dayOfWeek)] || dayOfWeek}`);
+        }
+      }
+      
+      // Combine descriptions
+      let desc = descriptions.length > 0 ? descriptions.join(' ') : 'Custom schedule';
+      
+      // Add next run time
+      return `${desc} — next: ${next.toLocaleString()}`;
     } catch (e) {
       return 'Invalid cron expression';
     }
@@ -421,7 +522,15 @@ export default function TasksPage() {
       </Typography>
 
       {isLoading ? <CircularProgress /> : (
-        <Table sx={{ '& .MuiTableCell-root': { py: 1.5 } }}>
+        <Box sx={{ 
+          width: '100%', 
+          overflowX: 'auto',
+          bgcolor: 'background.paper',
+          borderRadius: 1,
+          border: '1px solid',
+          borderColor: 'divider',
+        }}>
+        <Table sx={{ '& .MuiTableCell-root': { py: 1.5 }, minWidth: 900 }}>
               <TableHead>
                 <TableRow sx={{ bgcolor: 'action.hover' }}>
                   <TableCell sx={{ fontWeight: 600, width: 40 }}></TableCell>
@@ -557,12 +666,18 @@ export default function TasksPage() {
                           }
                         }
                         
-                        const phaseText = progress.phase === 'scanning' ? 'Scanning...' 
+                        // Build phase text with chunk info for uploading
+                        let phaseText = progress.phase === 'scanning' ? 'Scanning...' 
                           : progress.phase === 'downloading' ? 'Downloading' 
                           : progress.phase === 'archiving' ? 'Creating archive' 
                           : progress.phase === 'uploading' ? 'Uploading to Discord' 
                           : progress.phase === 'complete' ? 'Complete'
                           : progress.phase;
+                        
+                        // Add chunk progress for uploading phase
+                        if (progress.phase === 'uploading' && progress.uploadTotalChunks > 0) {
+                          phaseText = `Uploading chunk ${progress.uploadChunk || 0}/${progress.uploadTotalChunks}`;
+                        }
                         
                         return (
                           <Box sx={{ mt: 0.5, fontSize: '0.75rem', color: 'text.secondary' }}>
@@ -690,6 +805,7 @@ export default function TasksPage() {
             })}
           </TableBody>
         </Table>
+        </Box>
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>

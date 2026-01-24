@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Settings, LogOut, Menu as MenuIcon, X } from 'lucide-react';
+import { Settings, LogOut, Menu as MenuIcon, X, FileText } from 'lucide-react';
 import { Home, Play, Plus, Trash2, Share2, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
@@ -197,10 +197,8 @@ export default function Layout({ children }: LayoutProps) {
               </Typography>
             </MenuItem>
             <MenuItem onClick={handleLogs}>
-              <ListItemIcon sx={{ minWidth: 36 }}>
-                <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>📋</Box>
-              </ListItemIcon>
-              <ListItemText primary="Logs" />
+              <FileText style={{ marginRight: 8 }} size={20} />
+              Logs
             </MenuItem>
             <MenuItem onClick={handleSettings}>
               <Settings style={{ marginRight: 8 }} size={20} />
