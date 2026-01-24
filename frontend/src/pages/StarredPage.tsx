@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -14,6 +15,10 @@ import {
   Tooltip,
   CircularProgress,
   useTheme,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import { Folder, File, Download, Star, StarOff, Eye } from 'lucide-react';
 import { formatDistance } from 'date-fns';
@@ -46,6 +51,16 @@ export default function StarredPage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const theme = useTheme();
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; item: StarredFile } | null>(null);
+
+  const handleContextMenu = (e: React.MouseEvent, file: StarredFile) => {
+    e.preventDefault();
+    setContextMenu({ mouseX: e.clientX, mouseY: e.clientY, item: file });
+  };
+
+  const closeContextMenu = () => {
+    setContextMenu(null);
+  };
 
   const { data: starredFiles, isLoading } = useQuery<StarredFile[]>({
     queryKey: ['files', 'starred'],
@@ -146,6 +161,7 @@ export default function StarredPage() {
                     hover 
                     sx={{ cursor: 'pointer' }}
                     onClick={() => handleNavigateToFile(file)}
+                    onContextMenu={(e) => handleContextMenu(e, file)}
                   >
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -211,6 +227,29 @@ export default function StarredPage() {
             </Table>
           </TableContainer>
         )}
+
+        {/* Context Menu */}
+        <Menu
+          open={contextMenu !== null}
+          onClose={closeContextMenu}
+          anchorReference="anchorPosition"
+          anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+        >
+          <MenuItem onClick={() => { contextMenu && handleNavigateToFile(contextMenu.item); closeContextMenu(); }}>
+            <ListItemIcon><Eye size={18} /></ListItemIcon>
+            <ListItemText>View location</ListItemText>
+          </MenuItem>
+          {contextMenu?.item?.type === 'FILE' && (
+            <MenuItem onClick={() => { contextMenu && handleDownload(contextMenu.item); closeContextMenu(); }}>
+              <ListItemIcon><Download size={18} /></ListItemIcon>
+              <ListItemText>Download</ListItemText>
+            </MenuItem>
+          )}
+          <MenuItem onClick={() => { contextMenu && unstarMutation.mutate(contextMenu.item.id); closeContextMenu(); }}>
+            <ListItemIcon><StarOff size={18} /></ListItemIcon>
+            <ListItemText>Remove from starred</ListItemText>
+          </MenuItem>
+        </Menu>
       </Paper>
     </Container>
   );

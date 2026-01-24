@@ -141,7 +141,8 @@ export async function storeFileFromPath(
   originalName: string, 
   filePath: string, 
   mimeType?: string, 
-  shouldEncrypt = false
+  shouldEncrypt = false,
+  onChunkProgress?: (currentChunk: number, totalChunks: number) => void
 ) {
   // Get file size
   const stat = await fs.promises.stat(filePath);
@@ -247,6 +248,11 @@ export async function storeFileFromPath(
         
         bytesRead += read;
         chunkIndex++;
+        
+        // Call progress callback if provided
+        if (onChunkProgress) {
+          onChunkProgress(chunkIndex, totalChunks);
+        }
         
         // Log progress
         if (chunkIndex % 10 === 0 || chunkIndex === totalChunks) {

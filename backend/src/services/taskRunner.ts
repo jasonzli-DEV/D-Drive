@@ -24,6 +24,8 @@ interface TaskRunInfo {
     currentDir?: string;
     reconnects: number;
     startTime: Date;
+    uploadChunk?: number;        // Current chunk being uploaded
+    uploadTotalChunks?: number;  // Total chunks to upload
   };
 }
 
@@ -967,8 +969,20 @@ export async function runTaskNow(taskId: string) {
         : archiveName;
       
       logger.info('Uploading archive', { finalName, shouldEncrypt, hasEncryptionKey: !!task.user?.encryptionKey });
-      updateProgress({ phase: 'uploading' });
-      await storeFileFromPath(task.userId, destinationId, finalName, archivePath, undefined, shouldEncrypt);
+      updateProgress({ phase: 'uploading', uploadChunk: 0, uploadTotalChunks: 0 });
+      
+      // Pass chunk progress callback to track upload progress
+      await storeFileFromPath(
+        task.userId, 
+        destinationId, 
+        finalName, 
+        archivePath, 
+        undefined, 
+        shouldEncrypt,
+        (currentChunk, totalChunks) => {
+          updateProgress({ uploadChunk: currentChunk, uploadTotalChunks: totalChunks });
+        }
+      );
       
       logger.info('Archive uploaded to Discord', { taskId, finalName });
       updateProgress({ phase: 'complete' });
