@@ -43,7 +43,6 @@ import {
   Move,
   MoreVertical,
   Edit,
-  Lock,
   Home,
   ChevronRight,
 } from 'lucide-react';
