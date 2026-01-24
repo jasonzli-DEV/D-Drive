@@ -74,6 +74,8 @@ export default function DrivePage() {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [newFolderOpen, setNewFolderOpen] = useState(false);
+  const [newMenuOpen, setNewMenuOpen] = useState(false);
+  const [newMenuPos, setNewMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [folderName, setFolderName] = useState('');
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
@@ -180,10 +182,13 @@ export default function DrivePage() {
 
   // Upload file mutation
   const uploadMutation = useMutation({
-    mutationFn: async (file: File) => {
+    // accepts { file: File, parentId?: string | null }
+    mutationFn: async ({ file, parentId }: { file: File; parentId?: string | null }) => {
       const formData = new FormData();
       // append metadata first so server-side stream parser can read fields before file
-      if (folderId) {
+      if (parentId) {
+        formData.append('parentId', parentId);
+      } else if (folderId) {
         formData.append('parentId', folderId);
       }
       formData.append('encrypt', encryptFiles.toString());
@@ -241,7 +246,8 @@ export default function DrivePage() {
         setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
       }, 3000);
     },
-    onError: (error: any, file: File) => {
+    onError: (error: any, vars: { file: File }) => {
+      const file = vars.file;
       setUploadProgress(prev =>
         prev.map(p =>
           p.fileName === file.name ? { ...p, status: 'error' } : p
@@ -356,7 +362,7 @@ export default function DrivePage() {
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     acceptedFiles.forEach((file) => {
-      uploadMutation.mutate(file);
+      uploadMutation.mutate({ file, parentId: folderId || null });
     });
   }, [uploadMutation]);
 
@@ -381,6 +387,97 @@ export default function DrivePage() {
     })();
     return () => { mounted = false; };
   }, []);
+
+  // Listen for +New events dispatched by the Layout sidebar
+  useEffect(() => {
+    const handler = (e: any) => {
+      const { x, y } = e.detail || {};
+      setNewMenuPos({ top: y || 80, left: x || 80 });
+      setNewMenuOpen(true);
+    };
+    window.addEventListener('ddrive:new', handler as any);
+    return () => window.removeEventListener('ddrive:new', handler as any);
+  }, []);
+
+  // Helpers to trigger file/folder pickers
+  const triggerFileInput = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    inp.multiple = true;
+    inp.style.display = 'none';
+    inp.onchange = (e) => {
+      const target = e.target as HTMLInputElement | null;
+      if (target?.files) {
+        Array.from(target.files).forEach((file) => {
+          uploadMutation.mutate({ file, parentId: folderId || null });
+        });
+      }
+      setTimeout(() => { if (inp.parentNode) inp.parentNode.removeChild(inp); }, 0);
+    };
+    document.body.appendChild(inp);
+    inp.click();
+  };
+
+  const triggerFolderInput = () => {
+    const inp = document.createElement('input');
+    inp.type = 'file';
+    // @ts-ignore
+    inp.webkitdirectory = true;
+    inp.multiple = true;
+    inp.style.display = 'none';
+    inp.onchange = async (e: any) => {
+      const fileList: FileList | null = e.target?.files || null;
+      if (!fileList) return;
+
+      // Build a map of folder paths -> files
+      const files = Array.from(fileList) as File[] & { webkitRelativePath?: string }[];
+
+      // Helper: ensure a path of directories exists under a given parentId
+      const ensureFolderPath = async (baseParentId: string | null, relPath: string) => {
+        if (!relPath) return baseParentId;
+        const segments = relPath.split('/').filter(Boolean);
+        let currentParent = baseParentId || null;
+        for (const seg of segments) {
+          try {
+            const resp = await api.post('/files/directory', { name: seg, parentId: currentParent });
+            currentParent = resp.data.id;
+          } catch (err: any) {
+            // If folder exists (409), find it among children
+            if (err?.response?.status === 409) {
+              // list children
+              const listResp = await api.get(`/files?parentId=${currentParent || ''}`);
+              const existing = (listResp.data || []).find((f: any) => f.name === seg && f.type === 'DIRECTORY');
+              if (existing) currentParent = existing.id;
+              else throw err;
+            } else {
+              throw err;
+            }
+          }
+        }
+        return currentParent;
+      };
+
+      // For each file, create necessary folders then upload into that folder
+      for (const f of files) {
+        const rel = (f as any).webkitRelativePath || f.name;
+        const parts = rel.split('/');
+        const fileName = parts.pop() as string;
+        const folderPath = parts.join('/');
+        try {
+          const targetParent = await ensureFolderPath(folderId || null, folderPath);
+          // create a new File object with correct name (some browsers include full path)
+          const blob = new File([f], fileName, { type: f.type });
+          uploadMutation.mutate({ file: blob, parentId: targetParent || null });
+        } catch (err) {
+          toast.error('Failed to upload folder contents');
+        }
+      }
+
+      setTimeout(() => { if (inp.parentNode) inp.parentNode.removeChild(inp); }, 0);
+    };
+    document.body.appendChild(inp);
+    inp.click();
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -700,62 +797,34 @@ export default function DrivePage() {
         </CardContent>
       </Card>
 
-      <Card sx={{ mb: 3, boxShadow: 2 }}>
-        <CardContent>
-          <Box sx={{ mb: 2, display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'wrap' }}>
-            <Button
-              variant="contained"
-              startIcon={<Upload />}
-              onClick={() => {
-                // Create a fresh input each time to avoid stale input state
-                const inp = document.createElement('input');
-                inp.type = 'file';
-                inp.multiple = true;
-                inp.style.display = 'none';
-                inp.onchange = (e) => {
-                  const target = e.target as HTMLInputElement | null;
-                  if (target?.files) {
-                    Array.from(target.files).forEach((file) => {
-                      uploadMutation.mutate(file);
-                    });
-                  }
-                  // cleanup
-                  setTimeout(() => {
-                    if (inp.parentNode) inp.parentNode.removeChild(inp);
-                  }, 0);
-                };
-                document.body.appendChild(inp);
-                inp.click();
-              }}
-              sx={{
-                px: 3,
-                py: 1,
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              Upload Files
-            </Button>
-            
-            <Button
-              variant="outlined"
-              startIcon={<FolderPlus />}
-              onClick={() => setNewFolderOpen(true)}
-              sx={{
-                px: 3,
-                py: 1,
-                borderRadius: 2,
-                textTransform: 'none',
-                fontWeight: 600,
-              }}
-            >
-              New Folder
-            </Button>
-            {/* Encryption preference moved to Settings; initialized from /me */}
-          </Box>
-        </CardContent>
-      </Card>
+      {/* +New menu (triggered from Layout sidebar) */}
+      <Menu
+        open={newMenuOpen}
+        onClose={() => setNewMenuOpen(false)}
+        anchorReference="anchorPosition"
+        anchorPosition={newMenuPos ? { top: newMenuPos.top, left: newMenuPos.left } : undefined}
+      >
+        <MenuItem onClick={() => { setNewFolderOpen(true); setNewMenuOpen(false); }}>
+          <ListItemIcon>
+            <FolderPlus size={16} />
+          </ListItemIcon>
+          <ListItemText>New Folder</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { triggerFileInput(); setNewMenuOpen(false); }}>
+          <ListItemIcon>
+            <Upload size={16} />
+          </ListItemIcon>
+          <ListItemText>Upload File</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => { triggerFolderInput(); setNewMenuOpen(false); }}>
+          <ListItemIcon>
+            <Folder size={16} />
+          </ListItemIcon>
+          <ListItemText>Upload Folder</ListItemText>
+        </MenuItem>
+      </Menu>
+
+      {/* top action buttons removed — New/+ menu available in left sidebar */}
 
       {isLoading ? (
         <Box sx={{ display: 'flex', justifyContent: 'center', py: 8 }}>
