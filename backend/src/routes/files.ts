@@ -550,6 +550,19 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
         where: { id },
         data: { name, path: targetPath, updatedAt: new Date() },
       });
+      // If this is a directory, update all descendant paths to keep them in sync
+      if (file.type === 'DIRECTORY') {
+        const oldPath = file.path;
+        const newPath = targetPath;
+        const descendants = await prisma.file.findMany({
+          where: { userId, path: { startsWith: `${oldPath}/` } },
+        });
+        for (const d of descendants) {
+          const relative = d.path.substring(oldPath.length + 1); // part after the oldPath/
+          const updatedPath = `${newPath}/${relative}`;
+          await prisma.file.update({ where: { id: d.id }, data: { path: updatedPath, updatedAt: new Date() } });
+        }
+      }
       return res.json(serializeFile(updatedFile));
     } catch (e: any) {
       // Prisma unique constraint error
@@ -625,7 +638,22 @@ router.patch('/:id/move', authenticate, async (req: Request, res: Response) => {
         data: { parentId: targetParent, name: file.name, path: targetPath, updatedAt: new Date() },
       });
 
-      return res.json(serializeFile(updatedFile));
+        // If moving a directory, cascade path updates to all descendants so
+        // stored `path` remains accurate for nested files/folders.
+        if (file.type === 'DIRECTORY') {
+          const oldPath = file.path;
+          const newPath = targetPath;
+          const descendants = await prisma.file.findMany({
+            where: { userId, path: { startsWith: `${oldPath}/` } },
+          });
+          for (const d of descendants) {
+            const relative = d.path.substring(oldPath.length + 1);
+            const updatedPath = `${newPath}/${relative}`;
+            await prisma.file.update({ where: { id: d.id }, data: { path: updatedPath, updatedAt: new Date() } });
+          }
+        }
+
+        return res.json(serializeFile(updatedFile));
     } catch (e: any) {
       if (e?.code === 'P2002') {
         return res.status(409).json({ error: 'A file with the same name already exists in the target directory' });
