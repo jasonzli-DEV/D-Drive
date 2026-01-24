@@ -12,16 +12,17 @@ const router = Router();
 // JWT_SECRET must be set in environment - no fallback for security
 const JWT_SECRET = process.env.JWT_SECRET;
 if (!JWT_SECRET) {
-  throw new Error('CRITICAL: JWT_SECRET environment variable is not set.');
+  console.error('CRITICAL: JWT_SECRET environment variable is not set.');
+  // Don't throw - allow server to start for setup mode
 }
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost';
 const AVATAR_DIR = process.env.AVATAR_DIR || path.join(process.cwd(), 'data', 'avatars');
 
 if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-  logger.warn('DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET not set - OAuth will fail');
+  logger.warn('DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET not set - running in setup mode');
 }
 
 // Ensure avatar directory exists
