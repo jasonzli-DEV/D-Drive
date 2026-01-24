@@ -57,6 +57,15 @@ export default function SettingsPage() {
       toast.success('API key created!');
       setKeyName('');
     },
+    onError: (error: any) => {
+      const status = error?.response?.status;
+      const msg = error?.response?.data?.error;
+      if (status === 409) {
+        toast.error(msg || 'An API key with that name already exists');
+        return;
+      }
+      toast.error('Failed to create API key');
+    },
   });
 
   const deleteKeyMutation = useMutation({
