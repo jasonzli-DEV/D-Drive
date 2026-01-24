@@ -127,9 +127,18 @@ export async function deleteChunkFromDiscord(
     const message = await channel.messages.fetch(messageId);
     await message.delete();
     logger.info(`Deleted message ${messageId} from Discord`);
-  } catch (error) {
+  } catch (error: any) {
+    // If message is already gone (Discord Unknown Message), treat as success.
+    // Discord errors sometimes surface with numeric `code` or in the message text.
+    const code = error?.code || (error?.message && String(error.message).includes('Unknown Message') ? 10008 : undefined);
+    if (code === 10008) {
+      logger.info(`Message ${messageId} already deleted on Discord, treating as success`);
+      return;
+    }
+
     logger.warn(`Failed to delete message ${messageId}:`, error);
-    // Don't throw - message might already be deleted
+    // Rethrow so callers can decide whether to abort DB deletions or retry.
+    throw error;
   }
 }
 
