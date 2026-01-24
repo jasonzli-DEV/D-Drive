@@ -45,7 +45,20 @@ export default function Layout({ children }: LayoutProps) {
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100vh' }}>
       <AppBar position="static">
         <Toolbar>
-            {/* Left side intentionally empty (logo moved to top-right) */}
+            {/* Logo on the left */}
+            <IconButton
+              color="inherit"
+              onClick={() => navigate('/')}
+              sx={{ mr: 1, p: 0 }}
+              aria-label="Home"
+            >
+              <Box
+                component="img"
+                src="/D-Drive.png"
+                alt="D-Drive"
+                sx={{ width: 36, height: 36, objectFit: 'contain', bgcolor: 'transparent' }}
+              />
+            </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
           <IconButton color="inherit" onClick={handleSettings}>
