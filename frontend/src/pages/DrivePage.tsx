@@ -627,8 +627,10 @@ export default function DrivePage() {
               <TableHead>
                 <TableRow sx={{ bgcolor: '#fafbfc' }}>
                   <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Created</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Modified</TableCell>
                   <TableCell sx={{ fontWeight: 600 }}>Size</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Path</TableCell>
                   <TableCell align="right" sx={{ fontWeight: 600 }}>Actions</TableCell>
                 </TableRow>
               </TableHead>
@@ -664,6 +666,11 @@ export default function DrivePage() {
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary">
+                        {new Date(file.createdAt).toLocaleString()}
+                      </Typography>
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary">
                         {formatDistance(new Date(file.updatedAt), new Date(), {
                           addSuffix: true,
                         })}
@@ -679,6 +686,11 @@ export default function DrivePage() {
                           fontWeight: 500,
                         }}
                       />
+                    </TableCell>
+                    <TableCell>
+                      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {file.path || `/${file.name}`}
+                      </Typography>
                     </TableCell>
                     <TableCell align="right" onClick={(e) => e.stopPropagation()}>
                       {file.type === 'FILE' && (
