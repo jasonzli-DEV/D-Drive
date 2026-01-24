@@ -756,6 +756,27 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
       }
       const targetPath = parentPath ? `${parentPath}/${nameToUse}` : `/${nameToUse}`;
 
+      // Determine destination encryption policy based on user's settings
+      let destEncrypt = false;
+      let userEncryptionKey: string | null = null;
+      try {
+        const userRec = await tx.user.findUnique({ where: { id: userId } });
+        destEncrypt = !!userRec?.encryptByDefault;
+        if (destEncrypt) {
+          if (!userRec?.encryptionKey) {
+            // generate and persist an encryption key for the user
+            userEncryptionKey = generateEncryptionKey();
+            await tx.user.update({ where: { id: userId }, data: { encryptionKey: userEncryptionKey } });
+          } else {
+            userEncryptionKey = userRec.encryptionKey;
+          }
+        }
+      } catch (e) {
+        logger.warn('Failed to resolve user encryption settings for copy, defaulting to no encryption', e);
+        destEncrypt = false;
+        userEncryptionKey = null;
+      }
+
       const newFile = await tx.file.create({
         data: {
           name: nameToUse,
@@ -763,7 +784,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
           size: src.size,
           mimeType: src.mimeType,
           type: src.type,
-          encrypted: src.encrypted,
+          encrypted: destEncrypt,
           parentId: targetParentId,
           userId,
         },
@@ -781,9 +802,42 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
           // download original chunk buffer
           const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
 
-          // If buffer fits under DISCORD_MAX, upload as a single attachment.
-          if (buffer.length <= DISCORD_MAX) {
-            const uploaded = await uploadChunkToDiscord(src.name, buffer);
+          // Determine plaintext and apply destination encryption policy.
+          let plaintext: Buffer = buffer;
+          if (src.encrypted) {
+            // source is encrypted; attempt to decrypt using user's key (if available)
+            try {
+              // prefer the userEncryptionKey we loaded above when available, otherwise try falling back
+              const keyToUse = userEncryptionKey || (await prisma.user.findUnique({ where: { id: userId } }))?.encryptionKey;
+              if (!keyToUse) throw new Error('Missing encryption key to decrypt source chunk');
+              plaintext = decryptBuffer(buffer, keyToUse);
+            } catch (decErr) {
+              logger.error('Failed to decrypt source chunk during copy:', decErr);
+              throw decErr;
+            }
+          }
+
+          // Prepare buffer to upload according to destEncrypt
+          let toUpload: Buffer = plaintext;
+          if (destEncrypt) {
+            if (!userEncryptionKey) {
+              // reload key from DB as fallback
+              userEncryptionKey = (await prisma.user.findUnique({ where: { id: userId } }))?.encryptionKey || null;
+            }
+            if (!userEncryptionKey) {
+              throw new Error('Missing encryption key for destination user during copy');
+            }
+            try {
+              toUpload = encryptBuffer(plaintext, userEncryptionKey);
+            } catch (encErr) {
+              logger.error('Failed to encrypt chunk during copy:', encErr);
+              throw encErr;
+            }
+          }
+
+          // If buffer (post-encryption) fits under DISCORD_MAX, upload as a single attachment.
+          if (toUpload.length <= DISCORD_MAX) {
+            const uploaded = await uploadChunkToDiscord(src.name, toUpload);
             await tx.fileChunk.create({
               data: {
                 fileId: newFile.id,
@@ -791,7 +845,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
                 messageId: uploaded.messageId,
                 channelId: uploaded.channelId,
                 attachmentUrl: uploaded.attachmentUrl,
-                size: buffer.length,
+                size: toUpload.length,
               },
             });
             newChunkIndex += 1;
