@@ -1400,10 +1400,10 @@ export default function DrivePage() {
           sx={{
             position: 'fixed',
             bottom: 16,
-            right: 16 + 380,
+            right: 16,
             width: 350,
             p: 2,
-            zIndex: 1000,
+            zIndex: 1001,
           }}
           elevation={6}
         >
