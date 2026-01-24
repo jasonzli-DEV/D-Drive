@@ -87,6 +87,7 @@ export default function DrivePage() {
   const [newName, setNewName] = useState('');
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuFile, setMenuFile] = useState<FileItem | null>(null);
+  const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [encryptFiles, setEncryptFiles] = useState(true);
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
   
@@ -372,11 +373,24 @@ export default function DrivePage() {
     const target = e.currentTarget as HTMLElement | null;
     if (!target) return;
     setMenuFile(file);
-    setMenuAnchor(target);
+    // Position menu at cursor. Use anchorPosition instead of anchorEl so the
+    // menu appears under the mouse pointer rather than a fixed element.
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    // Simple edge avoidance: decrement if near right/bottom edge
+    const approxMenuWidth = 240;
+    const approxMenuHeight = 220;
+    let left = clientX;
+    let top = clientY;
+    if (clientX > window.innerWidth - approxMenuWidth) left = Math.max(8, clientX - approxMenuWidth);
+    if (clientY > window.innerHeight - approxMenuHeight) top = Math.max(8, clientY - approxMenuHeight);
+    setMenuAnchor(null);
+    setMenuPosition({ top, left });
   };
 
   const handleCloseMenu = () => {
     setMenuAnchor(null);
+    setMenuPosition(null);
     setMenuFile(null);
   };
 
@@ -418,6 +432,8 @@ export default function DrivePage() {
   const handleOpenMenu = (event: React.MouseEvent<HTMLElement>, file: FileItem) => {
     const target = event.currentTarget as HTMLElement | null;
     if (!target) return;
+    // Clear any position-based anchor when opening via button
+    setMenuPosition(null);
     setMenuAnchor(target);
     setMenuFile(file);
   };
@@ -696,7 +712,9 @@ export default function DrivePage() {
       {/* Context Menu */}
       <Menu
         anchorEl={menuAnchor}
-        open={Boolean(menuAnchor)}
+        anchorReference={menuPosition ? 'anchorPosition' : 'anchorEl'}
+        anchorPosition={menuPosition ? { top: menuPosition.top, left: menuPosition.left } : undefined}
+        open={Boolean(menuAnchor) || Boolean(menuPosition)}
         onClose={handleCloseMenu}
         sx={{
           '& .MuiPaper-root': {
