@@ -1,16 +1,39 @@
+import { useEffect, useState } from 'react';
 import { Box, Container, Paper, Button, Typography, Fade, Chip, Grid } from '@mui/material';
 import { HardDrive, Cloud, Shield, Zap, Server, Terminal } from 'lucide-react';
 import { useAuth } from '../hooks/useAuth';
-import { Navigate } from 'react-router-dom';
+import { Navigate, useNavigate } from 'react-router-dom';
+import api from '../lib/api';
 
-const DISCORD_CLIENT_ID = '1459408684080693320';
-const REDIRECT_URI = 'http://pi.local/auth/callback';
+// Get Discord Client ID from environment or use empty string if not set
+const DISCORD_CLIENT_ID = import.meta.env.VITE_DISCORD_CLIENT_ID || '';
+const REDIRECT_URI = `${window.location.origin}/auth/callback`;
 
 export default function LoginPage() {
   const { isAuthenticated, loading } = useAuth();
+  const navigate = useNavigate();
+  const [checkingSetup, setCheckingSetup] = useState(true);
+
+  useEffect(() => {
+    // Check if setup is required
+    const checkSetup = async () => {
+      try {
+        const response = await api.get('/setup/status');
+        if (response.data.setupRequired) {
+          navigate('/setup', { replace: true });
+        }
+      } catch (err) {
+        // If setup endpoint fails, assume setup is complete
+        console.error('Setup check failed:', err);
+      } finally {
+        setCheckingSetup(false);
+      }
+    };
+    checkSetup();
+  }, [navigate]);
 
   // Redirect if already authenticated
-  if (loading) return null;
+  if (loading || checkingSetup) return null;
   if (isAuthenticated) return <Navigate to="/" replace />;
 
   const handleDiscordLogin = () => {

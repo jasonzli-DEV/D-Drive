@@ -1,84 +1,86 @@
 # D-Drive
 
-**Discord-Based Cloud Storage System - Like Google Drive, but on Discord**
+**Discord-powered cloud storage with unlimited space.** Store files using Discord's infrastructure with a Google Drive-like interface.
 
-D-Drive is a developer-friendly cloud storage solution that leverages Discord's infrastructure for file storage, providing a Google Drive-like experience with powerful CLI tools for seamless file backups.
+![D-Drive](https://img.shields.io/badge/version-2.2.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Docker](https://img.shields.io/badge/docker-ready-blue)
+
+## Quick Install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.sh | bash
+```
+
+Then open [http://localhost](http://localhost) and complete the setup wizard.
 
 ## Features
 
-- 🔐 **Discord Bot OAuth** - Secure authentication using Discord bot
-- 🖥️ **Google Drive-Like UI** - Intuitive web interface with drag-and-drop, file previews, and folder management
-- 🛠️ **Developer-Friendly CLI** - Command-line tool for automated backups and file management
-- 📡 **Streaming Support** - Handle large files (30GB+) with chunked streaming
-- 🔑 **API Key Authentication** - Secure API access for developers
-- 🐳 **Docker-Ready** - Full Docker support for easy deployment
-- 📦 **No Storage Limits** - Leverage Discord's infrastructure for unlimited storage
+| Feature | Description |
+|---------|-------------|
+| 🔐 **Discord OAuth** | Secure authentication via Discord |
+| 🖥️ **Google Drive UI** | Drag-and-drop, previews, folder management |
+| 📦 **Unlimited Storage** | Uses Discord as backend storage |
+| 🔒 **AES-256 Encryption** | Optional client-side encryption |
+| 📁 **30GB+ Files** | Chunked uploads with no size limits |
+| ⏰ **Scheduled Backups** | SFTP server backup automation |
+| 🛠️ **CLI Tool** | Command-line for automated backups |
+| 🔗 **File Sharing** | Shareable links with expiration |
+| 🐳 **One-Click Deploy** | Single command Docker setup |
 
-## Quick Start
+## Requirements
 
-### Web Application
+- **Docker** & **Docker Compose**
+- **Discord Application** (created during setup)
+
+## Manual Installation
 
 ```bash
-# Using Docker Compose
-docker-compose up -d
+# Clone the repository
+git clone https://github.com/jasonzli-DEV/D-Drive.git
+cd D-Drive
 
-# Access the web interface at http://localhost:3000
+# Start with Docker Compose
+docker compose up -d
+
+# Open http://localhost and complete setup
 ```
 
-### CLI Tool
+## CLI Tool
 
 ```bash
-# Install CLI globally
+# Install globally
 npm install -g d-drive-cli
 
-# Configure your API key
+# Configure
 d-drive config set-key YOUR_API_KEY
 
-# Backup a file
-d-drive upload ./myfile.txt /backups/
-
-# Backup a directory
-d-drive upload ./myproject /backups/projects/
-
-# Download a file
-d-drive download /backups/myfile.txt ./restored.txt
+# Upload/Download
+d-drive upload ./file.txt /backups/
+d-drive download /backups/file.txt ./
 ```
-
-## Architecture
-
-D-Drive consists of three main components:
-
-1. **Frontend** - React-based web UI (similar to Google Drive)
-2. **Backend** - Node.js API server with Discord bot integration
-3. **CLI** - Command-line tool for developers
 
 ## Documentation
 
-- [Setup Guide](docs/SETUP.md)
-- [API Documentation](docs/API.md)
-- [CLI Reference](docs/CLI.md)
-- [Docker Deployment](docs/DOCKER.md)
+- [Setup Guide](docs/SETUP.md) - Detailed configuration
+- [API Reference](docs/API.md) - REST API documentation
+- [Docker Guide](docs/DOCKER.md) - Container deployment
 
-## Development
+## Architecture
 
-```bash
-# Install dependencies
-npm install
-
-# Start development server
-npm run dev
-
-# Run tests
-npm test
-
-# Build for production
-npm run build
+```
+┌─────────────┐     ┌─────────────┐     ┌─────────────┐
+│   Frontend  │────▶│   Backend   │────▶│   Discord   │
+│   (React)   │     │  (Node.js)  │     │   Storage   │
+└─────────────┘     └──────┬──────┘     └─────────────┘
+                          │
+                    ┌─────▼─────┐
+                    │ PostgreSQL │
+                    └───────────┘
 ```
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details
+MIT License - See [LICENSE](LICENSE)
 
-## Credits
+---
 
-Inspired by [DisboxApp](https://github.com/DisboxApp/web) - Enhanced with Discord bot authentication, developer tools, and improved UX.
+**Credits:** Inspired by [DisboxApp](https://github.com/DisboxApp/web)

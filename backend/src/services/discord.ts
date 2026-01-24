@@ -2,12 +2,25 @@ import { Client, GatewayIntentBits, TextChannel, Message, AttachmentBuilder, Eve
 import { REST } from '@discordjs/rest';
 import { logger } from '../utils/logger';
 
-let discordClient: Client;
+let discordClient: Client | null = null;
 let storageChannelId: string;
+let setupMode = false;
 
 export const DISCORD_MAX = 8 * 1024 * 1024; // 8MB (conservative)
 
-export async function initDiscordBot(): Promise<Client> {
+export function isSetupMode(): boolean {
+  return setupMode;
+}
+
+export async function initDiscordBot(): Promise<Client | null> {
+  // Check if Discord credentials are configured
+  if (!process.env.DISCORD_BOT_TOKEN || !process.env.DISCORD_CHANNEL_ID) {
+    logger.warn('Discord credentials not configured - running in setup mode');
+    logger.warn('Visit the web interface to complete setup');
+    setupMode = true;
+    return null;
+  }
+
   // Configure REST with longer timeout for slow connections (5 minutes instead of default 60s)
   // This prevents AbortError on Pi's slow 20 Mbps upload when uploading 8MB chunks
   const rest = new REST({ timeout: 300_000 }); // 5 minutes timeout
@@ -23,14 +36,6 @@ export async function initDiscordBot(): Promise<Client> {
 
   storageChannelId = process.env.DISCORD_CHANNEL_ID || '';
 
-  if (!process.env.DISCORD_BOT_TOKEN) {
-    throw new Error('DISCORD_BOT_TOKEN is not set');
-  }
-
-  if (!storageChannelId) {
-    throw new Error('DISCORD_CHANNEL_ID is not set');
-  }
-
   await client.login(process.env.DISCORD_BOT_TOKEN);
 
   // Use Events.ClientReady instead of deprecated 'ready' string (discord.js v15)
@@ -43,6 +48,7 @@ export async function initDiscordBot(): Promise<Client> {
   });
 
   discordClient = client;
+  setupMode = false;
   return client;
 }
 

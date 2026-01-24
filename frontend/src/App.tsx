@@ -12,6 +12,7 @@ import LogsPage from './pages/LogsPage';
 import RecycleBinPage from './pages/RecycleBinPage';
 import SharedPage from './pages/SharedPage';
 import StarredPage from './pages/StarredPage';
+import SetupPage from './pages/SetupPage';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -35,6 +36,7 @@ function App() {
   return (
     <ErrorBoundary>
       <Routes>
+      <Route path="/setup" element={<SetupPage />} />
       <Route path="/login" element={<LoginPage />} />
       <Route path="/auth/callback" element={<CallbackPage />} />
       

@@ -73,9 +73,13 @@ let discordClient: Client;
 
 async function startServer() {
   try {
-    // Initialize Discord bot
+    // Initialize Discord bot (may return null in setup mode)
     discordClient = await initDiscordBot();
-    logger.info('Discord bot initialized successfully');
+    if (discordClient) {
+      logger.info('Discord bot initialized successfully');
+    } else {
+      logger.warn('Running in setup mode - Discord not configured');
+    }
 
     // Start Express server and disable the default Node request timeout so
     // long-running streaming uploads aren't cut off with a 408 Request Timeout.

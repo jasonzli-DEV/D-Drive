@@ -61,7 +61,7 @@ services:
         VITE_DISCORD_CLIENT_ID: ${VITE_DISCORD_CLIENT_ID}
     container_name: ddrive-frontend
     ports:
-      - "8080:80"
+      - "80:80"
     depends_on:
       backend:
         condition: service_healthy
