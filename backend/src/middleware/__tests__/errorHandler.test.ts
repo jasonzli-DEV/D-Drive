@@ -10,7 +10,7 @@ describe('Error Handler Middleware', () => {
     app.use(express.json());
   });
 
-  it('should handle generic errors with 500 status', async () => {
+  it('should handle errors with 500 status', async () => {
     app.get('/test', (req, res, next) => {
       next(new Error('Test error'));
     });
@@ -19,10 +19,10 @@ describe('Error Handler Middleware', () => {
     const response = await request(app).get('/test');
     expect(response.status).toBe(500);
     expect(response.body).toHaveProperty('error');
-    expect(response.body.error).toBe('Test error');
+    expect(response.body.error).toBe('Internal server error');
   });
 
-  it('should handle errors with custom status codes', async () => {
+  it('should always return 500 for all errors', async () => {
     app.get('/test', (req, res, next) => {
       const error: any = new Error('Not found');
       error.status = 404;
@@ -31,21 +31,21 @@ describe('Error Handler Middleware', () => {
     app.use(errorHandler);
 
     const response = await request(app).get('/test');
-    expect(response.status).toBe(404);
-    expect(response.body.error).toBe('Not found');
+    expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Internal server error');
   });
 
   it('should handle errors without message', async () => {
     app.get('/test', (req, res, next) => {
       const error: any = new Error();
-      error.status = 400;
       next(error);
     });
     app.use(errorHandler);
 
     const response = await request(app).get('/test');
-    expect(response.status).toBe(400);
+    expect(response.status).toBe(500);
     expect(response.body).toHaveProperty('error');
+    expect(response.body.error).toBe('Internal server error');
   });
 
   it('should handle string errors', async () => {
@@ -56,6 +56,7 @@ describe('Error Handler Middleware', () => {
 
     const response = await request(app).get('/test');
     expect(response.status).toBe(500);
+    expect(response.body.error).toBe('Internal server error');
   });
 
   it('should set proper Content-Type header', async () => {
@@ -80,6 +81,26 @@ describe('Error Handler Middleware', () => {
 
     const response = await request(app).get('/test');
     expect(response.status).toBe(500);
-    expect(response.body.error).toBe('Async error');
+    expect(response.body.error).toBe('Internal server error');
+  });
+
+  it('should return JSON response', async () => {
+    app.get('/test', (req, res, next) => {
+      next(new Error('Test'));
+    });
+    app.use(errorHandler);
+
+    const response = await request(app).get('/test');
+    expect(response.type).toBe('application/json');
+  });
+
+  it('should include error property in response body', async () => {
+    app.get('/test', (req, res, next) => {
+      next(new Error('Test'));
+    });
+    app.use(errorHandler);
+
+    const response = await request(app).get('/test');
+    expect(response.body).toHaveProperty('error');
   });
 });
