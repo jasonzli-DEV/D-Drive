@@ -1,5 +1,12 @@
--- CreateEnum
-CREATE TYPE "CompressFormat" AS ENUM ('NONE', 'ZIP', 'TAR_GZ');
+-- Drop old Task table if it exists with wrong schema
+DROP TABLE IF EXISTS "Task" CASCADE;
+
+-- CreateEnum (only if doesn't exist)
+DO $$ BEGIN
+    CREATE TYPE "CompressFormat" AS ENUM ('NONE', 'ZIP', 'TAR_GZ');
+EXCEPTION
+    WHEN duplicate_object THEN null;
+END $$;
 
 -- CreateTable
 CREATE TABLE "Task" (
