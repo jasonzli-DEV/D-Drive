@@ -111,22 +111,26 @@ async function uploadSingleFile(
   let progressBar: ProgressBar | null = null;
 
   if (showProgress) {
+    // Use a byte-counting progress bar so we can display an explicit percent.
     progressBar = new ProgressBar('[:bar] :percent :etas', {
       complete: '█',
       incomplete: '░',
       width: 40,
-      total: 1,
+      total: fileSize,
     });
 
-    // Track bytes read from disk and update progress bar as fraction [0..1]
-    let uploaded = 0;
+    // Track bytes read from disk and update progress bar by bytes.
     fileStream.on('data', (chunk: Buffer | string) => {
       const len = typeof chunk === 'string' ? Buffer.byteLength(chunk) : chunk.length;
-      uploaded += len;
-      if (progressBar) {
-        const ratio = Math.min(1, uploaded / fileSize);
-        progressBar.update(ratio);
+      if (progressBar) progressBar.tick(len);
+    });
+    // When local read finishes, indicate we're waiting for the server to finish
+    fileStream.on('end', () => {
+      if (progressBar && !progressBar.complete) {
+        // ensure the bar shows very near completion but leave finalizing to server response
+        try { progressBar.update(Math.min(1, (progressBar.curr || 0) / (progressBar.total || 1))); } catch (_) {}
       }
+      console.log(chalk.gray('\nLocal file read complete — waiting for server to finish...'));
     });
   }
 
@@ -143,6 +147,11 @@ async function uploadSingleFile(
     // Allow axios to stream the form-data
     transitional: { forcedJSONParsing: false },
   });
+  // Upload complete (server has processed). If progress bar exists, ensure it shows 100%.
+  if (progressBar && !progressBar.complete) {
+    try { progressBar.update(progressBar.total || 1); } catch (_) {}
+  }
+  console.log(chalk.green('\nUpload finished'));
 }
 
 // Ensure the directory at `dirPath` exists. Returns the `id` of the directory or null for root.
