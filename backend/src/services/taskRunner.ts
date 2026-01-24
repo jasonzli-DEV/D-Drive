@@ -91,7 +91,7 @@ export async function runTaskNow(taskId: string) {
       }
       await archive.finalize();
       // wait for stream to finish
-      await new Promise((res, rej) => output.on('close', res).on('error', rej));
+      await new Promise<void>((res, rej) => output.on('close', () => res()).on('error', (e) => rej(e)));
       const buf = await fs.promises.readFile(archivePath);
       uploadEntries = [{ name: path.basename(archivePath), buffer: buf }];
     }
