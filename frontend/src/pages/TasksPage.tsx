@@ -24,6 +24,7 @@ import {
   Menu,
   ListItemIcon,
   ListItemText,
+  Paper,
 } from '@mui/material';
 import { Plus, Play, Trash, Edit, GripVertical, Square } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -499,6 +500,7 @@ export default function TasksPage() {
 
   return (
     <Box>
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4" fontWeight={600}>Backup Tasks</Typography>
         <Button 
@@ -909,6 +911,7 @@ export default function TasksPage() {
           </MenuItem>
         )}
       </Menu>
+      </Paper>
     </Box>
   );
 }

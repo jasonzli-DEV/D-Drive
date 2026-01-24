@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
-  Container,
   Paper,
   Typography,
   Table,
@@ -126,8 +125,8 @@ export default function StarredPage() {
   }
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
-      <Paper sx={{ p: 3 }}>
+    <Box>
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
         <Box sx={{ display: 'flex', alignItems: 'center', mb: 3, gap: 1 }}>
           <Star size={24} fill="gold" color="gold" />
           <Typography variant="h5" fontWeight={600}>
@@ -136,7 +135,7 @@ export default function StarredPage() {
         </Box>
 
         {!starredFiles || starredFiles.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 8 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
             <Star size={48} color="#ccc" style={{ marginBottom: 16 }} />
             <Typography color="text.secondary">
               No starred files yet. Star files for quick access.
@@ -251,6 +250,6 @@ export default function StarredPage() {
           </MenuItem>
         </Menu>
       </Paper>
-    </Container>
+    </Box>
   );
 }

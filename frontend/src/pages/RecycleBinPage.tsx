@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
-  Container,
   Paper,
   Typography,
   Button,
@@ -131,7 +130,8 @@ export default function RecycleBinPage() {
   });
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Box>
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
         <Typography variant="h4">Recycle Bin</Typography>
         <Button
@@ -145,13 +145,12 @@ export default function RecycleBinPage() {
         </Button>
       </Box>
 
-      <Paper>
         {isLoading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
             <CircularProgress />
           </Box>
         ) : !files || files.length === 0 ? (
-          <Box sx={{ textAlign: 'center', py: 8, color: 'text.secondary' }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh', color: 'text.secondary' }}>
             <Trash2 size={48} style={{ opacity: 0.5, marginBottom: 16 }} />
             <Typography variant="h6">Recycle bin is empty</Typography>
             <Typography variant="body2">Deleted files will appear here</Typography>
@@ -313,6 +312,6 @@ export default function RecycleBinPage() {
           </Button>
         </DialogActions>
       </Dialog>
-    </Container>
+    </Box>
   );
 }
