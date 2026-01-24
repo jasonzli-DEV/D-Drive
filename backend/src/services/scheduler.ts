@@ -6,7 +6,7 @@ import { logger } from '../utils/logger';
 const prisma = new PrismaClient();
 
 // Map of taskId -> cron job
-const jobs: Map<string, cron.ScheduledTask> = new Map();
+const jobs: Map<string, any> = new Map();
 const running: Map<string, boolean> = new Map();
 
 export async function initScheduler() {
