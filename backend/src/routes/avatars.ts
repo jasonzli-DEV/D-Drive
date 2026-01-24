@@ -13,6 +13,13 @@ const AVATAR_DIR = process.env.AVATAR_DIR || path.join(process.cwd(), 'data', 'a
 // Serve a cached local avatar if present; otherwise redirect to Discord CDN
 router.get('/:userId', async (req, res) => {
   const { userId } = req.params;
+  
+  // Validate userId to prevent path traversal attacks
+  // UUID format: 8-4-4-4-12 hex digits
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(userId)) {
+    return res.status(400).send('Invalid user ID format');
+  }
+  
   const localPath = path.join(AVATAR_DIR, `${userId}.png`);
 
   try {
