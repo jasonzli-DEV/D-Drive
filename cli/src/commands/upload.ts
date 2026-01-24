@@ -7,6 +7,7 @@ import FormData from 'form-data';
 import ProgressBar from 'progress';
 import { createApiClient } from '../api';
 import { glob } from 'glob';
+import axios from 'axios';
 
 interface UploadOptions {
   recursive?: boolean;
@@ -95,7 +96,15 @@ async function uploadSingleFile(
     filename: fileName,
     knownLength: fileSize,
   });
-  formData.append('path', destination);
+  // Resolve destination directory to a parentId and send parentId (server-authoritative)
+  const parentDir = path.posix.dirname(destination || '/');
+  let parentId: string | null = null;
+  if (parentDir && parentDir !== '/' && parentDir !== '.') {
+    parentId = await ensureFolderExists(api, parentDir);
+  }
+  if (parentId) {
+    formData.append('parentId', parentId);
+  }
   // Ensure CLI uploads follow frontend behavior and request server-side encryption by default
   formData.append('encrypt', 'true');
 
@@ -121,25 +130,61 @@ async function uploadSingleFile(
     });
   }
 
-  // Ensure Content-Length is set for axios in Node
+  // Use streaming upload endpoint. Do not force Content-Length so the request
+  // can stream large files without buffering the whole body in memory.
   const headers = formData.getHeaders();
-  try {
-    const length = await new Promise<number>((resolve, reject) => {
-      formData.getLength((err: any, len: number) => {
-        if (err) return reject(err);
-        resolve(len);
-      });
-    });
-    headers['Content-Length'] = String(length);
-  } catch (err) {
-    // ignore length error
-  }
-
-  await api.post('/files/upload', formData, {
+  // axios in Node needs the adapter to handle stream form-data; use api (axios instance)
+  await api.post('/files/upload/stream', formData, {
     headers,
     maxContentLength: Infinity,
     maxBodyLength: Infinity,
+    // Do not set a timeout for potentially long uploads
+    timeout: 0,
+    // Allow axios to stream the form-data
+    transitional: { forcedJSONParsing: false },
   });
+}
+
+// Ensure the directory at `dirPath` exists. Returns the `id` of the directory or null for root.
+async function ensureFolderExists(api: any, dirPath: string): Promise<string | null> {
+  // Normalize and split
+  const normalized = path.posix.normalize(dirPath);
+  if (normalized === '/' || normalized === '.' || normalized === '') return null;
+
+  const segments = normalized.split('/').filter(Boolean);
+  let currentPath = '';
+  let parentId: string | null = null;
+
+  for (const seg of segments) {
+    currentPath = `${currentPath}/${seg}`;
+    try {
+      const resp = await api.get('/files', { params: { path: currentPath } });
+      const items = resp.data as any[];
+      const dir = items.find(i => i.type === 'DIRECTORY');
+      if (dir) {
+        parentId = dir.id;
+        continue;
+      }
+      // Not found — create it
+      const createResp = await api.post('/files/directory', { name: seg, parentId: parentId || null, path: currentPath });
+      parentId = createResp.data.id;
+    } catch (err: any) {
+      // If a 409 or other error occurs, try to re-query; otherwise rethrow
+      if (axios.isAxiosError(err) && err.response) {
+        // Retry by querying again in case of race
+        const retry = await api.get('/files', { params: { path: currentPath } });
+        const items = retry.data as any[];
+        const dir = items.find(i => i.type === 'DIRECTORY');
+        if (dir) {
+          parentId = dir.id;
+          continue;
+        }
+      }
+      throw err;
+    }
+  }
+
+  return parentId;
 }
 
 function formatFileSize(bytes: number): string {
