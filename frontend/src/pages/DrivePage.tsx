@@ -217,13 +217,6 @@ export default function DrivePage() {
       const fileKey = `${folderKey || 'root'}::${file.name}`;
       if (folderKey) {
         fileLoadedRef.current[fileKey] = 0;
-        // ensure folder entry exists if folderTotalBytes provided
-        if (typeof folderTotalBytes === 'number') {
-          setUploadFolders(prev => {
-            if (prev.find(p => p.folderKey === folderKey)) return prev;
-            return [...prev, { folderKey, folderName: folderKey || 'Files', uploadedBytes: 0, totalBytes: folderTotalBytes, progress: 0, status: 'uploading' }];
-          });
-        }
       }
 
       // Try streaming endpoint first; fallback to legacy endpoint on error
@@ -590,6 +583,10 @@ export default function DrivePage() {
         if (prev.find(p => p.folderKey === baseFolderKey)) return prev;
         return [...prev, { folderKey: baseFolderKey, folderName: baseFolderKey || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
       });
+
+      // initialize refs to avoid multiple toasts and to track previous progress
+      folderPrevProgressRef.current[baseFolderKey] = 0;
+      folderErrorShownRef.current[baseFolderKey] = false;
 
       // For each file, create necessary nested folders then upload into that folder
       for (const f of filtered) {
