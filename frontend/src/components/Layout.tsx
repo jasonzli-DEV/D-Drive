@@ -137,7 +137,7 @@ export default function Layout({ children }: LayoutProps) {
                   <ListItemIcon>
                     <Plus size={18} />
                   </ListItemIcon>
-                  <ListItemText primary={"+ New"} />
+                  <ListItemText primary={"New"} />
                 </ListItemButton>
 
                 <ListItemButton onClick={() => navigate('/') }>

@@ -434,44 +434,54 @@ export default function DrivePage() {
       // Build a map of folder paths -> files
       const files = Array.from(fileList) as File[] & { webkitRelativePath?: string }[];
 
-      // Helper: ensure a path of directories exists under a given parentId
+      // Helper: ensure a path of directories exists under a given parentId.
+      // Check for an existing directory before attempting to create it so we
+      // don't rely on catching 409s and to avoid extra errors.
       const ensureFolderPath = async (baseParentId: string | null, relPath: string) => {
         if (!relPath) return baseParentId;
         const segments = relPath.split('/').filter(Boolean);
         let currentParent = baseParentId || null;
         for (const seg of segments) {
           try {
-            const resp = await api.post('/files/directory', { name: seg, parentId: currentParent });
-            currentParent = resp.data.id;
-          } catch (err: any) {
-            // If folder exists (409), find it among children
-            if (err?.response?.status === 409) {
-              // list children
-              const listResp = await api.get(`/files?parentId=${currentParent || ''}`);
-              const existing = (listResp.data || []).find((f: any) => f.name === seg && f.type === 'DIRECTORY');
-              if (existing) currentParent = existing.id;
-              else throw err;
-            } else {
-              throw err;
+            // List children under currentParent to look for an existing folder
+            const listResp = currentParent ? await api.get(`/files?parentId=${currentParent}`) : await api.get('/files');
+            const existing = (listResp.data || []).find((f: any) => f.name === seg && f.type === 'DIRECTORY');
+            if (existing) {
+              currentParent = existing.id;
+              continue;
             }
+          } catch (e) {
+            // Listing failed; fall through and try to create the folder
           }
+
+          const resp = await api.post('/files/directory', { name: seg, parentId: currentParent });
+          currentParent = resp.data.id;
         }
         return currentParent;
       };
 
+      // Filter out typical OS metadata files (e.g. .DS_Store) and empty entries.
+      const filtered = files.filter((f) => {
+        const name = (f as any).name || '';
+        if (!name) return false;
+        // skip dotfiles
+        if (name.startsWith('.')) return false;
+        return true;
+      });
+
       // For each file, create necessary folders then upload into that folder
-      for (const f of files) {
+      for (const f of filtered) {
         const rel = (f as any).webkitRelativePath || f.name;
         const parts = rel.split('/');
         const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
         try {
           const targetParent = await ensureFolderPath(folderId || null, folderPath);
-          // Use the File object provided by the browser (it already has the correct
-          // name in most browsers). Avoid constructing `new File(...)` to keep
-          // TypeScript/Node build environments happy.
           uploadMutation.mutate({ file: f as File, parentId: targetParent || null });
         } catch (err) {
-          toast.error('Failed to upload folder contents');
+          // avoid spamming a lot of toasts during bulk uploads; log and show one toast
+          console.error('Folder upload child error:', err);
+          toast.error('Failed to upload some folder contents');
+          // continue with next file
         }
       }
 
