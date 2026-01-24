@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
@@ -69,6 +69,15 @@ interface UploadProgress {
   status: 'uploading' | 'success' | 'error';
 }
 
+interface FolderUploadProgress {
+  folderKey: string; // unique key for the folder (rel path or 'root')
+  folderName: string; // display name
+  uploadedBytes: number;
+  totalBytes: number;
+  progress: number;
+  status: 'uploading' | 'success' | 'error';
+}
+
 export default function DrivePage() {
   const { folderId } = useParams();
   const navigate = useNavigate();
@@ -78,6 +87,8 @@ export default function DrivePage() {
   const [newMenuPos, setNewMenuPos] = useState<{ top: number; left: number } | null>(null);
   const [folderName, setFolderName] = useState('');
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
+  const [uploadFolders, setUploadFolders] = useState<FolderUploadProgress[]>([]);
+  const fileLoadedRef = useRef<Record<string, number>>({});
   const [moveDialogOpen, setMoveDialogOpen] = useState(false);
   const [selectedFile, setSelectedFile] = useState<FileItem | null>(null);
   const [targetFolderId, setTargetFolderId] = useState<string>('');
@@ -181,10 +192,10 @@ export default function DrivePage() {
   });
 
   // Upload file mutation
-  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null }>(
+  const uploadMutation = useMutation<any, any, { file: File; parentId?: string | null; folderKey?: string; folderTotalBytes?: number }>(
     {
-    // accepts { file: File, parentId?: string | null }
-    mutationFn: async ({ file, parentId }: { file: File; parentId?: string | null }) => {
+    // accepts { file: File, parentId?: string | null, folderKey?: string, folderTotalBytes?: number }
+    mutationFn: async ({ file, parentId, folderKey, folderTotalBytes }: { file: File; parentId?: string | null; folderKey?: string; folderTotalBytes?: number }) => {
       const formData = new FormData();
       // append metadata first so server-side stream parser can read fields before file
       if (parentId) {
@@ -195,8 +206,21 @@ export default function DrivePage() {
       formData.append('encrypt', encryptFiles.toString());
       formData.append('file', file);
 
-      // Add to upload progress
+      // Add to upload progress (file-level)
       setUploadProgress(prev => [...prev, { fileName: file.name, progress: 0, status: 'uploading' }]);
+
+      // Initialize per-file loaded tracker for folder aggregation
+      const fileKey = `${folderKey || 'root'}::${file.name}`;
+      if (folderKey) {
+        fileLoadedRef.current[fileKey] = 0;
+        // ensure folder entry exists if folderTotalBytes provided
+        if (typeof folderTotalBytes === 'number') {
+          setUploadFolders(prev => {
+            if (prev.find(p => p.folderKey === folderKey)) return prev;
+            return [...prev, { folderKey, folderName: folderKey || 'Files', uploadedBytes: 0, totalBytes: folderTotalBytes, progress: 0, status: 'uploading' }];
+          });
+        }
+      }
 
       // Try streaming endpoint first; fallback to legacy endpoint on error
       let response;
@@ -211,6 +235,22 @@ export default function DrivePage() {
                 p.fileName === file.name ? { ...p, progress: percentCompleted } : p
               )
             );
+
+            // Update folder-level progress by delta bytes
+            if (folderKey) {
+              const fileKeyLocal = fileKey;
+              const prevLoaded = fileLoadedRef.current[fileKeyLocal] || 0;
+              const delta = progressEvent.loaded - prevLoaded;
+              fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
+              if (delta > 0) {
+                setUploadFolders(prev => prev.map(f => {
+                  if (f.folderKey !== folderKey) return f;
+                  const uploadedBytes = Math.min(f.uploadedBytes + delta, f.totalBytes || Number.MAX_SAFE_INTEGER);
+                  const progress = f.totalBytes ? Math.round((uploadedBytes * 100) / f.totalBytes) : 0;
+                  return { ...f, uploadedBytes, progress };
+                }));
+              }
+            }
           },
         });
       } catch (err) {
@@ -218,15 +258,30 @@ export default function DrivePage() {
         try {
           response = await api.post('/files/upload', formData, {
             onUploadProgress: (progressEvent) => {
-              const percentCompleted = Math.round(
-                (progressEvent.loaded * 100) / (progressEvent.total || 1)
-              );
-              setUploadProgress(prev =>
-                prev.map(p =>
-                  p.fileName === file.name ? { ...p, progress: percentCompleted } : p
-                )
-              );
-            },
+                const percentCompleted = Math.round(
+                  (progressEvent.loaded * 100) / (progressEvent.total || 1)
+                );
+                setUploadProgress(prev =>
+                  prev.map(p =>
+                    p.fileName === file.name ? { ...p, progress: percentCompleted } : p
+                  )
+                );
+
+                if (folderKey) {
+                  const fileKeyLocal = fileKey;
+                  const prevLoaded = fileLoadedRef.current[fileKeyLocal] || 0;
+                  const delta = progressEvent.loaded - prevLoaded;
+                  fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
+                  if (delta > 0) {
+                    setUploadFolders(prev => prev.map(f => {
+                      if (f.folderKey !== folderKey) return f;
+                      const uploadedBytes = Math.min(f.uploadedBytes + delta, f.totalBytes || Number.MAX_SAFE_INTEGER);
+                      const progress = f.totalBytes ? Math.round((uploadedBytes * 100) / f.totalBytes) : 0;
+                      return { ...f, uploadedBytes, progress };
+                    }));
+                  }
+                }
+              },
           });
         } catch (err2) {
           throw err2;
@@ -234,12 +289,24 @@ export default function DrivePage() {
       }
       return { data: response.data, fileName: file.name };
     },
-    onSuccess: ({ fileName }) => {
+    onSuccess: (_data, vars) => {
+      const fileName = (vars as any).file?.name;
+      const folderKey = (vars as any).folderKey;
       setUploadProgress(prev =>
         prev.map(p =>
           p.fileName === fileName ? { ...p, status: 'success', progress: 100 } : p
         )
       );
+      if (folderKey) {
+        // If a folder finished a child upload, we don't automatically mark folder as complete
+        // until its progress reaches 100 via onUploadProgress. But if this file was the last
+        // one and server returned quickly without progress events, ensure folder is marked.
+        setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, progress: 100, status: 'success', uploadedBytes: f.totalBytes } : f));
+        // Remove folder entry after short delay
+        setTimeout(() => {
+          setUploadFolders(prev => prev.filter(f => f.folderKey !== folderKey));
+        }, 1500);
+      }
       queryClient.invalidateQueries({ queryKey: ['files'] });
       toast.success('File uploaded successfully!');
       // Remove from progress after 3 seconds
@@ -247,13 +314,17 @@ export default function DrivePage() {
         setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
       }, 3000);
     },
-    onError: (error: any, vars: { file: File }) => {
+    onError: (error: any, vars: { file: File; folderKey?: string }) => {
       const file = vars.file;
+      const folderKey = (vars as any).folderKey;
       setUploadProgress(prev =>
         prev.map(p =>
           p.fileName === file.name ? { ...p, status: 'error' } : p
         )
       );
+      if (folderKey) {
+        setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'error' } : f));
+      }
       toast.error(error.response?.data?.error || 'Upload failed');
     },
   }
@@ -469,19 +540,39 @@ export default function DrivePage() {
         return true;
       });
 
-      // For each file, create necessary folders then upload into that folder
+      // Group files by their folder path so we can aggregate progress per-folder.
+      const groups = new Map<string, File[]>();
       for (const f of filtered) {
         const rel = (f as any).webkitRelativePath || f.name;
         const parts = rel.split('/');
         const folderPath = parts.length > 1 ? parts.slice(0, -1).join('/') : '';
+        const arr = groups.get(folderPath) || [];
+        arr.push(f as File);
+        groups.set(folderPath, arr);
+      }
+
+      // For each folder group, ensure the folder path exists once, then upload files into it
+      for (const [folderPath, filesInFolder] of groups.entries()) {
         try {
           const targetParent = await ensureFolderPath(folderId || null, folderPath);
-          uploadMutation.mutate({ file: f as File, parentId: targetParent || null });
+
+          // compute total bytes for folder
+          const totalBytes = filesInFolder.reduce((s, it) => s + (it.size || 0), 0);
+          const folderKey = folderPath || 'root';
+
+          // initialize folder progress entry
+          setUploadFolders(prev => {
+            if (prev.find(p => p.folderKey === folderKey)) return prev;
+            return [...prev, { folderKey, folderName: folderPath || 'Root', uploadedBytes: 0, totalBytes, progress: 0, status: 'uploading' }];
+          });
+
+          // upload each file, passing folder metadata so mutation updates folder progress
+          for (const f2 of filesInFolder) {
+            uploadMutation.mutate({ file: f2 as File, parentId: targetParent || null, folderKey, folderTotalBytes: totalBytes });
+          }
         } catch (err) {
-          // avoid spamming a lot of toasts during bulk uploads; log and show one toast
           console.error('Folder upload child error:', err);
           toast.error('Failed to upload some folder contents');
-          // continue with next file
         }
       }
 
@@ -1122,8 +1213,8 @@ export default function DrivePage() {
         </DialogActions>
       </Dialog>
 
-      {/* Upload Progress */}
-      {uploadProgress.length > 0 && (
+      {/* Upload Progress (folder-aggregated when available, else per-file) */}
+      {(uploadFolders.length > 0 || uploadProgress.length > 0) && (
         <Paper
           sx={{
             position: 'fixed',
@@ -1136,33 +1227,59 @@ export default function DrivePage() {
           elevation={6}
         >
           <Typography variant="subtitle2" gutterBottom>
-            Uploading Files
+            Uploads
           </Typography>
-          {uploadProgress.map((item) => (
-            <Box key={item.fileName} sx={{ mb: 1 }}>
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
-                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
-                  {item.fileName}
-                </Typography>
-                <Typography variant="body2" color={
-                  item.status === 'success' ? 'success.main' :
-                  item.status === 'error' ? 'error.main' : 'text.secondary'
-                }>
-                  {item.status === 'success' ? '✓' : 
-                   item.status === 'error' ? '✗' : 
-                   `${item.progress}%`}
-                </Typography>
+          {uploadFolders.length > 0 ? (
+            uploadFolders.map((f) => (
+              <Box key={f.folderKey} sx={{ mb: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                    {f.folderName || f.folderKey}
+                  </Typography>
+                  <Typography variant="body2" color={
+                    f.status === 'success' ? 'success.main' :
+                    f.status === 'error' ? 'error.main' : 'text.secondary'
+                  }>
+                    {f.status === 'success' ? '✓' : f.status === 'error' ? '✗' : `${f.progress}%`}
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={f.progress}
+                  color={
+                    f.status === 'success' ? 'success' :
+                    f.status === 'error' ? 'error' : 'primary'
+                  }
+                />
               </Box>
-              <LinearProgress
-                variant="determinate"
-                value={item.progress}
-                color={
-                  item.status === 'success' ? 'success' :
-                  item.status === 'error' ? 'error' : 'primary'
-                }
-              />
-            </Box>
-          ))}
+            ))
+          ) : (
+            uploadProgress.map((item) => (
+              <Box key={item.fileName} sx={{ mb: 1 }}>
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                  <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                    {item.fileName}
+                  </Typography>
+                  <Typography variant="body2" color={
+                    item.status === 'success' ? 'success.main' :
+                    item.status === 'error' ? 'error.main' : 'text.secondary'
+                  }>
+                    {item.status === 'success' ? '✓' : 
+                     item.status === 'error' ? '✗' : 
+                     `${item.progress}%`}
+                  </Typography>
+                </Box>
+                <LinearProgress
+                  variant="determinate"
+                  value={item.progress}
+                  color={
+                    item.status === 'success' ? 'success' :
+                    item.status === 'error' ? 'error' : 'primary'
+                  }
+                />
+              </Box>
+            ))
+          )}
         </Paper>
       )}
       
