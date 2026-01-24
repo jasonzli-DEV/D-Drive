@@ -8,12 +8,18 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 
+// Helper function to get JWT secret - throws if not set
+function getJwtSecret(): string {
+  const secret = process.env.JWT_SECRET;
+  if (!secret) {
+    throw new Error('JWT_SECRET not configured. Complete setup at /setup');
+  }
+  return secret;
+}
 
-// JWT_SECRET must be set in environment - no fallback for security
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  console.error('CRITICAL: JWT_SECRET environment variable is not set.');
-  // Don't throw - allow server to start for setup mode
+// JWT_SECRET check at startup (warning only)
+if (!process.env.JWT_SECRET) {
+  console.error('WARNING: JWT_SECRET environment variable is not set. Auth will fail until setup is complete.');
 }
 
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
@@ -118,7 +124,7 @@ router.get('/discord/callback', async (req, res) => {
     // Create JWT token
     const token = jwt.sign(
       { userId: user.id, discordId: user.discordId },
-      JWT_SECRET,
+      getJwtSecret(),
       { expiresIn: '7d' }
     );
 
@@ -156,7 +162,7 @@ router.get('/me', async (req, res) => {
   }
 
   try {
-    const decoded = jwt.verify(token, JWT_SECRET) as { userId: string };
+    const decoded = jwt.verify(token, getJwtSecret()) as unknown as { userId: string };
     const user = await prisma.user.findUnique({
       where: { id: decoded.userId },
       select: {
