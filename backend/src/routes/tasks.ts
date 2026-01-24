@@ -4,7 +4,12 @@ import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
 import { runTaskNow } from '../services/taskRunner';
 import scheduler from '../services/scheduler';
-import parser from 'cron-parser';
+
+function isValidCronExpression(expr: string | undefined) {
+  if (!expr) return false;
+  const parts = expr.trim().split(/\s+/);
+  return parts.length === 5 || parts.length === 6;
+}
 
 const router = Router();
 const prisma = new PrismaClient();
@@ -50,10 +55,8 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'maxFiles must be >= 0' });
     }
 
-    // Validate cron expression
-    try {
-      parser.parseExpression(cron || '* * * * *');
-    } catch (e) {
+    // Validate cron expression (basic check: 5 or 6 fields)
+    if (!isValidCronExpression(cron || '* * * * *')) {
       return res.status(400).json({ error: 'Invalid cron expression' });
     }
 
