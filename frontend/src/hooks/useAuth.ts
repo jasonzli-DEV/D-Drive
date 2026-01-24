@@ -6,6 +6,7 @@ interface User {
   username: string;
   discriminator: string;
   avatar?: string;
+  avatarUrl?: string;
 }
 
 export function useAuth() {

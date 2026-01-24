@@ -2,6 +2,8 @@ import { Router } from 'express';
 import axios from 'axios';
 import jwt from 'jsonwebtoken';
 import { PrismaClient } from '@prisma/client';
+import fs from 'fs';
+import path from 'path';
 import { logger } from '../utils/logger';
 
 const router = Router();
@@ -16,6 +18,14 @@ if (!JWT_SECRET) {
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:3000';
+const AVATAR_DIR = process.env.AVATAR_DIR || path.join(process.cwd(), 'data', 'avatars');
+
+// Ensure avatar directory exists
+try {
+  fs.mkdirSync(AVATAR_DIR, { recursive: true });
+} catch (err) {
+  logger.error('Failed to create avatar directory', err);
+}
 
 // Discord OAuth callback
 router.get('/discord/callback', async (req, res) => {
@@ -82,6 +92,20 @@ router.get('/discord/callback', async (req, res) => {
       });
     }
 
+    // Attempt to fetch and cache the user's Discord avatar locally so
+    // the frontend can always use a stable URL under our domain.
+    try {
+      if (discordUser.avatar) {
+        const avatarUrl = `https://cdn.discordapp.com/avatars/${discordUser.id}/${discordUser.avatar}.png?size=256`;
+        const resp = await axios.get(avatarUrl, { responseType: 'arraybuffer' });
+        const avatarPath = path.join(AVATAR_DIR, `${user.id}.png`);
+        await fs.promises.writeFile(avatarPath, Buffer.from(resp.data), { flag: 'w' });
+        logger.info(`Cached avatar for user ${user.id} at ${avatarPath}`);
+      }
+    } catch (err) {
+      logger.warn('Failed to fetch or cache Discord avatar', err);
+    }
+
     // Create JWT token
     const token = jwt.sign(
       { userId: user.id, discordId: user.discordId },
@@ -105,6 +129,7 @@ router.get('/discord/callback', async (req, res) => {
         username: user.username,
         discriminator: user.discriminator,
         avatar: user.avatar,
+        avatarUrl: `/api/avatars/${user.id}`,
       },
     });
   } catch (error) {
@@ -139,7 +164,10 @@ router.get('/me', async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
 
-    res.json(user);
+    // Always return an avatarUrl that points at our avatars endpoint. The
+    // endpoint will serve a cached local file if available or fall back to
+    // Discord's CDN if not.
+    res.json({ ...user, avatarUrl: `/api/avatars/${user.id}` });
   } catch (error) {
     res.status(401).json({ error: 'Invalid token' });
   }

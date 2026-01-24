@@ -64,7 +64,10 @@ export default function Layout({ children }: LayoutProps) {
           <IconButton color="inherit" onClick={handleMenuOpen}>
             <Avatar
               sx={{ width: 32, height: 32 }}
-              src={user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined}
+              src={
+                user?.avatarUrl ? user.avatarUrl :
+                user?.avatar ? `https://cdn.discordapp.com/avatars/${user.id}/${user.avatar}.png` : undefined
+              }
             >
               {user?.username?.charAt(0).toUpperCase()}
             </Avatar>
