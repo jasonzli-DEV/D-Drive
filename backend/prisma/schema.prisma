@@ -95,3 +95,34 @@ enum FileType {
   FILE
   DIRECTORY
 }
+
+enum CompressFormat {
+  NONE
+  ZIP
+  TAR_GZ
+}
+
+model Task {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name           String
+  enabled        Boolean  @default(true)
+  cron           String   // cron expression
+  sftpHost       String
+  sftpPort       Int      @default(22)
+  sftpUser       String
+  sftpPath       String   // remote path to pull from
+  sftpPrivateKey String?  // optional, stored encrypted at rest in DB in future
+  destinationId  String?  // local destination folder (File.id)
+  compress       CompressFormat @default(NONE)
+  compressFiles  Boolean  @default(true) // compress files vs folders
+  timestampNames Boolean  @default(true)
+  maxFiles       Int      @default(0) // 0 = unlimited
+  encrypt        Boolean  @default(false) // whether to encrypt per user's settings
+  lastRun        DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([userId])
+}
