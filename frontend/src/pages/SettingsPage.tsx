@@ -6,6 +6,8 @@ import {
   Paper,
   Typography,
   Button,
+  FormControlLabel,
+  Switch,
   Table,
   TableBody,
   TableCell,
@@ -78,6 +80,33 @@ export default function SettingsPage() {
     },
   });
 
+  const [encryptByDefault, setEncryptByDefault] = useState<boolean | null>(null);
+
+  // Fetch current user preferences
+  useQuery({
+    queryKey: ['me'],
+    queryFn: async () => {
+      const resp = await api.get('/me');
+      return resp.data;
+    },
+    onSuccess: (data) => {
+      if (typeof data.encryptByDefault === 'boolean') setEncryptByDefault(data.encryptByDefault);
+    },
+    onError: () => {
+      // ignore
+    },
+  });
+
+  const updatePref = async (value: boolean) => {
+    try {
+      await api.patch('/me', { encryptByDefault: value });
+      setEncryptByDefault(value);
+      toast.success('Preference saved');
+    } catch (err) {
+      toast.error('Failed to save preference');
+    }
+  };
+
   
 
   // Server returns masked keys in the list; display as-provided
@@ -89,6 +118,22 @@ export default function SettingsPage() {
       </Typography>
 
       <Paper sx={{ mt: 3, p: 3 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h6">Preferences</Typography>
+        </Box>
+        <Box sx={{ mb: 2 }}>
+          <FormControlLabel
+            control={
+              <Switch
+                checked={Boolean(encryptByDefault)}
+                onChange={(e) => updatePref(e.target.checked)}
+                disabled={encryptByDefault === null}
+              />
+            }
+            label="Encrypt uploads by default"
+          />
+        </Box>
+
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
           <Typography variant="h6">API Keys</Typography>
           <Button
