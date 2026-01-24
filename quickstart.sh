@@ -31,15 +31,98 @@ if [ ! -f ".env" ]; then
     read -p "Press Enter when you've configured .env, or Ctrl+C to exit..."
 fi
 
+# Detect OS
+OS="unknown"
+if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+    OS="linux"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    OS="mac"
+elif [[ "$OSTYPE" == "msys" ]] || [[ "$OSTYPE" == "cygwin" ]]; then
+    OS="windows"
+fi
+
+# Function to install Docker on Linux
+install_docker_linux() {
+    echo "🔧 Installing Docker on Linux..."
+    
+    # Update package index
+    sudo apt-get update -y
+    
+    # Install prerequisites
+    sudo apt-get install -y ca-certificates curl gnupg lsb-release
+    
+    # Add Docker's official GPG key
+    sudo mkdir -p /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+    
+    # Set up repository
+    echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    
+    # Install Docker Engine
+    sudo apt-get update -y
+    sudo apt-get install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+    
+    # Add current user to docker group
+    sudo usermod -aG docker $USER
+    
+    # Start Docker
+    sudo systemctl start docker
+    sudo systemctl enable docker
+    
+    echo "✅ Docker installed successfully"
+    echo "⚠️  You may need to log out and back in for group changes to take effect"
+}
+
+# Function to install Docker on macOS
+install_docker_mac() {
+    echo "🔧 Installing Docker Desktop on macOS..."
+    
+    # Check if Homebrew is installed
+    if ! command -v brew &> /dev/null; then
+        echo "📦 Installing Homebrew first..."
+        /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
+    
+    # Install Docker Desktop via Homebrew
+    brew install --cask docker
+    
+    echo "✅ Docker Desktop installed"
+    echo "⚠️  Please start Docker Desktop from Applications, then re-run this script"
+    open -a Docker
+    exit 0
+}
+
 # Check if Docker is installed
 if ! command -v docker &> /dev/null; then
     echo "❌ Docker is not installed"
-    echo "Install Docker from: https://docs.docker.com/get-docker/"
-    exit 1
+    echo ""
+    read -p "Would you like to install Docker automatically? (y/n): " -n 1 -r
+    echo ""
+    
+    if [[ $REPLY =~ ^[Yy]$ ]]; then
+        case $OS in
+            linux)
+                install_docker_linux
+                echo "🔄 Please log out and back in, then re-run this script"
+                exit 0
+                ;;
+            mac)
+                install_docker_mac
+                ;;
+            *)
+                echo "❌ Automatic installation not supported on this OS"
+                echo "Please install Docker manually from: https://docs.docker.com/get-docker/"
+                exit 1
+                ;;
+        esac
+    else
+        echo "Install Docker from: https://docs.docker.com/get-docker/"
+        exit 1
+    fi
 fi
 
-# Check if Docker Compose is installed
-if ! command -v docker-compose &> /dev/null; then
+# Check if Docker Compose is available (either as plugin or standalone)
+if ! docker compose version &> /dev/null && ! command -v docker-compose &> /dev/null; then
     echo "❌ Docker Compose is not installed"
     echo "Install Docker Compose from: https://docs.docker.com/compose/install/"
     exit 1
@@ -50,17 +133,29 @@ echo ""
 
 # Stop any existing containers
 echo "🛑 Stopping any existing containers..."
-docker-compose down 2>/dev/null || true
+if docker compose version &> /dev/null; then
+    docker compose down 2>/dev/null || true
+else
+    docker-compose down 2>/dev/null || true
+fi
 
 # Build containers
 echo ""
 echo "🏗️  Building Docker containers (this may take a few minutes)..."
-docker-compose build
+if docker compose version &> /dev/null; then
+    docker compose build
+else
+    docker-compose build
+fi
 
 # Start containers
 echo ""
 echo "🚀 Starting D-Drive..."
-docker-compose up -d
+if docker compose version &> /dev/null; then
+    docker compose up -d
+else
+    docker-compose up -d
+fi
 
 # Wait for services to be ready
 echo ""
@@ -68,7 +163,12 @@ echo "⏳ Waiting for services to start..."
 sleep 10
 
 # Check if containers are running
-if docker-compose ps | grep -q "Up"; then
+COMPOSE_CMD="docker-compose"
+if docker compose version &> /dev/null; then
+    COMPOSE_CMD="docker compose"
+fi
+
+if $COMPOSE_CMD ps | grep -q "Up"; then
     echo ""
     echo "✅ D-Drive is running!"
     echo ""
