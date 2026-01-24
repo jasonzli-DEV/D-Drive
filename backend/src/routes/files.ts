@@ -415,9 +415,12 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
 
     // Sanitize filename to prevent header injection
     const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
-    
+    // RFC5987 encoding for non-ASCII and safe handling of spaces: provide both
+    // a simple filename and filename* (UTF-8 encoded) fallback for browsers.
+    const filenameStar = encodeURIComponent(sanitizedName);
+
     res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"`);
+    res.setHeader('Content-Disposition', `attachment; filename="${sanitizedName}"; filename*=UTF-8''${filenameStar}`);
     res.setHeader('Content-Length', fileData.length.toString());
 
     res.send(fileData);
@@ -433,16 +436,26 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
 router.post('/directory', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { name, path, parentId } = req.body;
+    const { name, parentId } = req.body;
 
     if (!name) {
       return res.status(400).json({ error: 'Directory name is required' });
     }
 
+    // Compute directory path server-side based on parentId to avoid client-supplied
+    // path inconsistencies (clients should not provide absolute paths).
+    let parentPath: string | null = null;
+    if (parentId) {
+      const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
+      parentPath = parent?.path || null;
+    }
+
+    const dirPath = parentPath ? `${parentPath}/${name}` : `/${name}`;
+
     const directory = await prisma.file.create({
       data: {
         name,
-        path: path || `/${name}`,
+        path: dirPath,
         type: 'DIRECTORY',
         userId,
         parentId: parentId || null,
