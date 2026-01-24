@@ -681,17 +681,13 @@ export default function TasksPage() {
                         
                         return (
                           <Box sx={{ mt: 0.5, fontSize: '0.75rem', color: 'text.secondary' }}>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                              <span>{phaseText}</span>
-                              {percentage > 0 && <Box component="span" sx={{ fontWeight: 600, color: 'primary.main' }}>{percentage}%</Box>}
-                              {eta && <Box component="span" sx={{ color: 'text.disabled' }}>{eta}</Box>}
-                            </Box>
+                            <Box>{phaseText}</Box>
                             {progress.totalFiles > 0 ? (
                               <Box>{progress.filesProcessed?.toLocaleString()} / {progress.totalFiles?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
-                            ) : (
+                            ) : progress.filesProcessed > 0 ? (
                               <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
-                            )}
-                            {progress.currentDir && <Box sx={{ maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
+                            ) : null}
+                            {progress.currentDir && <Box sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
                             {progress.reconnects > 0 && <Box sx={{ color: 'warning.main' }}>{progress.reconnects} reconnects</Box>}
                           </Box>
                         );
