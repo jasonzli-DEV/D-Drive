@@ -593,12 +593,30 @@ export default function DrivePage() {
               <Home size={18} />
               <Typography>Home</Typography>
             </Link>
-            {breadcrumbs.map((crumb) => (
-              <Typography key={crumb.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                <Folder size={18} />
-                {crumb.name}
-              </Typography>
-            ))}
+            {breadcrumbs.map((crumb, idx) => {
+              const isLast = idx === breadcrumbs.length - 1;
+              if (isLast) {
+                return (
+                  <Typography key={crumb.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Folder size={18} />
+                    {crumb.name}
+                  </Typography>
+                );
+              }
+
+              return (
+                <Link
+                  component="button"
+                  key={crumb.id}
+                  variant="body2"
+                  onClick={() => navigate(`/drive/${crumb.id}`)}
+                  sx={{ display: 'flex', alignItems: 'center', gap: 0.5, textDecoration: 'none', color: 'text.primary', '&:hover': { textDecoration: 'underline' } }}
+                >
+                  <Folder size={18} />
+                  <Typography>{crumb.name}</Typography>
+                </Link>
+              );
+            })}
           </Breadcrumbs>
         </CardContent>
       </Card>
