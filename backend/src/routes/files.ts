@@ -112,6 +112,8 @@ router.get('/', authenticate, async (req: Request, res: Response) => {
         name: true,
         type: true,
         size: true,
+        path: true,
+        parentId: true,
         mimeType: true,
         createdAt: true,
         updatedAt: true,
@@ -671,62 +673,105 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
-    const file = await prisma.file.findFirst({
+    // Fetch node (file or directory)
+    const node = await prisma.file.findFirst({
       where: { id, userId },
-      include: { chunks: true },
+      include: { chunks: { orderBy: { chunkIndex: 'asc' } } },
     });
 
-    if (!file) return res.status(404).json({ error: 'File not found' });
+    if (!node) return res.status(404).json({ error: 'File not found' });
 
-    // Determine parent path
-    let parentPath: string | null = null;
-    if (file.parentId) {
-      const parent = await prisma.file.findUnique({ where: { id: file.parentId }, select: { path: true } });
-      parentPath = parent?.path || null;
-    }
+    // Helper: copy a single file by downloading each chunk and re-uploading to Discord
+    const copyFile = async (tx: any, src: any, targetParentId: string | null, parentPath: string | null, renameForTopLevel: boolean) => {
+      // Determine name
+      let nameToUse = src.name;
+      if (renameForTopLevel) {
+        nameToUse = await getUniqueName(userId, parentPath, `Copy of ${src.name}`);
+      } else {
+        nameToUse = await getUniqueName(userId, parentPath, src.name);
+      }
+      const targetPath = parentPath ? `${parentPath}/${nameToUse}` : `/${nameToUse}`;
 
-    // Build candidate names and paths, auto-number if necessary
-    const baseName = `Copy of ${file.name}`;
-    let candidateName = baseName;
-    let candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
-    let counter = 2;
-    while (await prisma.file.findFirst({ where: { userId, path: candidatePath } })) {
-      candidateName = `Copy of (${counter}) ${file.name}`;
-      candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
-      counter += 1;
-    }
-
-    // Create new file record and duplicate chunk references (pointing to same attachments)
-    const created = await prisma.$transaction(async (tx) => {
       const newFile = await tx.file.create({
         data: {
-          name: candidateName,
-          path: candidatePath,
-          size: file.size,
-          mimeType: file.mimeType,
-          type: file.type,
-          encrypted: file.encrypted,
-          parentId: file.parentId || null,
+          name: nameToUse,
+          path: targetPath,
+          size: src.size,
+          mimeType: src.mimeType,
+          type: src.type,
+          encrypted: src.encrypted,
+          parentId: targetParentId,
           userId,
         },
       });
 
-      if (file.chunks && file.chunks.length > 0) {
-        for (const chunk of file.chunks) {
+      // Duplicate chunks by re-uploading attachments to Discord so copied file has its own messages
+      if (src.chunks && src.chunks.length > 0) {
+        for (const chunk of src.chunks) {
+          // download original chunk buffer
+          const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
+          // upload to Discord to create a fresh message/attachment
+          const uploaded = await uploadChunkToDiscord(src.name, buffer);
           await tx.fileChunk.create({
             data: {
               fileId: newFile.id,
               chunkIndex: chunk.chunkIndex,
-              messageId: chunk.messageId,
-              channelId: chunk.channelId,
-              attachmentUrl: chunk.attachmentUrl,
-              size: chunk.size,
+              messageId: uploaded.messageId,
+              channelId: uploaded.channelId,
+              attachmentUrl: uploaded.attachmentUrl,
+              size: buffer.length,
             },
           });
         }
       }
 
       return newFile;
+    };
+
+    // Recursive directory copy
+    const copyDirectory = async (tx: any, srcDirId: string, targetParentId: string | null, parentPath: string | null) => {
+      const srcDir = await prisma.file.findUnique({ where: { id: srcDirId }, include: { children: true } });
+      if (!srcDir) throw new Error('Source directory not found');
+
+      const dirName = await getUniqueName(userId, parentPath, `Copy of ${srcDir.name}`);
+      const dirPath = parentPath ? `${parentPath}/${dirName}` : `/${dirName}`;
+
+      const newDir = await tx.file.create({
+        data: {
+          name: dirName,
+          path: dirPath,
+          type: 'DIRECTORY',
+          userId,
+          parentId: targetParentId,
+        },
+      });
+
+      // Copy children
+      const children = await prisma.file.findMany({ where: { parentId: srcDirId } });
+      for (const child of children) {
+        if (child.type === 'DIRECTORY') {
+          await copyDirectory(tx, child.id, newDir.id, dirPath);
+        } else {
+          // file: copy without renaming inner files
+          const srcWithChunks = await prisma.file.findUnique({ where: { id: child.id }, include: { chunks: { orderBy: { chunkIndex: 'asc' } } } });
+          if (!srcWithChunks) continue;
+          await copyFile(tx, srcWithChunks, newDir.id, dirPath, false);
+        }
+      }
+
+      return newDir;
+    };
+
+    // Perform copy inside transaction; external uploads will occur but DB changes are transactional
+    const created = await prisma.$transaction(async (tx) => {
+      if (node.type === 'DIRECTORY') {
+        // Copy directory and its contents
+        return await copyDirectory(tx, node.id, node.parentId || null, node.parentId ? (await prisma.file.findUnique({ where: { id: node.parentId }, select: { path: true } }))?.path || null : null);
+      } else {
+        // Copy a single file (rename to 'Copy of ...')
+        const parentPath = node.parentId ? (await prisma.file.findUnique({ where: { id: node.parentId }, select: { path: true } }))?.path || null : null;
+        return await copyFile(tx, node, node.parentId || null, parentPath, true);
+      }
     });
 
     return res.status(201).json(serializeFile(created));
