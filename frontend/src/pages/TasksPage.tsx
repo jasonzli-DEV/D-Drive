@@ -143,12 +143,9 @@ export default function TasksPage() {
   async function save(runNow = false) {
     const payload = { ...form, timestampNames: true };
     try {
-      // client-side validation to provide immediate feedback and avoid duplicate toasts
-      const validationError = validateForm(payload);
-      if (validationError) {
-        toast.error(validationError);
-        return;
-      }
+      // client-side validation (sets inline errors); stop if invalid
+      const ok = validateForm(payload);
+      if (!ok) return;
 
       let resp: any;
       if (form.id) resp = await updateMutation.mutateAsync(payload);
