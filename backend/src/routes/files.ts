@@ -470,6 +470,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
+    const { recursive } = req.body as { recursive?: boolean };
 
     const file = await prisma.file.findFirst({
       where: { id, userId },
@@ -483,27 +484,38 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'File not found' });
     }
 
-    if (file.type === 'DIRECTORY' && file.children.length > 0) {
+    if (file.type === 'DIRECTORY' && file.children.length > 0 && !recursive) {
       return res.status(400).json({ error: 'Directory is not empty' });
     }
 
-    // Delete chunks from Discord
-    if (file.chunks && file.chunks.length > 0) {
-      for (const chunk of file.chunks) {
-        try {
-          await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
-        } catch (discordError) {
-          logger.warn(`Failed to delete chunk ${chunk.id} from Discord:`, discordError);
-          // Continue anyway - chunk might already be deleted
-        }
+    // If recursive deletion requested for directories, collect all descendant files
+    // and delete their chunks/messages first, then delete DB rows.
+    const filesToDelete: string[] = [];
+
+    if (file.type === 'DIRECTORY' && recursive) {
+      // include all descendants (files and directories) whose path starts with file.path/
+      const descendants = await prisma.file.findMany({ where: { userId, path: { startsWith: `${file.path}/` } }, select: { id: true } });
+      for (const d of descendants) filesToDelete.push(d.id);
+      // include the directory itself after children
+      filesToDelete.push(file.id);
+    } else {
+      filesToDelete.push(file.id);
+    }
+
+    // Gather chunks for all files to delete
+    const chunks = await prisma.fileChunk.findMany({ where: { fileId: { in: filesToDelete } } });
+    for (const chunk of chunks) {
+      try {
+        await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
+      } catch (discordError) {
+        logger.warn(`Failed to delete chunk ${chunk.id} from Discord:`, discordError);
+        // Continue - message may already be gone
       }
     }
 
-    // Delete chunks from database first (foreign key constraint)
-    await prisma.fileChunk.deleteMany({ where: { fileId: id } });
-
-    // Delete file from database
-    await prisma.file.delete({ where: { id } });
+    // Delete chunk rows and file rows in DB (order: chunks -> files)
+    await prisma.fileChunk.deleteMany({ where: { fileId: { in: filesToDelete } } });
+    await prisma.file.deleteMany({ where: { id: { in: filesToDelete } } });
 
     res.json({ message: 'File deleted successfully' });
   } catch (error) {
