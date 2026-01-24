@@ -645,27 +645,6 @@ export default function TasksPage() {
                         const progress = getProgress(t.id);
                         if (!progress) return null;
                         
-                        // Calculate percentage and ETA
-                        const elapsedSec = (progress.elapsedMs || 0) / 1000;
-                        let percentage = 0;
-                        let eta = '';
-                        
-                        if (progress.totalFiles > 0 && progress.filesProcessed > 0) {
-                          percentage = Math.round((progress.filesProcessed / progress.totalFiles) * 100);
-                          const filesPerSec = progress.filesProcessed / elapsedSec;
-                          if (filesPerSec > 0) {
-                            const remainingFiles = progress.totalFiles - progress.filesProcessed;
-                            const remainingSec = remainingFiles / filesPerSec;
-                            if (remainingSec < 60) {
-                              eta = `~${Math.round(remainingSec)}s left`;
-                            } else if (remainingSec < 3600) {
-                              eta = `~${Math.round(remainingSec / 60)}m left`;
-                            } else {
-                              eta = `~${Math.round(remainingSec / 3600)}h left`;
-                            }
-                          }
-                        }
-                        
                         // Build phase text with chunk info for uploading
                         let phaseText = progress.phase === 'scanning' ? 'Scanning...' 
                           : progress.phase === 'downloading' ? 'Downloading' 
