@@ -84,7 +84,7 @@ jobs:
         working-directory: ./frontend
         run: npm test -- --coverage --passWithNoTests
         env:
-          VITE_API_URL: http://localhost:5000
+          VITE_API_URL: /api
           VITE_DISCORD_CLIENT_ID: test-client-id
 
       - name: Upload coverage
@@ -131,4 +131,4 @@ jobs:
         run: docker build -t ddrive-backend ./backend
 
       - name: Build Frontend Docker Image
-        run: docker build -t ddrive-frontend ./frontend --build-arg VITE_API_URL=http://localhost:5000 --build-arg VITE_DISCORD_CLIENT_ID=test
+        run: docker build -t ddrive-frontend ./frontend --build-arg VITE_API_URL=/api --build-arg VITE_DISCORD_CLIENT_ID=test
