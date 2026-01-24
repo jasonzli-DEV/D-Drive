@@ -655,14 +655,14 @@ export async function runTaskNow(taskId: string) {
       
       // Track archive errors - must be set up BEFORE piping
       let archiveError: Error | null = null;
-      archive.on('error', (err) => {
+      archive.on('error', (err: Error) => {
         logger.error('Archive stream error', { taskId, err });
         archiveError = err;
       });
-      archive.on('warning', (err) => {
+      archive.on('warning', (err: Error) => {
         logger.warn('Archive warning', { taskId, err: err.message });
       });
-      output.on('error', (err) => {
+      output.on('error', (err: Error) => {
         logger.error('Output stream error', { taskId, err });
         archiveError = err;
       });
@@ -894,8 +894,8 @@ export async function runTaskNow(taskId: string) {
       await streamRemoteToArchive(task.sftpPath);
       
       // Check if any archive errors occurred during streaming
-      if (archiveError) {
-        throw new Error(`Archive creation failed: ${archiveError.message}`);
+      if (archiveError !== null) {
+        throw new Error(`Archive creation failed: ${(archiveError as Error).message}`);
       }
       
       logger.info('Finalizing archive', { taskId, filesAdded, totalBytes: formatBytes(totalBytes) });
@@ -918,14 +918,14 @@ export async function runTaskNow(taskId: string) {
           }
         });
         
-        output.on('error', (e) => {
+        output.on('error', (e: Error) => {
           if (!resolved) {
             resolved = true;
             reject(e);
           }
         });
         
-        archive.on('error', (e) => {
+        archive.on('error', (e: Error) => {
           if (!resolved) {
             resolved = true;
             reject(e);
@@ -933,7 +933,7 @@ export async function runTaskNow(taskId: string) {
         });
         
         // Call finalize after setting up listeners
-        archive.finalize().catch((e) => {
+        archive.finalize().catch((e: Error) => {
           if (!resolved) {
             resolved = true;
             reject(e);
