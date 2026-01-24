@@ -25,12 +25,9 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  
   Breadcrumbs,
   Link,
   Chip,
-  Card,
-  CardContent,
   useTheme,
 } from '@mui/material';
 import {
@@ -1503,9 +1500,10 @@ export default function DrivePage() {
         </Box>
       )}
 
-      {/* Breadcrumb Navigation - always show (Home at root) */}
-      <Card sx={{ mb: 3, boxShadow: 1 }}>
-        <CardContent sx={{ py: 1.5, '&:last-child': { pb: 1.5 } }}>
+      {/* Main content Paper - consistent with other pages */}
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
+        {/* Breadcrumb Navigation - acts as page header */}
+        <Box sx={{ display: 'flex', alignItems: 'center', mb: 3 }}>
           <Breadcrumbs separator={<ChevronRight size={16} />}>
             <Link
               component="button"
@@ -1521,14 +1519,14 @@ export default function DrivePage() {
               }}
             >
               <Home size={18} />
-              <Typography>Home</Typography>
+              <Typography variant="h5" fontWeight={600}>Home</Typography>
             </Link>
             {breadcrumbs.map((crumb, idx) => {
               const isLast = idx === breadcrumbs.length - 1;
               if (isLast) {
                 return (
-                  <Typography key={crumb.id} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
-                    <Folder size={18} />
+                  <Typography key={crumb.id} variant="h5" fontWeight={600} sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
+                    <Folder size={20} />
                     {crumb.name}
                   </Typography>
                 );
@@ -1548,8 +1546,7 @@ export default function DrivePage() {
               );
             })}
           </Breadcrumbs>
-        </CardContent>
-      </Card>
+        </Box>
 
       {/* +New menu (triggered from Layout sidebar) */}
       <Menu
@@ -1581,27 +1578,20 @@ export default function DrivePage() {
       {/* top action buttons removed — New/+ menu available in left sidebar */}
 
       {isLoading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '60vh' }}>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '50vh' }}>
           <CircularProgress />
         </Box>
       ) : files && files.length === 0 ? (
-        <Card sx={{ boxShadow: 2, minHeight: '60vh', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <CardContent>
-            <Box sx={{ textAlign: 'center' }}>
-              <Folder size={64} color="#ccc" style={{ marginBottom: 16 }} />
-              <Typography variant="h6" color="text.secondary" gutterBottom>
-                This folder is empty
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Upload files or create folders to get started
-              </Typography>
-            </Box>
-          </CardContent>
-        </Card>
+        <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '50vh' }}>
+          <Folder size={48} color="#ccc" style={{ marginBottom: 16 }} />
+          <Typography color="text.secondary">
+            This folder is empty. Upload files or create folders to get started.
+          </Typography>
+        </Box>
       ) : (
-        <Card sx={{ boxShadow: 2 }}>
+        <>
           {selectedIds.length > 0 && (
-            <Box sx={{ display: 'flex', gap: 1, p: 1, alignItems: 'center' }}>
+            <Box sx={{ display: 'flex', gap: 1, mb: 2, alignItems: 'center' }}>
               <Button variant="outlined" size="small" onClick={handleBulkCopy} disabled={bulkProcessing}>Copy ({selectedIds.length})</Button>
               <Button variant="outlined" size="small" onClick={handleOpenBulkMove} disabled={bulkProcessing}>Move ({selectedIds.length})</Button>
               <Button variant="outlined" color="error" size="small" onClick={handleBulkDelete} disabled={bulkProcessing}>Delete ({selectedIds.length})</Button>
@@ -1724,8 +1714,9 @@ export default function DrivePage() {
             </TableBody>
           </Table>
         </TableContainer>
-      </Card>
+        </>
       )}
+      </Paper>
 
       {/* Context Menu */}
       <Menu
