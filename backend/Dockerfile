@@ -1,7 +1,7 @@
 FROM node:20-alpine
 
-# Install OpenSSL for Prisma and tini for proper process management
-RUN apk add --no-cache openssl tini
+# Install OpenSSL for Prisma, tini for proper process management, and wget for healthcheck
+RUN apk add --no-cache openssl tini wget
 
 WORKDIR /app
 

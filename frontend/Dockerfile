@@ -28,6 +28,9 @@ RUN find /app/dist -name '*.js' -exec sed -i \
 # Production stage with nginx
 FROM nginx:alpine
 
+# Install wget for healthcheck
+RUN apk add --no-cache wget
+
 # Copy built files
 COPY --from=build /app/dist /usr/share/nginx/html
 
