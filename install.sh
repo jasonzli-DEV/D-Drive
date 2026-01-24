@@ -146,17 +146,63 @@ start_services() {
     log_info "Building and starting D-Drive services..."
     
     $COMPOSE_CMD build
-    $COMPOSE_CMD up -d
     
-    log_info "Waiting for services to start..."
-    sleep 5
+    # Start only postgres first
+    log_info "Starting database..."
+    $COMPOSE_CMD up -d postgres
     
-    # Check service health
-    if $COMPOSE_CMD ps | grep -q "Up"; then
-        log_info "Services started successfully!"
-    else
-        log_warn "Some services may still be starting..."
-    fi
+    # Wait for postgres to be healthy
+    log_info "Waiting for database to be ready..."
+    for i in {1..30}; do
+        if $COMPOSE_CMD exec -T postgres pg_isready -U ddrive &>/dev/null; then
+            log_info "Database is ready!"
+            break
+        fi
+        if [ $i -eq 30 ]; then
+            log_error "Database failed to start within 30 seconds"
+            $COMPOSE_CMD logs postgres
+            exit 1
+        fi
+        sleep 1
+    done
+    
+    # Start backend (which runs migrations)
+    log_info "Starting backend (running database migrations)..."
+    $COMPOSE_CMD up -d backend
+    
+    # Wait for backend to be healthy (longer timeout for migrations)
+    log_info "Waiting for backend to be ready (this may take a minute on first run)..."
+    for i in {1..120}; do
+        if $COMPOSE_CMD ps backend 2>/dev/null | grep -q "healthy"; then
+            log_info "Backend is ready!"
+            break
+        fi
+        if $COMPOSE_CMD ps backend 2>/dev/null | grep -q "unhealthy"; then
+            log_error "Backend failed to start"
+            echo ""
+            log_warn "Backend logs:"
+            $COMPOSE_CMD logs --tail=50 backend
+            echo ""
+            log_info "This usually means Discord configuration is incomplete."
+            log_info "The backend will run in 'setup mode' - continue to configure via web UI."
+            break
+        fi
+        if [ $i -eq 120 ]; then
+            log_warn "Backend still starting after 2 minutes..."
+            $COMPOSE_CMD logs --tail=20 backend
+        fi
+        sleep 1
+    done
+    
+    # Start frontend regardless of backend health (it will redirect to setup)
+    log_info "Starting frontend..."
+    $COMPOSE_CMD up -d frontend
+    
+    sleep 3
+    
+    # Show final status
+    log_info "Service status:"
+    $COMPOSE_CMD ps
 }
 
 print_success() {
