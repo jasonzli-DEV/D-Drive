@@ -27,6 +27,8 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import api from '../lib/api';
 import toast from 'react-hot-toast';
 import FolderSelectDialog from '../components/FolderSelectDialog';
+import cronParser from 'cron-parser';
+import cronValidate from 'cron-validate';
 
   const defaultForm = {
   id: undefined as string | undefined,
@@ -50,14 +52,25 @@ import FolderSelectDialog from '../components/FolderSelectDialog';
 export default function TasksPage() {
   function describeCron(expr: string) {
     if (!expr) return 'Enter a cron expression (5 fields)';
-    const parts = expr.trim().split(/\s+/);
-    if (parts.length < 5) return 'Invalid cron (needs 5 fields)';
-    // */N * * * * -> every N minutes
-    const m = parts[0].match(/^\*\/(\d+)$/);
-    if (m) return `At every ${m[1]}th minute`;
-    // 0 H * * * -> daily at H:MM
-    if (parts[0] === '0' && /^[0-2]?\d$/.test(parts[1])) return `Daily at ${parts[1].padStart(2, '0')}:00`;
-    return 'Cron expression (minute hour day month weekday)';
+    try {
+      const v = (cronValidate as any)(expr, { preset: 'default' });
+      const ok = typeof v.isValid === 'function' ? v.isValid() : v;
+      if (!ok) return 'Invalid cron expression';
+    } catch (e) {
+      return 'Invalid cron expression';
+    }
+
+    try {
+      const interval = (cronParser as any).parseExpression(expr);
+      const next = interval.next().toDate();
+      const parts = expr.trim().split(/\s+/);
+      const m = parts[0].match(/^\*\/(\d+)$/);
+      if (m) return `At every ${m[1]}th minute — next: ${next.toLocaleString()}`;
+      if (parts[0] === '0' && /^[0-2]?\d$/.test(parts[1])) return `Daily at ${parts[1].padStart(2, '0')}:00 — next: ${next.toLocaleString()}`;
+      return `Next run: ${next.toLocaleString()}`;
+    } catch (e) {
+      return 'Invalid cron expression';
+    }
   }
   const queryClient = useQueryClient();
   const { data: tasks, isLoading } = useQuery<any[]>({
