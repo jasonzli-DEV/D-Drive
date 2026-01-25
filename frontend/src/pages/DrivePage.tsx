@@ -92,6 +92,7 @@ export default function DrivePage() {
   const [uploadProgress, setUploadProgress] = useState<UploadProgress[]>([]);
   const [uploadFolders, setUploadFolders] = useState<FolderUploadProgress[]>([]);
   const [deleteProgress, setDeleteProgress] = useState<UploadProgress[]>([]);
+  const [copyProgress, setCopyProgress] = useState<UploadProgress[]>([]);
   const fileLoadedRef = useRef<Record<string, number>>({});
   const folderPrevProgressRef = useRef<Record<string, number>>({});
   const folderErrorShownRef = useRef<Record<string, boolean>>({});
@@ -129,9 +130,44 @@ export default function DrivePage() {
       const resp = await api.post(`/files/${id}/copy`);
       return resp.data;
     },
-    onSuccess: () => {
+    onSuccess: (data, id) => {
       queryClient.invalidateQueries({ queryKey: ['files'] });
-      toast.success('Copy created');
+      // If API returned the new file id, poll its metadata and show chunk-level progress
+      (async () => {
+        try {
+          const origMeta = await api.get(`/files/${id}`);
+          const origChunks = Array.isArray(origMeta.data.chunks) ? origMeta.data.chunks.length : (origMeta.data.chunkCount || 1);
+          const newId = data?.id;
+          if (!newId) {
+            toast.success('Copy created');
+            return;
+          }
+          // create progress entry
+          setCopyProgress(prev => [...prev, { id: newId, fileName: origMeta.data.name || `Copy of ${id}`, progress: 0, status: 'uploading' }]);
+          let lastSeen = 0;
+          // poll until chunks reach origChunks
+          while (lastSeen < origChunks) {
+            // eslint-disable-next-line no-await-in-loop
+            const m = await api.get(`/files/${newId}`);
+            const seen = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 0);
+            const delta = Math.max(0, seen - lastSeen);
+            if (delta > 0) {
+              lastSeen = seen;
+              const pct = Math.round((Math.min(lastSeen, origChunks) / Math.max(1, origChunks)) * 100);
+              setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: pct } : p));
+            }
+            if (lastSeen >= origChunks) break;
+            // wait a bit
+            // eslint-disable-next-line no-await-in-loop
+            await new Promise(r => setTimeout(r, 500));
+          }
+          setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: 100, status: 'success' } : p));
+          setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== newId)), 1500);
+          toast.success('Copy created');
+        } catch (err) {
+          toast.success('Copy created');
+        }
+      })();
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to copy file');
@@ -566,21 +602,63 @@ export default function DrivePage() {
   const handleBulkCopy = async () => {
     if (selectedIds.length === 0) return;
     setBulkProcessing(true);
-    setBulkProgress({ action: 'copy', total: selectedIds.length, completed: 0, failed: 0 });
+    // fetch original chunk counts to provide chunk-level progress
+    const origCounts: Record<string, number> = {};
+    await Promise.all(selectedIds.map(async (id) => {
+      try {
+        const m = await api.get(`/files/${id}`);
+        origCounts[id] = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 1);
+      } catch (err) {
+        origCounts[id] = 1;
+      }
+    }));
+
+    const totalChunks = selectedIds.reduce((s, id) => s + (origCounts[id] || 1), 0);
+    setBulkProgress({ action: 'copy', total: totalChunks, completed: 0, failed: 0 });
+    let completed = 0;
     let failed = 0;
+
     for (let i = 0; i < selectedIds.length; i++) {
       const id = selectedIds[i];
       const file = files?.find(f => f.id === id);
-      setBulkProgress(prev => prev ? { ...prev, completed: i, currentName: file?.name || id } : prev);
+      setBulkProgress(prev => prev ? { ...prev, currentName: file?.name || id } : prev);
       try {
-        await api.post(`/files/${id}/copy`);
+        const resp = await api.post(`/files/${id}/copy`);
+        const newId = resp.data?.id;
+        const expect = origCounts[id] || 1;
+        if (!newId) {
+          // no new id; count as completed immediately
+          completed += expect;
+          setBulkProgress(prev => prev ? { ...prev, completed: completed } : prev);
+          continue;
+        }
+        // poll new file metadata and update progress by observed chunks
+        let lastSeen = 0;
+        while (lastSeen < expect) {
+          // eslint-disable-next-line no-await-in-loop
+          const m = await api.get(`/files/${newId}`);
+          const seen = Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 0);
+          const delta = Math.max(0, seen - lastSeen);
+          if (delta > 0) {
+            lastSeen = seen;
+            completed += delta;
+            setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, totalChunks) } : prev);
+          }
+          if (lastSeen >= expect) break;
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise(r => setTimeout(r, 500));
+        }
       } catch (err) {
         failed += 1;
-        setBulkProgress(prev => prev ? { ...prev, failed: (prev.failed || 0) + 1 } : prev);
+        // approximate by adding expected chunks so progress keeps moving
+        const expect = origCounts[id] || 1;
+        completed += expect;
+        setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, totalChunks), failed: (prev.failed || 0) + 1 } : prev);
       }
     }
+
     // finalize
-    setBulkProgress(prev => prev ? { ...prev, completed: prev.total } : prev);
+    setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, totalChunks) } : prev);
     const success = selectedIds.length - failed;
     if (failed === 0) {
       toast.success(`${success} copied`);
@@ -589,7 +667,6 @@ export default function DrivePage() {
       toast.error(`${failed} items failed to copy`);
     }
     setSelectedIds([]);
-    // keep panel briefly then hide (match upload timing)
     setTimeout(() => {
       setBulkProcessing(false);
       setBulkProgress(null);
@@ -1611,6 +1688,47 @@ export default function DrivePage() {
                   item.status === 'error' ? 'error.main' : 'text.secondary'
                 }>
                   {item.status === 'success' ? '✓' : item.status === 'error' ? '✗' : `${item.progress}%`}
+                </Typography>
+              </Box>
+              <LinearProgress
+                variant="determinate"
+                value={item.progress}
+                color={
+                  item.status === 'success' ? 'success' :
+                  item.status === 'error' ? 'error' : 'primary'
+                }
+              />
+            </Box>
+          ))}
+        </Paper>
+      )}
+      {/* Copy Progress Panel */}
+      {copyProgress.length > 0 && (
+        <Paper
+          sx={{
+            position: 'fixed',
+            bottom: 16,
+            right: 16,
+            width: 350,
+            p: 2,
+            zIndex: 1001,
+          }}
+          elevation={6}
+        >
+          <Typography variant="subtitle2" gutterBottom>
+            Copying
+          </Typography>
+          {copyProgress.map((item) => (
+            <Box key={item.id || item.fileName} sx={{ mb: 1 }}>
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.5 }}>
+                <Typography variant="body2" noWrap sx={{ maxWidth: 200 }}>
+                  {item.fileName}
+                </Typography>
+                <Typography variant="body2" color={
+                  item.status === 'success' ? 'success.main' :
+                  item.status === 'error' ? 'error.main' : 'text.secondary'
+                }>
+                  {item.status === 'success' ? '✓' : item.status === 'error' ? '✗' : (item.progress === 100 ? 'Processing' : `${item.progress}%`)}
                 </Typography>
               </Box>
               <LinearProgress
