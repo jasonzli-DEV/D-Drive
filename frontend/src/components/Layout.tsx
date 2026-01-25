@@ -162,7 +162,7 @@ export default function Layout({ children }: LayoutProps) {
                 component="img"
                 src={theme.palette.mode === 'dark' ? '/D-Drive Dark.png' : '/D-Drive Light.png'}
                 alt="D-Drive"
-                sx={{ width: { xs: 56, sm: 72 }, height: { xs: 56, sm: 72 }, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: { xs: 80, sm: 120 }, height: { xs: 80, sm: 120 }, objectFit: 'contain', bgcolor: 'transparent' }}
               />
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
