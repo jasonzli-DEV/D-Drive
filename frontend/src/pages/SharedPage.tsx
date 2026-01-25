@@ -137,26 +137,26 @@ export default function SharedPage() {
   const [videoLoadProgress, setVideoLoadProgress] = useState(0);
   const loadedPreviewIdRef = useRef<string | null>(null);
 
-  // Helper functions for file types
-  const isImageFile = (f: FolderFile) => {
+  // Helper functions for file types (works with both FolderFile and SharedFile.file)
+  const isImageFile = (f: { mimeType?: string | null; name: string }) => {
     if (f.mimeType && f.mimeType.startsWith('image/')) return true;
     const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
     return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'heic'].includes(ext);
   };
 
-  const isVideoFile = (f: FolderFile) => {
+  const isVideoFile = (f: { mimeType?: string | null; name: string }) => {
     if (f.mimeType && f.mimeType.startsWith('video/')) return true;
     const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
     return ['mp4', 'mov', 'webm', 'ogg', 'mkv', 'avi', 'm4v'].includes(ext);
   };
 
-  const isPdfFile = (f: FolderFile) => {
+  const isPdfFile = (f: { mimeType?: string | null; name: string }) => {
     if (f.mimeType && f.mimeType === 'application/pdf') return true;
     const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
     return ext === 'pdf';
   };
 
-  const canPreview = (f: FolderFile) => isImageFile(f) || isVideoFile(f) || isPdfFile(f);
+  const canPreview = (f: { mimeType?: string | null; name: string }) => isImageFile(f) || isVideoFile(f) || isPdfFile(f);
 
   const openPreview = (file: FolderFile, files: FolderFile[]) => {
     const previewableFiles = files.filter(f => f.type === 'FILE' && canPreview(f));
@@ -863,7 +863,7 @@ export default function SharedPage() {
                       <Tooltip title="Preview">
                         <IconButton
                           size="small"
-                          onClick={() => openPreview(share.file as unknown as FolderFile, [share.file as unknown as FolderFile])}
+                          onClick={() => openPreview(share.file as FolderFile, [share.file as FolderFile])}
                         >
                           <Eye size={18} />
                         </IconButton>
