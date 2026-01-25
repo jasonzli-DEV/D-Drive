@@ -404,11 +404,12 @@ router.get('/folder/:folderId/contents', authenticate, async (req: Request, res:
   }
 });
 
-// Download file from shared folder
+// Download file from shared folder (with Range support for video streaming)
 router.get('/file/:fileId/download', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { fileId } = req.params;
+    const preferInline = req.query.inline === '1';
 
     // Check access
     const access = await checkShareAccess(userId, fileId);
@@ -428,14 +429,89 @@ router.get('/file/:fileId/download', authenticate, async (req: Request, res: Res
       return res.status(404).json({ error: 'File not found' });
     }
 
-    // Download and stream file
-    res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(file.name)}"`);
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    
     if (file.chunks.length === 0) {
       return res.status(404).json({ error: 'File has no chunks' });
     }
 
+    // Calculate total file size from chunk sizes
+    const totalFileSize = file.chunks.reduce((sum, c) => sum + Number(c.size || 0), 0);
+    const contentType = file.mimeType || 'application/octet-stream';
+    const disposition = preferInline ? 'inline' : 'attachment';
+    
+    res.setHeader('Content-Disposition', `${disposition}; filename="${encodeURIComponent(file.name)}"`);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
+    
+    // Handle Range requests for video streaming
+    const rangeHeader = req.headers.range;
+    if (rangeHeader) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalFileSize - 1;
+      
+      if (start >= totalFileSize || end >= totalFileSize || start > end) {
+        res.status(416).setHeader('Content-Range', `bytes */${totalFileSize}`);
+        return res.end();
+      }
+      
+      // Calculate which chunks we need
+      let cumulativeStart = 0;
+      let startChunkIndex = -1;
+      let endChunkIndex = -1;
+      let startOffsetInChunk = 0;
+      
+      for (let i = 0; i < file.chunks.length; i++) {
+        const chunkSize = Number(file.chunks[i].size || 0);
+        const cumulativeEnd = cumulativeStart + chunkSize - 1;
+        
+        if (startChunkIndex === -1 && start >= cumulativeStart && start <= cumulativeEnd) {
+          startChunkIndex = i;
+          startOffsetInChunk = start - cumulativeStart;
+        }
+        
+        if (end >= cumulativeStart && end <= cumulativeEnd) {
+          endChunkIndex = i;
+          break;
+        }
+        
+        cumulativeStart += chunkSize;
+      }
+      
+      if (startChunkIndex === -1) startChunkIndex = 0;
+      if (endChunkIndex === -1) endChunkIndex = file.chunks.length - 1;
+      
+      // Download and concatenate needed chunks
+      const chunksToFetch = file.chunks.slice(startChunkIndex, endChunkIndex + 1);
+      const chunkBuffers: Buffer[] = [];
+      
+      for (const chunk of chunksToFetch) {
+        let data = await downloadChunkFromDiscord(chunk.messageId!, chunk.channelId!);
+        if (file.encrypted && file.user?.encryptionKey) {
+          data = decryptBuffer(data, file.user.encryptionKey);
+        }
+        chunkBuffers.push(data);
+      }
+      
+      const fullData = Buffer.concat(chunkBuffers);
+      
+      // Calculate offset within concatenated chunks
+      let offsetOfFirstChunk = 0;
+      for (let i = 0; i < startChunkIndex; i++) {
+        offsetOfFirstChunk += Number(file.chunks[i].size || 0);
+      }
+      const endOffsetInData = end - offsetOfFirstChunk;
+      const rangeData = fullData.slice(startOffsetInChunk, endOffsetInData + 1);
+      const actualEnd = Math.min(start + rangeData.length - 1, totalFileSize - 1);
+      
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${actualEnd}/${totalFileSize}`);
+      res.setHeader('Content-Length', rangeData.length);
+      return res.end(rangeData);
+    }
+    
+    // No range - download all chunks
+    res.setHeader('Content-Length', totalFileSize);
+    
     for (const chunk of file.chunks) {
       let data = await downloadChunkFromDiscord(chunk.messageId!, chunk.channelId!);
       if (file.encrypted && file.user?.encryptionKey) {
