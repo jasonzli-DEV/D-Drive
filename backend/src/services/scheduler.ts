@@ -46,7 +46,7 @@ async function processTaskQueue() {
       logger.error('Scheduled task run failed', { taskId, err });
       taskError = err instanceof Error ? err : new Error(String(err));
     } finally {
-      running.set(taskId, false);
+      running.delete(taskId);
       
       // Notify any waiting callers
       const pending = pendingCompletions.get(taskId);
@@ -283,7 +283,7 @@ export function isTaskQueued(taskId: string): boolean {
 
 // Clear running state for a task (called when task is manually stopped)
 export function clearRunningState(taskId: string): void {
-  running.set(taskId, false);
+  running.delete(taskId);
   logger.info('Cleared running state for task', { taskId });
 }
 
