@@ -746,6 +746,7 @@ router.get('/folders/all', authenticate, async (req: Request, res: Response) => 
         id: true,
         name: true,
         parentId: true,
+        path: true,
         createdAt: true,
         updatedAt: true,
       },
