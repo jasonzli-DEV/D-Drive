@@ -942,6 +942,88 @@ export default function SharedPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Preview Dialog */}
+      <Dialog fullWidth maxWidth="xl" open={previewOpen} onClose={closePreview}>
+        <Box tabIndex={0} onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') showPrevPreview();
+          if (e.key === 'ArrowRight') showNextPreview();
+          if (e.key === 'Escape') closePreview();
+        }} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 480 }}>
+          <IconButton onClick={showPrevPreview} disabled={previewIndex <= 0} sx={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+            <ChevronLeft />
+          </IconButton>
+          <Box sx={{ maxWidth: '90%', maxHeight: '80%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {previewList[previewIndex] ? (
+              previewLoading ? (
+                <CircularProgress />
+              ) : previewError ? (
+                <Typography color="error">{previewError}</Typography>
+              ) : isPdfFile(previewList[previewIndex]) ? (
+                previewBlobUrl ? (
+                  <embed
+                    src={previewBlobUrl}
+                    type="application/pdf"
+                    title={previewList[previewIndex].name}
+                    style={{ width: '100%', height: '80vh', border: 0 }}
+                  />
+                ) : null
+              ) : previewBlobUrl ? (
+                isVideoFile(previewList[previewIndex]) ? (
+                  <Box sx={{ width: '100%', position: 'relative' }}>
+                    {videoLoadProgress > 0 && videoLoadProgress < 100 && (
+                      <Box sx={{ position: 'absolute', top: 10, left: 10, right: 10, zIndex: 1 }}>
+                        <LinearProgress variant="determinate" value={videoLoadProgress} />
+                        <Typography variant="caption" sx={{ color: 'white', textShadow: '0 0 4px black' }}>
+                          Loading: {Math.round(videoLoadProgress)}%
+                        </Typography>
+                      </Box>
+                    )}
+                    <video
+                      src={previewBlobUrl}
+                      controls
+                      style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                      onProgress={(e) => {
+                        const video = e.currentTarget;
+                        if (video.buffered.length > 0) {
+                          const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                          const duration = video.duration;
+                          if (duration > 0) {
+                            setVideoLoadProgress((bufferedEnd / duration) * 100);
+                          }
+                        }
+                      }}
+                      onLoadedData={() => setVideoLoadProgress(100)}
+                    />
+                  </Box>
+                ) : (
+                  <img
+                    src={previewBlobUrl}
+                    alt={previewList[previewIndex].name}
+                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                  />
+                )
+              ) : null
+            ) : null}
+          </Box>
+          <IconButton onClick={showNextPreview} disabled={previewIndex >= previewList.length - 1} sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+            <ChevronRight />
+          </IconButton>
+          <IconButton onClick={closePreview} sx={{ position: 'absolute', right: 8, top: 8 }}>
+            <X />
+          </IconButton>
+          {previewList[previewIndex] && (
+            <Box sx={{ position: 'absolute', bottom: 16, left: '50%', transform: 'translateX(-50%)', textAlign: 'center' }}>
+              <Typography variant="body2" sx={{ color: 'text.secondary' }}>
+                {previewList[previewIndex].name}
+              </Typography>
+              <Typography variant="caption" sx={{ color: 'text.disabled' }}>
+                {previewIndex + 1} / {previewList.length}
+              </Typography>
+            </Box>
+          )}
+        </Box>
+      </Dialog>
       </Paper>
     </Box>
   );
