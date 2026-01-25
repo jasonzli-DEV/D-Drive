@@ -143,7 +143,11 @@ export default function DrivePage() {
   };
 
   const openImageViewer = (file: FileItem) => {
-    const imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f) || isTextFile(f));
+    let imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f) || isTextFile(f));
+    // If the clicked file isn't in the current listing (freshly uploaded), add it so viewer can load it
+    if (!imgs.find(i => i.id === file.id)) {
+      imgs = [file, ...imgs];
+    }
     const idx = imgs.findIndex(i => i.id === file.id);
     setImageList(imgs);
     setImageViewerIndex(Math.max(0, idx));
