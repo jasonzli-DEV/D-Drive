@@ -310,8 +310,8 @@ async function interactiveConfig() {
   });
 }
 
-// Handle no arguments - show help
-if (process.argv.length === 2) {
+// Handle no arguments - show help (but not for --version or --help)
+if (process.argv.length === 2 && !process.argv.includes('-v') && !process.argv.includes('--version') && !process.argv.includes('-h') && !process.argv.includes('--help')) {
   console.log(banner);
   program.outputHelp();
 }
