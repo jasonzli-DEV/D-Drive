@@ -1183,15 +1183,21 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
 
     if (useRecycleBin) {
       // Soft delete: move to recycle bin
+      // Change path to include trash ID to allow new files with same name
       const now = new Date();
+      const trashId = crypto.randomUUID().slice(0, 8);
       await prisma.$transaction(async (tx) => {
         for (const fileId of filesToDelete) {
           const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true } });
+          const originalPath = f?.path || '';
+          // Prefix path with /.trash/{trashId} to make it unique and hidden from normal queries
+          const trashedPath = `/.trash/${trashId}${originalPath}`;
           await tx.file.update({
             where: { id: fileId },
             data: {
               deletedAt: now,
-              originalPath: f?.path || null,
+              originalPath: originalPath,
+              path: trashedPath,
             },
           });
         }
