@@ -45,7 +45,9 @@ import {
   Edit,
   Home,
   ChevronRight,
+  ChevronLeft,
   ChevronDown,
+  Close,
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
@@ -114,6 +116,28 @@ export default function DrivePage() {
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
   
   const [breadcrumbs, setBreadcrumbs] = useState<FileItem[]>([]);
+  const [imageViewerOpen, setImageViewerOpen] = useState(false);
+  const [imageViewerIndex, setImageViewerIndex] = useState(0);
+  const [imageList, setImageList] = useState<FileItem[]>([]);
+
+  const isImageFile = (f: FileItem) => {
+    if (f.mimeType && f.mimeType.startsWith('image/')) return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'tiff', 'heic'].includes(ext);
+  };
+
+  const openImageViewer = (file: FileItem) => {
+    const imgs = (files || []).filter(isImageFile);
+    const idx = imgs.findIndex(i => i.id === file.id);
+    setImageList(imgs);
+    setImageViewerIndex(Math.max(0, idx));
+    setImageViewerOpen(true);
+  };
+
+  const closeImageViewer = () => setImageViewerOpen(false);
+
+  const showPrevImage = () => setImageViewerIndex(i => Math.max(0, i - 1));
+  const showNextImage = () => setImageViewerIndex(i => Math.min(imageList.length - 1, i + 1));
 
   // Fetch files
   const { data: files, isLoading } = useQuery({
@@ -1411,7 +1435,7 @@ export default function DrivePage() {
                         }}
                       />
                     </TableCell>
-                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); }}>
+                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); else if (file.type === 'FILE' && isImageFile(file)) openImageViewer(file); }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {file.type === 'DIRECTORY' ? (
                           <Folder size={22} color="#FFA000" />
@@ -1518,6 +1542,34 @@ export default function DrivePage() {
           <ListItemText>Delete</ListItemText>
         </MenuItem>
       </Menu>
+
+      {/* Image Viewer Dialog */}
+      <Dialog fullWidth maxWidth="xl" open={imageViewerOpen} onClose={closeImageViewer}>
+        <Box tabIndex={0} onKeyDown={(e) => {
+          if (e.key === 'ArrowLeft') showPrevImage();
+          if (e.key === 'ArrowRight') showNextImage();
+          if (e.key === 'Escape') closeImageViewer();
+        }} sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 480 }}>
+          <IconButton onClick={showPrevImage} disabled={imageViewerIndex <= 0} sx={{ position: 'absolute', left: 8, top: '50%', transform: 'translateY(-50%)' }}>
+            <ChevronLeft />
+          </IconButton>
+          <Box sx={{ maxWidth: '90%', maxHeight: '80%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            {imageList[imageViewerIndex] ? (
+              <img
+                src={`${import.meta.env.VITE_API_URL || '/api'}/files/${imageList[imageViewerIndex].id}/download`}
+                alt={imageList[imageViewerIndex].name}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+              />
+            ) : null}
+          </Box>
+          <IconButton onClick={showNextImage} disabled={imageViewerIndex >= imageList.length - 1} sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
+            <ChevronRight />
+          </IconButton>
+          <IconButton onClick={closeImageViewer} sx={{ position: 'absolute', right: 8, top: 8 }}>
+            <Close />
+          </IconButton>
+        </Box>
+      </Dialog>
 
       <Dialog open={newFolderOpen} onClose={() => setNewFolderOpen(false)}>
         <DialogTitle>Create New Folder</DialogTitle>
