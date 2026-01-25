@@ -53,26 +53,26 @@ fi
 
 # Stop existing containers
 echo "🛑 Stopping existing containers..."
-docker-compose down || true
+docker compose down || true
 
 # Build and start containers
 echo "🏗️  Building containers..."
-docker-compose build --no-cache
+docker compose build --no-cache
 
 echo "▶️  Starting containers..."
-docker-compose up -d
+docker compose up -d
 
 # Wait for services to start
 echo "⏳ Waiting for services to start..."
 sleep 10
 
 # Check if containers are running
-if docker-compose ps | grep -q "Up"; then
+if docker compose ps | grep -q "Up\|running"; then
     echo "✅ Containers are running!"
-    docker-compose ps
+    docker compose ps
 else
     echo "❌ Failed to start containers"
-    docker-compose logs
+    docker compose logs
     exit 1
 fi
 
@@ -83,7 +83,7 @@ echo "Access your application at:"
 echo "  Web: http://$(hostname -I | awk '{print $1}'):3000"
 echo "  API: http://$(hostname -I | awk '{print $1}'):5000"
 echo ""
-echo "View logs with: docker-compose logs -f"
+echo "View logs with: docker compose logs -f"
 ENDSSH
 
 echo ""
