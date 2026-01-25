@@ -427,10 +427,14 @@ router.get('/:id/download', authenticate, async (req: Request, res: Response) =>
 
     // Sanitize filename to prevent header injection
     const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
-    res.setHeader('Content-Type', file.mimeType || 'application/octet-stream');
-    // Allow client to request inline display (e.g., PDFs) via ?inline=1
+    // Choose an appropriate Content-Type. If the client requested inline display
+    // and the file appears to be a PDF (by mimeType or filename), force
+    // `application/pdf` so browsers render it instead of downloading.
     const inlineParam = String(req.query.inline || '').toLowerCase();
     const preferInline = inlineParam === '1' || inlineParam === 'true';
+    const isPdf = (file.mimeType && file.mimeType.includes('pdf')) || (sanitizedName.toLowerCase().endsWith('.pdf'));
+    const contentType = (preferInline && isPdf) ? 'application/pdf' : (file.mimeType || 'application/octet-stream');
+    res.setHeader('Content-Type', contentType);
     const disposition = preferInline ? 'inline' : 'attachment';
     res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
     res.setHeader('Content-Length', fileData.length.toString());
