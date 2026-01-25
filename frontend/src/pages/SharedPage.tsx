@@ -859,6 +859,16 @@ export default function SharedPage() {
                         </IconButton>
                       </Tooltip>
                     )}
+                    {share.file.type === 'FILE' && tab === 0 && canPreview(share.file) && (
+                      <Tooltip title="Preview">
+                        <IconButton
+                          size="small"
+                          onClick={() => openPreview(share.file, [share.file])}
+                        >
+                          <Eye size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
                     {share.file.type === 'FILE' && tab === 0 && (
                       <Tooltip title="Download">
                         <IconButton
@@ -867,6 +877,16 @@ export default function SharedPage() {
                           color="primary"
                         >
                           <Download size={18} />
+                        </IconButton>
+                      </Tooltip>
+                    )}
+                    {tab === 1 && (
+                      <Tooltip title="Edit sharing">
+                        <IconButton
+                          size="small"
+                          onClick={() => {/* TODO: Open edit share dialog */}}
+                        >
+                          <Edit size={18} />
                         </IconButton>
                       </Tooltip>
                     )}
