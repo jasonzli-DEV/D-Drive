@@ -160,13 +160,10 @@ export default function Layout({ children }: LayoutProps) {
             >
               <Box
                 component="img"
-                src="/D-Drive.png"
+                src={theme.palette.mode === 'dark' ? '/D-Drive Dark.png' : '/D-Drive Light.png'}
                 alt="D-Drive"
                 sx={{ width: { xs: 36, sm: 48 }, height: { xs: 36, sm: 48 }, objectFit: 'contain', bgcolor: 'transparent' }}
               />
-              <Typography variant="h6" fontWeight={700} sx={{ ml: 1.5, display: { xs: 'none', sm: 'block' } }}>
-                D-Drive
-              </Typography>
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           

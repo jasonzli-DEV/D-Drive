@@ -110,16 +110,13 @@ export default function LoginPage() {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
                   <Box
                     component="img"
-                    src="/D-Drive.png"
+                    src="/D-Drive Dark.png"
                     alt="D-Drive"
                     sx={{ width: 72, height: 72, filter: 'drop-shadow(0 4px 12px rgba(88, 101, 242, 0.5))' }}
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}
                   />
-                  <Typography variant="h2" fontWeight={700} sx={{ textShadow: '0 2px 20px rgba(88, 101, 242, 0.3)' }}>
-                    D-Drive
-                  </Typography>
                 </Box>
                 
                 <Typography variant="h5" sx={{ mb: 3, color: 'rgba(255,255,255,0.85)', lineHeight: 1.6 }}>
