@@ -200,7 +200,8 @@ export default function DrivePage() {
 
     const fetchImage = async () => {
       try {
-        const res = await api.get(`/files/${current.id}/download`, {
+        const downloadUrl = isPdfFile(current) ? `/files/${current.id}/download?inline=1` : `/files/${current.id}/download`;
+        const res = await api.get(downloadUrl, {
           responseType: 'blob',
           signal: controller.signal as any,
         });
