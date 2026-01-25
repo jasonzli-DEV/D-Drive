@@ -812,23 +812,53 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process files in batches for better throughput
-          // HYBRID APPROACH: Batch small files aggressively, large files one at a time
-          // Memory-safe batching based on file size to balance speed vs OOM risk
+          // ADAPTIVE BATCHING: Dynamically adjust batch size based on available RAM
+          // Keep available memory above 512MB while maximizing throughput
           const TINY_FILE_THRESHOLD = 100 * 1024;    // 100KB - batch many of these
           const SMALL_FILE_THRESHOLD = 1024 * 1024;  // 1MB - batch fewer of these
-          const TINY_BATCH_SIZE = 50;   // Process 50 tiny files at once
-          const SMALL_BATCH_SIZE = 10;  // Process 10 small files at once
+          const MIN_AVAILABLE_RAM_MB = 512;          // Keep at least 512MB free
+          const MIN_BATCH_SIZE = 10;                 // Minimum batch size
+          const MAX_BATCH_SIZE = 200;                // Maximum batch size
+          
+          // Helper to get available memory (rough estimate)
+          const getAvailableMemoryMB = () => {
+            const freeMem = require('os').freemem();
+            return Math.floor(freeMem / (1024 * 1024));
+          };
+          
+          // Calculate batch size based on available RAM and file size
+          const calculateBatchSize = (avgFileSize: number): number => {
+            const availableMB = getAvailableMemoryMB();
+            const excessMB = Math.max(0, availableMB - MIN_AVAILABLE_RAM_MB);
+            
+            // More aggressive batching when we have lots of free RAM
+            if (excessMB > 2000) {
+              return MAX_BATCH_SIZE; // 2GB+ excess: max speed
+            } else if (excessMB > 1000) {
+              return 150; // 1-2GB excess: fast
+            } else if (excessMB > 500) {
+              return 100; // 500MB-1GB excess: moderate
+            } else if (excessMB > 200) {
+              return 50; // 200-500MB excess: conservative
+            } else if (excessMB > 100) {
+              return 25; // 100-200MB excess: very conservative
+            } else {
+              return MIN_BATCH_SIZE; // <100MB excess: minimal batching
+            }
+          };
           
           // Sort files into buckets by size for optimal batching
           const tinyFiles = files.filter(f => f.size < TINY_FILE_THRESHOLD);
           const smallFiles = files.filter(f => f.size >= TINY_FILE_THRESHOLD && f.size < SMALL_FILE_THRESHOLD);
           const largeFiles = files.filter(f => f.size >= SMALL_FILE_THRESHOLD);
           
-          // Process tiny files in large batches (bluemap tiles, etc.)
-          for (let i = 0; i < tinyFiles.length; i += TINY_BATCH_SIZE) {
+          // Process tiny files with adaptive batching (bluemap tiles, etc.)
+          for (let i = 0; i < tinyFiles.length; i += calculateBatchSize(50 * 1024)) {
             if (runningTasks.get(taskId)?.cancelled) throw new Error('Task was cancelled');
             
-            const batch = tinyFiles.slice(i, i + TINY_BATCH_SIZE);
+            const batchSize = calculateBatchSize(50 * 1024);
+            const batch = tinyFiles.slice(i, i + batchSize);
+            
             await Promise.all(batch.map(async (file) => {
               try {
                 const buffer = await downloadToBufferWithRetry(file.remoteFull);
@@ -841,17 +871,19 @@ export async function runTaskNow(taskId: string) {
               }
             }));
             
-            // Update progress
-            if (i % 200 === 0) {
+            // Update progress every 200 files
+            if (filesAdded % 200 === 0) {
               updateProgress({ phase: 'downloading', filesProcessed: filesAdded, totalBytes, currentDir: dir, reconnects: reconnectAttempts });
             }
           }
           
-          // Process small files in moderate batches
-          for (let i = 0; i < smallFiles.length; i += SMALL_BATCH_SIZE) {
+          // Process small files with adaptive batching
+          for (let i = 0; i < smallFiles.length; i += calculateBatchSize(512 * 1024)) {
             if (runningTasks.get(taskId)?.cancelled) throw new Error('Task was cancelled');
             
-            const batch = smallFiles.slice(i, i + SMALL_BATCH_SIZE);
+            const batchSize = Math.max(5, Math.floor(calculateBatchSize(512 * 1024) / 2)); // Half the batch size for larger files
+            const batch = smallFiles.slice(i, i + batchSize);
+            
             await Promise.all(batch.map(async (file) => {
               try {
                 const buffer = await downloadToBufferWithRetry(file.remoteFull);
