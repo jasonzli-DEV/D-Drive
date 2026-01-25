@@ -106,6 +106,11 @@ function formatTimestamp(d: Date) {
   return `${month}-${day}-${year}.${hh}:${mm}:${ss}`;
 }
 
+function looksLikeTimestampPrefix(name: string) {
+  // Matches patterns like 1-4-2026.15:59:23 or 01-04-2026.15:59:23
+  return /^\d{1,2}-\d{1,2}-\d{4}\.\d{2}:\d{2}:\d{2}/.test(name);
+}
+
 // Run task now: connect to SFTP, download entries, optionally compress, encrypt, and store
 export async function runTaskNow(taskId: string) {
   try {
@@ -223,9 +228,17 @@ export async function runTaskNow(taskId: string) {
 
     // For each upload entry, store it using storage helper into the chosen parent (folder or destination)
     for (const entry of uploadEntries) {
-      const nameToUse = (task.compress === 'NONE' || task.compress === null)
-        ? entry.name
-        : (task.timestampNames ? `${formatTimestamp(new Date())}.${entry.name}` : entry.name);
+      let nameToUse: string;
+      if (task.compress === 'NONE' || task.compress === null) {
+        nameToUse = entry.name;
+      } else {
+        if (task.timestampNames) {
+          // Don't double-prefix if entry already begins with a timestamp
+          nameToUse = looksLikeTimestampPrefix(entry.name) ? entry.name : `${formatTimestamp(new Date())}.${entry.name}`;
+        } else {
+          nameToUse = entry.name;
+        }
+      }
       await storeBufferAsFile(task.userId, targetParentId, nameToUse, entry.buffer, undefined, shouldEncrypt);
     }
 
