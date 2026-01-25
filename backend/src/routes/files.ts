@@ -1125,11 +1125,14 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
 
           logger.info(`Streaming upload started: user=${userId} fileId=${fileRecord.id} name=${fileRecord.name} parent=${parentPath}`);
 
-          // Stream processing: accumulate until CHUNK_SIZE, then send
-          let bufferQueue: Buffer[] = [];
-          let bufferedBytes = 0;
-          let chunkCounter = 0;
-          let totalBytes = 0;
+              // Stream processing: accumulate until CHUNK_SIZE (or smaller when
+              // encryption is enabled to account for per-chunk encryption overhead), then send
+              let bufferQueue: Buffer[] = [];
+              let bufferedBytes = 0;
+              let chunkCounter = 0;
+              let totalBytes = 0;
+              const ENCRYPTION_OVERHEAD = 16 + 12 + 16; // salt (16) + iv (12) + authTag (16) = 44 bytes
+              const effectiveChunkSize = shouldEncrypt ? Math.max(1024, CHUNK_SIZE - ENCRYPTION_OVERHEAD) : CHUNK_SIZE;
 
           // helper to flush a chunk (plaintext chunkBuffer)
           const flushChunk = async (chunkBuffer: Buffer) => {
@@ -1212,13 +1215,13 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
                 totalBytes += data.length;
 
                 // while we have at least CHUNK_SIZE, extract and send
-                while (bufferedBytes >= CHUNK_SIZE) {
-                  // build chunkBuffer of CHUNK_SIZE
-                  const chunkBuffer = Buffer.alloc(CHUNK_SIZE);
+                while (bufferedBytes >= effectiveChunkSize) {
+                  // build chunkBuffer of effectiveChunkSize
+                  const chunkBuffer = Buffer.alloc(effectiveChunkSize);
                   let offset = 0;
-                  while (offset < CHUNK_SIZE) {
+                  while (offset < effectiveChunkSize) {
                     const head = bufferQueue[0];
-                    const need = Math.min(head.length, CHUNK_SIZE - offset);
+                    const need = Math.min(head.length, effectiveChunkSize - offset);
                     head.copy(chunkBuffer, offset, 0, need);
                     if (need === head.length) {
                       bufferQueue.shift();
@@ -1227,7 +1230,7 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
                     }
                     offset += need;
                   }
-                  bufferedBytes -= CHUNK_SIZE;
+                  bufferedBytes -= effectiveChunkSize;
                   await flushChunk(chunkBuffer);
                 }
               } catch (e) {
