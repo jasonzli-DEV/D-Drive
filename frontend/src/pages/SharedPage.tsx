@@ -492,7 +492,7 @@ export default function SharedPage() {
                   key={file.id} 
                   hover
                   onContextMenu={(e) => handleContextMenu(e, file)}
-                  onDoubleClick={() => {
+                  onClick={() => {
                     if (file.type === 'DIRECTORY') {
                       navigateToFolder(file);
                     } else if (canPreview(file)) {
@@ -814,7 +814,7 @@ export default function SharedPage() {
                 <TableRow 
                   key={share.id} 
                   hover
-                  onDoubleClick={() => {
+                  onClick={() => {
                     if (share.file.type === 'DIRECTORY' && tab === 0) {
                       openFolder(share);
                     } else if (share.file.type === 'FILE' && tab === 0 && canPreview(share.file)) {
@@ -827,6 +827,12 @@ export default function SharedPage() {
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {share.file.type === 'DIRECTORY' ? (
                         <Folder size={20} style={{ color: theme.palette.warning.main }} />
+                      ) : isImageFile(share.file) ? (
+                        <Image size={20} style={{ color: theme.palette.info.main }} />
+                      ) : isVideoFile(share.file) ? (
+                        <Play size={20} style={{ color: theme.palette.error.main }} />
+                      ) : isPdfFile(share.file) ? (
+                        <FileText size={20} style={{ color: theme.palette.warning.dark }} />
                       ) : (
                         <File size={20} style={{ color: theme.palette.primary.main }} />
                       )}
