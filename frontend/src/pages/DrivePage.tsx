@@ -108,9 +108,7 @@ export default function DrivePage() {
   const [menuAnchor, setMenuAnchor] = useState<null | HTMLElement>(null);
   const [menuFile, setMenuFile] = useState<FileItem | null>(null);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
-  const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [bulkMoveOpen, setBulkMoveOpen] = useState(false);
-  const [bulkProcessing, setBulkProcessing] = useState(false);
   const [encryptFiles, setEncryptFiles] = useState(true);
   const [draggedFile, setDraggedFile] = useState<FileItem | null>(null);
   
