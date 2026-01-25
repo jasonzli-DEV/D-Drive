@@ -74,6 +74,8 @@ router.get('/by-me', authenticate, async (req: Request, res: Response) => {
             size: true,
             mimeType: true,
             path: true,
+            createdAt: true,
+            updatedAt: true,
           },
         },
         sharedWith: {
@@ -124,6 +126,8 @@ router.get('/with-me', authenticate, async (req: Request, res: Response) => {
             mimeType: true,
             path: true,
             deletedAt: true,
+            createdAt: true,
+            updatedAt: true,
           },
         },
         owner: {
