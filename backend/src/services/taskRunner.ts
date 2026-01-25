@@ -148,9 +148,9 @@ async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise
   for (const part of pathParts) {
     currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
     
-    // Check if this folder already exists
+    // Check if this folder already exists (must not be trashed)
     let folder = await prisma.file.findFirst({
-      where: { userId, path: currentPath, type: 'DIRECTORY' }
+      where: { userId, path: currentPath, type: 'DIRECTORY', deletedAt: null }
     });
     
     if (!folder) {
@@ -565,7 +565,7 @@ export async function runTaskNow(taskId: string) {
     // Fallback: parallel SFTP directory listing (for SFTP-only servers)
     if (!execWorked) {
       const dirsToScan: string[] = [task.sftpPath];
-      const PARALLEL_SCANS = 10; // Scan up to 10 directories in parallel
+      const PARALLEL_SCANS = 20; // Scan up to 20 directories in parallel (increased from 10)
       
       // Increase max listeners to prevent warnings during parallel scans
       const sshClient = (sftp as any).client;
@@ -813,8 +813,8 @@ export async function runTaskNow(taskId: string) {
           
           // Process files in batches for better throughput
           // Higher batch size for small files to reduce per-file SFTP overhead
-          const BATCH_SIZE = 100; // Process 100 files concurrently (increased from 50)
-          const SMALL_FILE_THRESHOLD = 2 * 1024 * 1024; // 2MB - use memory for small files (increased from 1MB)
+          const BATCH_SIZE = 150; // Process 150 files concurrently (increased for better throughput)
+          const SMALL_FILE_THRESHOLD = 5 * 1024 * 1024; // 5MB - use memory for small files (increased)
           
           for (let i = 0; i < files.length; i += BATCH_SIZE) {
             // Check for cancellation
@@ -882,7 +882,7 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process directories - parallelize leaf directories, recurse sequentially for deep trees
-          const DIR_BATCH_SIZE = 5; // Process up to 5 directories in parallel
+          const DIR_BATCH_SIZE = 10; // Process up to 10 directories in parallel (increased from 5)
           for (let i = 0; i < dirs.length; i += DIR_BATCH_SIZE) {
             const dirBatch = dirs.slice(i, i + DIR_BATCH_SIZE);
             await Promise.all(dirBatch.map(d => walk(d.remoteFull, d.rel)));
