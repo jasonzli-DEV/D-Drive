@@ -1526,7 +1526,7 @@ export default function DrivePage() {
                         }}
                       />
                     </TableCell>
-                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); else if (file.type === 'FILE' && (isImageFile(file) || isVideoFile(file))) openImageViewer(file); }}>
+                    <TableCell onClick={() => { if (file.type === 'DIRECTORY') handleFolderClick(file); else if (file.type === 'FILE' && (isImageFile(file) || isVideoFile(file) || isPdfFile(file))) openImageViewer(file); }}>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5 }}>
                         {file.type === 'DIRECTORY' ? (
                           <Folder size={22} color="#FFA000" />
