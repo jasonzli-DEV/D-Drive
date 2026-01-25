@@ -151,6 +151,14 @@ export default function DrivePage() {
     const idx = imgs.findIndex(i => i.id === file.id);
     setImageList(imgs);
     setImageViewerIndex(Math.max(0, idx));
+    // initialize viewer state and open
+    // For text files, set an empty string immediately so the <pre> renders
+    // (some browser/content scripts can error if there is no content node).
+    if (isTextFile(file)) {
+      setTextContent('');
+    } else {
+      setTextContent(null);
+    }
     setImageViewerOpen(true);
   };
 
