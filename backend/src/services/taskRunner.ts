@@ -56,12 +56,32 @@ export async function pruneOldBackups(userId: string, destinationId: string, max
 }
 
 async function bufferFromStream(stream: any): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    stream.on('data', (c: Buffer) => chunks.push(c));
-    stream.on('end', () => resolve(Buffer.concat(chunks)));
-    stream.on('error', (e: any) => reject(e));
-  });
+  // If already a Buffer, return directly
+  if (Buffer.isBuffer(stream)) return stream;
+  if (!stream) return Buffer.alloc(0);
+
+  // If it's a Node readable stream (has .on), collect chunks
+  if (typeof stream.on === 'function') {
+    return new Promise((resolve, reject) => {
+      const chunks: Buffer[] = [];
+      stream.on('data', (c: Buffer) => chunks.push(Buffer.from(c)));
+      stream.on('end', () => resolve(Buffer.concat(chunks)));
+      stream.on('error', (e: any) => reject(e));
+    });
+  }
+
+  // Handle common non-stream return types
+  if (typeof stream === 'string') return Buffer.from(stream);
+  if (ArrayBuffer.isView(stream)) return Buffer.from(stream as any);
+  if (stream instanceof ArrayBuffer) return Buffer.from(new Uint8Array(stream));
+
+  // If it's a promise-like object, await and recurse
+  if (stream && typeof (stream as any).then === 'function') {
+    const awaited = await stream;
+    return bufferFromStream(awaited);
+  }
+
+  throw new Error('Unsupported stream type passed to bufferFromStream');
 }
 
 function pad(n: number) { return n.toString().padStart(2, '0'); }
