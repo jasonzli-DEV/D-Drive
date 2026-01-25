@@ -27,7 +27,7 @@ export async function cleanupOrphanedDiscordFiles() {
     
     logger.info(`Found ${trackedMessageIds.size} tracked messages in database`);
     
-    // Fetch all messages from Discord channel
+    // Fetch all messages from Discord channel with rate limit handling
     let allMessages: any[] = [];
     let lastId: string | undefined;
     
@@ -35,18 +35,46 @@ export async function cleanupOrphanedDiscordFiles() {
       const params: any = { limit: 100 };
       if (lastId) params.before = lastId;
       
-      const response = await axios.get(
-        `https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages`,
-        {
-          headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` },
-          params,
+      let response;
+      let retries = 0;
+      const maxRetries = 5;
+      
+      while (retries < maxRetries) {
+        try {
+          response = await axios.get(
+            `https://discord.com/api/v10/channels/${DISCORD_CHANNEL_ID}/messages`,
+            {
+              headers: { Authorization: `Bot ${DISCORD_BOT_TOKEN}` },
+              params,
+            }
+          );
+          break; // Success, exit retry loop
+        } catch (err: any) {
+          // Handle rate limiting (429)
+          if (err?.response?.status === 429) {
+            const retryAfter = err?.response?.data?.retry_after || err?.response?.headers?.['retry-after'] || 5;
+            const waitMs = (typeof retryAfter === 'number' ? retryAfter : parseFloat(retryAfter)) * 1000 + 500;
+            logger.warn(`Discord rate limited during cleanup, waiting ${waitMs}ms (attempt ${retries + 1}/${maxRetries})`);
+            await new Promise(resolve => setTimeout(resolve, waitMs));
+            retries++;
+          } else {
+            throw err; // Re-throw non-rate-limit errors
+          }
         }
-      );
+      }
+      
+      if (!response) {
+        logger.error('Failed to fetch messages after max retries due to rate limiting');
+        return; // Exit cleanup gracefully instead of crashing
+      }
       
       if (!response.data || response.data.length === 0) break;
       
       allMessages = allMessages.concat(response.data);
       lastId = response.data[response.data.length - 1].id;
+      
+      // Rate limit: small delay between pagination requests to avoid hitting limits
+      await new Promise(resolve => setTimeout(resolve, 200));
       
       // Limit to prevent infinite loops
       if (allMessages.length > 10000) {
