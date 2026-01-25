@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   Box,
@@ -393,9 +393,11 @@ export default function SharedPage() {
   };
 
   // Auto-load preview when dialog opens or index changes  
-  if (previewOpen && previewList[previewIndex] && loadedPreviewIdRef.current !== previewList[previewIndex].id) {
-    loadPreview();
-  }
+  useEffect(() => {
+    if (previewOpen && previewList[previewIndex] && loadedPreviewIdRef.current !== previewList[previewIndex].id) {
+      loadPreview();
+    }
+  }, [previewOpen, previewIndex, previewList]);
 
   const isLoading = currentFolder ? loadingFolder : (tab === 0 ? loadingWithMe : loadingByMe);
   const permission = currentFolder?.permission || folderContents?.permission;
@@ -811,8 +813,14 @@ export default function SharedPage() {
                 <TableRow 
                   key={share.id} 
                   hover
-                  onDoubleClick={() => share.file.type === 'DIRECTORY' && tab === 0 && openFolder(share)}
-                  sx={{ cursor: share.file.type === 'DIRECTORY' && tab === 0 ? 'pointer' : 'default' }}
+                  onDoubleClick={() => {
+                    if (share.file.type === 'DIRECTORY' && tab === 0) {
+                      openFolder(share);
+                    } else if (share.file.type === 'FILE' && tab === 0 && canPreview(share.file)) {
+                      openPreview(share.file as FolderFile, [share.file as FolderFile]);
+                    }
+                  }}
+                  sx={{ cursor: (share.file.type === 'DIRECTORY' && tab === 0) || (share.file.type === 'FILE' && tab === 0 && canPreview(share.file)) ? 'pointer' : 'default' }}
                 >
                   <TableCell>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
