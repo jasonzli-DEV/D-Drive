@@ -397,7 +397,8 @@ export default function SharedPage() {
     if (previewOpen && previewList[previewIndex] && loadedPreviewIdRef.current !== previewList[previewIndex].id) {
       loadPreview();
     }
-  }, [previewOpen, previewIndex, previewList]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [previewOpen, previewIndex]);
 
   const isLoading = currentFolder ? loadingFolder : (tab === 0 ? loadingWithMe : loadingByMe);
   const permission = currentFolder?.permission || folderContents?.permission;
