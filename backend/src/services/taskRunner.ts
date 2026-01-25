@@ -177,10 +177,10 @@ async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise
 async function ensureTaskDestination(task: any): Promise<string | null> {
   if (!task.destinationId && !task.destinationPath) return null;
   
-  // Check if destination folder still exists
+  // Check if destination folder still exists (and is not trashed)
   if (task.destinationId) {
-    const dest = await prisma.file.findUnique({
-      where: { id: task.destinationId },
+    const dest = await prisma.file.findFirst({
+      where: { id: task.destinationId, deletedAt: null },
       select: { id: true, path: true }
     });
     
@@ -255,7 +255,7 @@ export async function pruneOldBackups(userId: string, destinationId: string, max
   if (maxFiles <= 0) return;
   try {
     const files = await prisma.file.findMany({
-      where: { userId, parentId: destinationId },
+      where: { userId, parentId: destinationId, deletedAt: null },
       orderBy: { createdAt: 'desc' },
       select: { id: true, createdAt: true, name: true },
     });
