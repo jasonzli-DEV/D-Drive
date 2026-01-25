@@ -863,7 +863,7 @@ export default function SharedPage() {
                       <Tooltip title="Preview">
                         <IconButton
                           size="small"
-                          onClick={() => openPreview(share.file, [share.file])}
+                          onClick={() => openPreview(share.file as unknown as FolderFile, [share.file as unknown as FolderFile])}
                         >
                           <Eye size={18} />
                         </IconButton>
