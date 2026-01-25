@@ -65,6 +65,8 @@ interface SharedFile {
     size: string;
     mimeType: string | null;
     path: string;
+    createdAt: string;
+    updatedAt: string;
   };
   owner?: {
     id: string;
@@ -863,15 +865,7 @@ export default function SharedPage() {
                       <Tooltip title="Preview">
                         <IconButton
                           size="small"
-                          onClick={() => {
-                            // Convert SharedFile.file to FolderFile with required fields
-                            const folderFile: FolderFile = {
-                              ...share.file,
-                              createdAt: share.createdAt, // Use share's createdAt as fallback
-                              updatedAt: share.createdAt
-                            };
-                            openPreview(folderFile, [folderFile]);
-                          }}
+                          onClick={() => openPreview(share.file as FolderFile, [share.file as FolderFile])}
                         >
                           <Eye size={18} />
                         </IconButton>
