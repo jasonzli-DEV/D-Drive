@@ -632,6 +632,8 @@ export default function DrivePage() {
           setBulkProgress(prev => prev ? { ...prev, completed: completed } : prev);
           continue;
         }
+        // create per-item copy progress entry
+        setCopyProgress(prev => [...prev, { id: newId, fileName: file?.name || `Copy of ${id}`, progress: 0, status: 'uploading' }]);
         // poll new file metadata and update progress by observed chunks
         let lastSeen = 0;
         while (lastSeen < expect) {
@@ -643,17 +645,30 @@ export default function DrivePage() {
             lastSeen = seen;
             completed += delta;
             setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, totalChunks) } : prev);
+            setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: Math.round((Math.min(lastSeen, expect) / Math.max(1, expect)) * 100) } : p));
           }
           if (lastSeen >= expect) break;
           // eslint-disable-next-line no-await-in-loop
           await new Promise(r => setTimeout(r, 500));
         }
+        setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: 100, status: 'success' } : p));
+        setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== newId)), 1500);
       } catch (err) {
         failed += 1;
         // approximate by adding expected chunks so progress keeps moving
         const expect = origCounts[id] || 1;
         completed += expect;
         setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, totalChunks), failed: (prev.failed || 0) + 1 } : prev);
+        // mark per-item copy as failed if there is a newId present
+        try {
+          const maybeNew = (err?.response?.data?.id) || null;
+          if (maybeNew) {
+            setCopyProgress(prev => prev.map(p => p.id === maybeNew ? { ...p, status: 'error' } : p));
+            setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== maybeNew)), 1500);
+          }
+        } catch (e) {
+          // ignore
+        }
       }
     }
 
@@ -678,20 +693,86 @@ export default function DrivePage() {
     if (selectedIds.length === 0) return;
     if (!window.confirm(`Delete ${selectedIds.length} selected items? This is irreversible.`)) return;
     setBulkProcessing(true);
-    setBulkProgress({ action: 'delete', total: selectedIds.length, completed: 0, failed: 0 });
-    let failed = 0;
-    for (let i = 0; i < selectedIds.length; i++) {
-      const id = selectedIds[i];
-      const file = files?.find(f => f.id === id);
-      setBulkProgress(prev => prev ? { ...prev, completed: i, currentName: file?.name || id } : prev);
+    // Build a work list at chunk granularity. For files we count chunks; for directories we
+    // collect nested files and count their chunks, then schedule directory deletions after.
+    const workFiles: Array<{ id: string; name?: string; chunks: number }> = [];
+    const workDirs: string[] = [];
+    const seen = new Set<string>();
+
+    // helper to fetch chunk count safely
+    const fetchChunkCount = async (fid: string) => {
       try {
-        await api.delete(`/files/${id}`, { data: { recursive: true } });
+        const m = await api.get(`/files/${fid}`);
+        return Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 1);
       } catch (err) {
-        failed += 1;
-        setBulkProgress(prev => prev ? { ...prev, failed: (prev.failed || 0) + 1 } : prev);
+        return 1;
+      }
+    };
+
+    for (const id of selectedIds) {
+      if (seen.has(id)) continue;
+      const f = files?.find(x => x.id === id);
+      if (f && f.type === 'FILE') {
+        const cnt = await fetchChunkCount(id);
+        workFiles.push({ id, name: f.name, chunks: cnt });
+        seen.add(id);
+      } else {
+        // assume directory: collect nested files and dirs
+        try {
+          const { files: nestedFiles, dirs: nestedDirs } = await collectFilesAndDirs(id);
+          for (const nf of nestedFiles) {
+            if (seen.has(nf.id)) continue;
+            const cnt = await fetchChunkCount(nf.id);
+            workFiles.push({ id: nf.id, name: nf.name, chunks: cnt });
+            seen.add(nf.id);
+          }
+          // push directories to delete after files
+          // include nested dirs then the root dir
+          for (const d of nestedDirs) workDirs.push(d.id);
+          workDirs.push(id);
+        } catch (err) {
+          // fallback: attempt to delete directly
+          workDirs.push(id);
+        }
       }
     }
-    setBulkProgress(prev => prev ? { ...prev, completed: prev.total } : prev);
+
+    const total = workFiles.reduce((s, w) => s + (w.chunks || 1), 0) + workDirs.length;
+    setBulkProgress({ action: 'delete', total, completed: 0, failed: 0 });
+    let completed = 0;
+    let failed = 0;
+
+    // delete files sequentially with chunk accounting
+    for (const wf of workFiles) {
+      setBulkProgress(prev => prev ? { ...prev, currentName: wf.name || wf.id } : prev);
+      try {
+        await api.delete(`/files/${wf.id}`, { data: { recursive: false } });
+        completed += wf.chunks || 1;
+        setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total) } : prev);
+      } catch (err) {
+        failed += 1;
+        // still advance by expected chunks so progress moves
+        completed += wf.chunks || 1;
+        setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total), failed: (prev.failed || 0) + 1 } : prev);
+      }
+    }
+
+    // delete directories (leaves first if provided in nested order)
+    for (const dirId of workDirs) {
+      setBulkProgress(prev => prev ? { ...prev, currentName: dirId } : prev);
+      try {
+        await api.delete(`/files/${dirId}`, { data: { recursive: false } });
+        completed += 1;
+        setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total) } : prev);
+      } catch (err) {
+        failed += 1;
+        completed += 1;
+        setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total), failed: (prev.failed || 0) + 1 } : prev);
+      }
+    }
+
+    // finalize
+    setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total) } : prev);
     const success = selectedIds.length - failed;
     if (failed === 0) {
       toast.success(`${success} deleted`);
