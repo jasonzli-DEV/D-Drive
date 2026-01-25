@@ -154,7 +154,7 @@ export default function Layout({ children }: LayoutProps) {
             {/* Logo on the left */}
             <IconButton
               onClick={() => navigate('/')}
-              sx={{ mr: 2, p: 0.5, borderRadius: 2, '&:hover': { bgcolor: 'action.hover' } }}
+              sx={{ mr: 1, p: 0, borderRadius: 2, '&:hover': { bgcolor: 'action.hover' } }}
               aria-label="Go to root drive"
               title="Go to root drive"
             >
@@ -162,7 +162,7 @@ export default function Layout({ children }: LayoutProps) {
                 component="img"
                 src={theme.palette.mode === 'dark' ? '/D-Drive Dark.png' : '/D-Drive Light.png'}
                 alt="D-Drive"
-                sx={{ width: { xs: 32, sm: 40 }, height: { xs: 32, sm: 40 }, objectFit: 'contain', bgcolor: 'transparent' }}
+                sx={{ width: { xs: 80, sm: 100 }, height: { xs: 32, sm: 40 }, objectFit: 'contain', bgcolor: 'transparent' }}
               />
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
