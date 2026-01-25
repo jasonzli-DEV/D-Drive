@@ -51,7 +51,6 @@ import {
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
-import TextViewer from '../components/TextViewer';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 import FolderSelectDialog from '../components/FolderSelectDialog';
@@ -123,7 +122,6 @@ export default function DrivePage() {
   const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
   const [imageLoading, setImageLoading] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
-  const [textContent, setTextContent] = useState<string | null>(null);
 
   const isImageFile = (f: FileItem) => {
     if (f.mimeType && f.mimeType.startsWith('image/')) return true;
@@ -143,6 +141,12 @@ export default function DrivePage() {
     return ['txt', 'json', 'md', 'csv', 'log', 'xml', 'yaml', 'yml', 'ini'].includes(ext);
   };
 
+  const isPdfFile = (f: FileItem) => {
+    if (f.mimeType && f.mimeType === 'application/pdf') return true;
+    const ext = (f.name || '').split('.').pop()?.toLowerCase() || '';
+    return ext === 'pdf';
+  };
+
   const openImageViewer = (file: FileItem) => {
     let imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f) || isTextFile(f));
     // If the clicked file isn't in the current listing (freshly uploaded), add it so viewer can load it
@@ -152,14 +156,27 @@ export default function DrivePage() {
     const idx = imgs.findIndex(i => i.id === file.id);
     setImageList(imgs);
     setImageViewerIndex(Math.max(0, idx));
-    // initialize viewer state and open
-    // For text files, set an empty string immediately so the <pre> renders
-    // (some browser/content scripts can error if there is no content node).
+    // If the user clicked a text file, don't open the viewer — download instead.
     if (isTextFile(file)) {
-      setTextContent('');
-    } else {
-      setTextContent(null);
+      (async () => {
+        try {
+          const res = await api.get(`/files/${file.id}/download`, { responseType: 'blob' });
+          const blob = res.data as Blob;
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          a.remove();
+          URL.revokeObjectURL(url);
+        } catch (err) {
+          toast.error('Failed to download file');
+        }
+      })();
+      return;
     }
+
     setImageViewerOpen(true);
   };
 
@@ -171,6 +188,7 @@ export default function DrivePage() {
   useEffect(() => {
     if (!imageViewerOpen) return;
     const current = imageList[imageViewerIndex];
+
     if (!current) return;
     let active = true;
     setImageError(null);
@@ -187,18 +205,9 @@ export default function DrivePage() {
         });
         if (!active) return;
         const blob = res.data as Blob;
-        // If text file, read text and set; otherwise create object URL for image/video
-        if (isTextFile(current)) {
-          try {
-            const txt = await blob.text();
-            setTextContent(txt);
-          } catch (e) {
-            setImageError('Failed to read text file');
-          }
-        } else {
-          localUrl = URL.createObjectURL(blob);
-          setImageBlobUrl(localUrl);
-        }
+        // Create object URL for images, videos, PDFs
+        localUrl = URL.createObjectURL(blob);
+        setImageBlobUrl(localUrl);
       } catch (err: any) {
         if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
         console.error('failed to fetch media', err);
@@ -218,7 +227,6 @@ export default function DrivePage() {
         localUrl = null;
       }
       setImageBlobUrl(null);
-      setTextContent(null);
     };
   }, [imageViewerOpen, imageViewerIndex, imageList]);
 
@@ -1642,11 +1650,13 @@ export default function DrivePage() {
                 <CircularProgress />
               ) : imageError ? (
                 <Typography color="error">{imageError}</Typography>
-              ) : isTextFile(imageList[imageViewerIndex]) ? (
-                textContent !== null ? (
-                  <Box sx={{ width: '100%', maxHeight: '80%', overflow: 'auto' }}>
-                    <TextViewer content={textContent} fileName={imageList[imageViewerIndex].name} />
-                  </Box>
+              ) : isPdfFile(imageList[imageViewerIndex]) ? (
+                imageBlobUrl ? (
+                  <iframe
+                    src={imageBlobUrl}
+                    title={imageList[imageViewerIndex].name}
+                    style={{ width: '100%', height: '80vh', border: 0 }}
+                  />
                 ) : null
               ) : imageBlobUrl ? (
                 (imageList[imageViewerIndex].mimeType && imageList[imageViewerIndex].mimeType.startsWith('video/')) || isVideoFile(imageList[imageViewerIndex]) ? (
