@@ -813,37 +813,42 @@ export async function runTaskNow(taskId: string) {
           
           // Process files in batches for better throughput
           // ADAPTIVE BATCHING: Dynamically adjust batch size based on available RAM
-          // Keep available memory above 512MB while maximizing throughput
+          // Conservative thresholds to prevent OOM (system reports total free, not container limit)
           const TINY_FILE_THRESHOLD = 100 * 1024;    // 100KB - batch many of these
           const SMALL_FILE_THRESHOLD = 1024 * 1024;  // 1MB - batch fewer of these
-          const MIN_AVAILABLE_RAM_MB = 512;          // Keep at least 512MB free
-          const MIN_BATCH_SIZE = 10;                 // Minimum batch size
-          const MAX_BATCH_SIZE = 200;                // Maximum batch size
+          const MIN_AVAILABLE_RAM_MB = 1500;         // Keep at least 1.5GB free (conservative for 4GB system)
+          const MIN_BATCH_SIZE = 5;                  // Minimum batch size
+          const MAX_BATCH_SIZE = 100;                // Maximum batch size (reduced from 200)
           
-          // Helper to get available memory (rough estimate)
+          // Helper to get available memory (system-wide, includes all containers)
           const getAvailableMemoryMB = () => {
             const freeMem = require('os').freemem();
             return Math.floor(freeMem / (1024 * 1024));
           };
           
-          // Calculate batch size based on available RAM and file size
+          // Calculate batch size based on available RAM - very conservative to prevent OOM
           const calculateBatchSize = (avgFileSize: number): number => {
+            // Force garbage collection if available (reduce memory pressure)
+            if (global.gc) {
+              global.gc();
+            }
+            
             const availableMB = getAvailableMemoryMB();
             const excessMB = Math.max(0, availableMB - MIN_AVAILABLE_RAM_MB);
             
-            // More aggressive batching when we have lots of free RAM
-            if (excessMB > 2000) {
-              return MAX_BATCH_SIZE; // 2GB+ excess: max speed
+            // Much more conservative thresholds since we're in a container
+            if (excessMB > 1500) {
+              return MAX_BATCH_SIZE; // 3GB+ free: max speed (100 files)
             } else if (excessMB > 1000) {
-              return 150; // 1-2GB excess: fast
-            } else if (excessMB > 500) {
-              return 100; // 500MB-1GB excess: moderate
-            } else if (excessMB > 200) {
-              return 50; // 200-500MB excess: conservative
+              return 75; // 2.5-3GB free: fast
+            } else if (excessMB > 600) {
+              return 50; // 2.1-2.5GB free: moderate
+            } else if (excessMB > 300) {
+              return 30; // 1.8-2.1GB free: conservative
             } else if (excessMB > 100) {
-              return 25; // 100-200MB excess: very conservative
+              return 15; // 1.6-1.8GB free: very conservative
             } else {
-              return MIN_BATCH_SIZE; // <100MB excess: minimal batching
+              return MIN_BATCH_SIZE; // <1.6GB free: minimal batching
             }
           };
           
