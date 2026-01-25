@@ -812,103 +812,102 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process files in batches for better throughput
-          // CRITICAL: Process files ONE AT A TIME to prevent OOM on low-memory systems
-          // The archiver library queues all entries in memory - with 50k+ files this causes OOM
-          // Sequential processing ensures memory is released as each file is written
-          const SMALL_FILE_THRESHOLD = 512 * 1024; // 512KB - smaller threshold to reduce memory peaks
+          // HYBRID APPROACH: Batch small files aggressively, large files one at a time
+          // Memory-safe batching based on file size to balance speed vs OOM risk
+          const TINY_FILE_THRESHOLD = 100 * 1024;    // 100KB - batch many of these
+          const SMALL_FILE_THRESHOLD = 1024 * 1024;  // 1MB - batch fewer of these
+          const TINY_BATCH_SIZE = 50;   // Process 50 tiny files at once
+          const SMALL_BATCH_SIZE = 10;  // Process 10 small files at once
           
-          // Helper to wait for archive to drain (backpressure handling)
-          const waitForDrain = () => new Promise<void>((resolve) => {
-            if ((archive as any)._queue && (archive as any)._queue.length() > 0) {
-              // Wait a tick for the archive to process queued items
-              setImmediate(resolve);
-            } else {
-              resolve();
-            }
-          });
+          // Sort files into buckets by size for optimal batching
+          const tinyFiles = files.filter(f => f.size < TINY_FILE_THRESHOLD);
+          const smallFiles = files.filter(f => f.size >= TINY_FILE_THRESHOLD && f.size < SMALL_FILE_THRESHOLD);
+          const largeFiles = files.filter(f => f.size >= SMALL_FILE_THRESHOLD);
           
-          for (let i = 0; i < files.length; i++) {
-            const file = files[i];
+          // Process tiny files in large batches (bluemap tiles, etc.)
+          for (let i = 0; i < tinyFiles.length; i += TINY_BATCH_SIZE) {
+            if (runningTasks.get(taskId)?.cancelled) throw new Error('Task was cancelled');
             
-            // Check for cancellation every 100 files
-            if (i % 100 === 0 && runningTasks.get(taskId)?.cancelled) {
-              throw new Error('Task was cancelled');
-            }
-            
-            try {
-              if (file.size < SMALL_FILE_THRESHOLD) {
-                // Small file: download to memory buffer directly
+            const batch = tinyFiles.slice(i, i + TINY_BATCH_SIZE);
+            await Promise.all(batch.map(async (file) => {
+              try {
                 const buffer = await downloadToBufferWithRetry(file.remoteFull);
-                if (!buffer) continue;
-                
+                if (!buffer) return;
                 totalBytes += buffer.length;
                 archive.append(buffer, { name: file.rel });
                 filesAdded++;
-              } else {
-                // Large file: use temp file to avoid memory pressure
-                const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
-                
-                const downloaded = await downloadWithRetry(file.remoteFull, tempFilePath);
-                if (!downloaded) continue;
-                
-                try {
-                  const stat = await fs.promises.stat(tempFilePath);
-                  totalBytes += stat.size;
-                  
-                  const fileStream = fs.createReadStream(tempFilePath);
-                  archive.append(fileStream, { name: file.rel });
-                  filesAdded++;
-                  
-                  // Clean up temp file after it's been added to archive
-                  setTimeout(async () => {
-                    try {
-                      await fs.promises.unlink(tempFilePath);
-                    } catch (e) { /* ignore */ }
-                  }, 5000);
-                } catch (fileErr) {
-                  logger.warn('Failed to process downloaded file', { remoteFull: file.remoteFull, err: fileErr });
-                  try { await fs.promises.unlink(tempFilePath); } catch (e) { /* ignore */ }
-                }
+              } catch (err) {
+                logger.warn('Failed to download tiny file', { remoteFull: file.remoteFull, err });
               }
-              
-              // Give the archive time to process and drain every 50 files
-              if (i % 50 === 0) {
-                await waitForDrain();
-              }
-            } catch (err) {
-              logger.warn('Failed to download file', { remoteFull: file.remoteFull, err });
-            }
+            }));
             
-            // Update progress every 100 files (avoid too frequent updates)
-            if (i % 100 === 0) {
-              updateProgress({
-                phase: 'downloading',
-                filesProcessed: filesAdded,
-                totalBytes,
-                currentDir: dir,
-                reconnects: reconnectAttempts,
-              });
-            }
-            
-            // Log progress every 1000 files (reduced frequency to minimize memory from logging)
-            if (filesAdded % 1000 === 0) {
-              logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts, dir });
+            // Update progress
+            if (i % 200 === 0) {
+              updateProgress({ phase: 'downloading', filesProcessed: filesAdded, totalBytes, currentDir: dir, reconnects: reconnectAttempts });
             }
           }
           
-          // Final progress update for this directory
-          updateProgress({
-            phase: 'downloading',
-            filesProcessed: filesAdded,
-            totalBytes,
-            currentDir: dir,
-            reconnects: reconnectAttempts,
-          });
+          // Process small files in moderate batches
+          for (let i = 0; i < smallFiles.length; i += SMALL_BATCH_SIZE) {
+            if (runningTasks.get(taskId)?.cancelled) throw new Error('Task was cancelled');
+            
+            const batch = smallFiles.slice(i, i + SMALL_BATCH_SIZE);
+            await Promise.all(batch.map(async (file) => {
+              try {
+                const buffer = await downloadToBufferWithRetry(file.remoteFull);
+                if (!buffer) return;
+                totalBytes += buffer.length;
+                archive.append(buffer, { name: file.rel });
+                filesAdded++;
+              } catch (err) {
+                logger.warn('Failed to download small file', { remoteFull: file.remoteFull, err });
+              }
+            }));
+            
+            updateProgress({ phase: 'downloading', filesProcessed: filesAdded, totalBytes, currentDir: dir, reconnects: reconnectAttempts });
+          }
           
-          // Process directories SEQUENTIALLY to minimize memory pressure
-          // Deep recursion with parallel processing accumulates memory
-          for (const d of dirs) {
-            await walk(d.remoteFull, d.rel);
+          // Process large files ONE AT A TIME with temp files to avoid memory pressure
+          for (const file of largeFiles) {
+            if (runningTasks.get(taskId)?.cancelled) throw new Error('Task was cancelled');
+            
+            try {
+              const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
+              const downloaded = await downloadWithRetry(file.remoteFull, tempFilePath);
+              if (!downloaded) continue;
+              
+              try {
+                const stat = await fs.promises.stat(tempFilePath);
+                totalBytes += stat.size;
+                const fileStream = fs.createReadStream(tempFilePath);
+                archive.append(fileStream, { name: file.rel });
+                filesAdded++;
+                
+                // Clean up temp file after archive processes it
+                setTimeout(async () => {
+                  try { await fs.promises.unlink(tempFilePath); } catch (e) { /* ignore */ }
+                }, 5000);
+              } catch (fileErr) {
+                logger.warn('Failed to process large file', { remoteFull: file.remoteFull, err: fileErr });
+                try { await fs.promises.unlink(tempFilePath); } catch (e) { /* ignore */ }
+              }
+            } catch (err) {
+              logger.warn('Failed to download large file', { remoteFull: file.remoteFull, err });
+            }
+            
+            updateProgress({ phase: 'downloading', filesProcessed: filesAdded, totalBytes, currentDir: dir, reconnects: reconnectAttempts });
+          }
+          
+          // Log progress for this directory
+          if (filesAdded % 500 === 0 || files.length > 100) {
+            logger.info('Archive progress', { taskId, filesAdded, totalBytes: formatBytes(totalBytes), reconnects: reconnectAttempts, dir });
+          }
+          
+          // Process subdirectories with limited parallelism (3 at a time)
+          const DIR_BATCH_SIZE = 3;
+          for (let i = 0; i < dirs.length; i += DIR_BATCH_SIZE) {
+            const dirBatch = dirs.slice(i, i + DIR_BATCH_SIZE);
+            await Promise.all(dirBatch.map(d => walk(d.remoteFull, d.rel)));
           }
         }
 
