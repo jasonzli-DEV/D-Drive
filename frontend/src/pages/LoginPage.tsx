@@ -112,7 +112,7 @@ export default function LoginPage() {
                     component="img"
                     src="/D-Drive Dark.png"
                     alt="D-Drive"
-                    sx={{ width: 72, height: 72, filter: 'drop-shadow(0 4px 12px rgba(88, 101, 242, 0.5))' }}
+                    sx={{ width: 96, height: 96, filter: 'drop-shadow(0 4px 12px rgba(88, 101, 242, 0.5))' }}
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}
