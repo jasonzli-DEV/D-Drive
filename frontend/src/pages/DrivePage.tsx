@@ -51,6 +51,7 @@ import {
 } from 'lucide-react';
 import { useDropzone } from 'react-dropzone';
 import { formatDistance } from 'date-fns';
+import TextViewer from '../components/TextViewer';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 import FolderSelectDialog from '../components/FolderSelectDialog';
@@ -1643,8 +1644,8 @@ export default function DrivePage() {
                 <Typography color="error">{imageError}</Typography>
               ) : isTextFile(imageList[imageViewerIndex]) ? (
                 textContent !== null ? (
-                  <Box sx={{ width: '100%', maxHeight: '80%', overflow: 'auto', bgcolor: '#fff', p: 2, borderRadius: 1 }}>
-                    <pre style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', margin: 0 }}>{textContent}</pre>
+                  <Box sx={{ width: '100%', maxHeight: '80%', overflow: 'auto' }}>
+                    <TextViewer content={textContent} fileName={imageList[imageViewerIndex].name} />
                   </Box>
                 ) : null
               ) : imageBlobUrl ? (
