@@ -119,6 +119,9 @@ export default function DrivePage() {
   const [imageViewerOpen, setImageViewerOpen] = useState(false);
   const [imageViewerIndex, setImageViewerIndex] = useState(0);
   const [imageList, setImageList] = useState<FileItem[]>([]);
+  const [imageBlobUrl, setImageBlobUrl] = useState<string | null>(null);
+  const [imageLoading, setImageLoading] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
 
   const isImageFile = (f: FileItem) => {
     if (f.mimeType && f.mimeType.startsWith('image/')) return true;
@@ -138,6 +141,48 @@ export default function DrivePage() {
 
   const showPrevImage = () => setImageViewerIndex(i => Math.max(0, i - 1));
   const showNextImage = () => setImageViewerIndex(i => Math.min(imageList.length - 1, i + 1));
+
+  useEffect(() => {
+    if (!imageViewerOpen) return;
+    const current = imageList[imageViewerIndex];
+    if (!current) return;
+    let active = true;
+    setImageError(null);
+    setImageLoading(true);
+    setImageBlobUrl(null);
+    const controller = new AbortController();
+    let localUrl: string | null = null;
+
+    const fetchImage = async () => {
+      try {
+        const res = await api.get(`/files/${current.id}/download`, {
+          responseType: 'blob',
+          signal: controller.signal as any,
+        });
+        if (!active) return;
+        localUrl = URL.createObjectURL(res.data as Blob);
+        setImageBlobUrl(localUrl);
+      } catch (err: any) {
+        if (err?.name === 'CanceledError' || err?.name === 'AbortError') return;
+        console.error('failed to fetch image', err);
+        setImageError('Failed to load image');
+      } finally {
+        if (active) setImageLoading(false);
+      }
+    };
+
+    fetchImage();
+
+    return () => {
+      active = false;
+      controller.abort();
+      if (localUrl) {
+        URL.revokeObjectURL(localUrl);
+        localUrl = null;
+      }
+      setImageBlobUrl(null);
+    };
+  }, [imageViewerOpen, imageViewerIndex, imageList]);
 
   // Fetch files
   const { data: files, isLoading } = useQuery({
@@ -1555,11 +1600,17 @@ export default function DrivePage() {
           </IconButton>
           <Box sx={{ maxWidth: '90%', maxHeight: '80%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             {imageList[imageViewerIndex] ? (
-              <img
-                src={`${import.meta.env.VITE_API_URL || '/api'}/files/${imageList[imageViewerIndex].id}/download`}
-                alt={imageList[imageViewerIndex].name}
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-              />
+              imageLoading ? (
+                <CircularProgress />
+              ) : imageError ? (
+                <Typography color="error">{imageError}</Typography>
+              ) : imageBlobUrl ? (
+                <img
+                  src={imageBlobUrl}
+                  alt={imageList[imageViewerIndex].name}
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                />
+              ) : null
             ) : null}
           </Box>
           <IconButton onClick={showNextImage} disabled={imageViewerIndex >= imageList.length - 1} sx={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)' }}>
