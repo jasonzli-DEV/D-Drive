@@ -863,7 +863,15 @@ export default function SharedPage() {
                       <Tooltip title="Preview">
                         <IconButton
                           size="small"
-                          onClick={() => openPreview(share.file as FolderFile, [share.file as FolderFile])}
+                          onClick={() => {
+                            // Convert SharedFile.file to FolderFile with required fields
+                            const folderFile: FolderFile = {
+                              ...share.file,
+                              createdAt: share.createdAt, // Use share's createdAt as fallback
+                              updatedAt: share.createdAt
+                            };
+                            openPreview(folderFile, [folderFile]);
+                          }}
                         >
                           <Eye size={18} />
                         </IconButton>
