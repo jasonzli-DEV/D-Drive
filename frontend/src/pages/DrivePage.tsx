@@ -164,7 +164,7 @@ export default function DrivePage() {
           setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: 100, status: 'success' } : p));
           setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== newId)), 1500);
           toast.success('Copy created');
-        } catch (err) {
+        } catch (err: any) {
           toast.success('Copy created');
         }
       })();
@@ -653,7 +653,7 @@ export default function DrivePage() {
         }
         setCopyProgress(prev => prev.map(p => p.id === newId ? { ...p, progress: 100, status: 'success' } : p));
         setTimeout(() => setCopyProgress(prev => prev.filter(p => p.id !== newId)), 1500);
-      } catch (err) {
+      } catch (err: any) {
         failed += 1;
         // approximate by adding expected chunks so progress keeps moving
         const expect = origCounts[id] || 1;
@@ -730,7 +730,7 @@ export default function DrivePage() {
           // include nested dirs then the root dir
           for (const d of nestedDirs) workDirs.push(d.id);
           workDirs.push(id);
-        } catch (err) {
+        } catch (err: any) {
           // fallback: attempt to delete directly
           workDirs.push(id);
         }
@@ -749,7 +749,7 @@ export default function DrivePage() {
         await api.delete(`/files/${wf.id}`, { data: { recursive: false } });
         completed += wf.chunks || 1;
         setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total) } : prev);
-      } catch (err) {
+      } catch (err: any) {
         failed += 1;
         // still advance by expected chunks so progress moves
         completed += wf.chunks || 1;
@@ -764,7 +764,7 @@ export default function DrivePage() {
         await api.delete(`/files/${dirId}`, { data: { recursive: false } });
         completed += 1;
         setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total) } : prev);
-      } catch (err) {
+      } catch (err: any) {
         failed += 1;
         completed += 1;
         setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total), failed: (prev.failed || 0) + 1 } : prev);
