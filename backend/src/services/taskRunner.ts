@@ -80,6 +80,17 @@ async function bufferFromStream(stream: any): Promise<Buffer> {
     const awaited = await stream;
     return bufferFromStream(awaited);
   }
+  // Try common object shapes (e.g., { data: [...] } or { content: ... })
+  if (stream && typeof stream === 'object') {
+    if (Array.isArray((stream as any).data)) return Buffer.from((stream as any).data);
+    if ((stream as any).content) return Buffer.from((stream as any).content);
+    if ((stream as any).body) return Buffer.from((stream as any).body);
+    try {
+      return Buffer.from(JSON.stringify(stream));
+    } catch (e) {
+      // fallthrough
+    }
+  }
 
   throw new Error('Unsupported stream type passed to bufferFromStream');
 }
