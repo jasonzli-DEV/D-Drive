@@ -812,9 +812,9 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process files in batches for better throughput
-          // Higher batch size for small files to reduce per-file SFTP overhead
-          const BATCH_SIZE = 150; // Process 150 files concurrently (increased for better throughput)
-          const SMALL_FILE_THRESHOLD = 5 * 1024 * 1024; // 5MB - use memory for small files (increased)
+          // Reduced batch size to prevent OOM on systems with limited RAM (e.g., Raspberry Pi)
+          const BATCH_SIZE = 30; // Process 30 files concurrently (reduced from 150 to prevent OOM)
+          const SMALL_FILE_THRESHOLD = 1 * 1024 * 1024; // 1MB - use memory for small files (reduced from 5MB to prevent OOM)
           
           for (let i = 0; i < files.length; i += BATCH_SIZE) {
             // Check for cancellation
@@ -882,7 +882,7 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process directories - parallelize leaf directories, recurse sequentially for deep trees
-          const DIR_BATCH_SIZE = 10; // Process up to 10 directories in parallel (increased from 5)
+          const DIR_BATCH_SIZE = 5; // Process up to 5 directories in parallel (reduced from 10 to prevent OOM)
           for (let i = 0; i < dirs.length; i += DIR_BATCH_SIZE) {
             const dirBatch = dirs.slice(i, i + DIR_BATCH_SIZE);
             await Promise.all(dirBatch.map(d => walk(d.remoteFull, d.rel)));
