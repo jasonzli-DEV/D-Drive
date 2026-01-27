@@ -155,27 +155,46 @@ export async function runTaskNow(taskId: string) {
       await sftp.connect(cfg);
     }
 
-    // List files in remote path
-    const list = await sftp.list(task.sftpPath);
-    const filesToDownload = list.filter((it: any) => it.type === '-'); // '-' is file
+    // Recursively walk remote path and collect files (preserve relative paths)
+    async function walkRemote(remoteBase: string) {
+      const results: { relPath: string; buffer: Buffer }[] = [];
 
-    // Temporary storage
-    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
+      async function walk(dir: string, prefix: string) {
+        const list = await sftp.list(dir);
+        for (const it of list) {
+          // skip special entries
+          if (it.name === '.' || it.name === '..') continue;
+          const remoteFull = path.posix.join(dir, it.name);
+          const rel = prefix ? `${prefix}/${it.name}` : it.name;
+          if (it.type === 'd') {
+            // directory -> recurse
+            await walk(remoteFull, rel);
+          } else if (it.type === '-') {
+            // regular file -> fetch buffer
+            const streamOrBuffer = await sftp.get(remoteFull);
+            let buf: Buffer;
+            if (Buffer.isBuffer(streamOrBuffer)) buf = streamOrBuffer as Buffer;
+            else buf = await bufferFromStream(streamOrBuffer as any);
+            results.push({ relPath: rel, buffer: buf });
+          } else {
+            // ignore other types (links, etc.)
+            logger.info('Skipping remote entry (unsupported type)', { path: remoteFull, type: it.type });
+          }
+        }
+      }
 
-    const downloaded: { name: string; buffer: Buffer }[] = [];
-    for (const f of filesToDownload) {
-      const remotePath = path.posix.join(task.sftpPath, f.name);
-      const streamOrBuffer = await sftp.get(remotePath);
-      let buf: Buffer;
-      if (Buffer.isBuffer(streamOrBuffer)) buf = streamOrBuffer as Buffer;
-      else buf = await bufferFromStream(streamOrBuffer as any);
-      downloaded.push({ name: f.name, buffer: buf });
+      await walk(remoteBase, '');
+      return results;
     }
+
+    const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
+    const downloadedEntries = await walkRemote(task.sftpPath);
 
     // If compression requested, create single archive buffer
     let uploadEntries: { name: string; buffer: Buffer }[] = [];
     if (task.compress === 'NONE' || task.compress === null) {
-      uploadEntries = downloaded;
+      // non-compressed: keep only base names (legacy behavior)
+      uploadEntries = downloadedEntries.map(d => ({ name: path.basename(d.relPath), buffer: d.buffer }));
     } else {
       const timestamp = formatTimestamp(new Date());
       const archiveName = `${timestamp}.${(task.name || 'backup')}`;
@@ -184,8 +203,9 @@ export async function runTaskNow(taskId: string) {
       const output = fs.createWriteStream(archivePath);
       const archive = archiver(task.compress === 'ZIP' ? 'zip' : 'tar', task.compress === 'TAR_GZ' ? { gzip: true } : {});
       archive.pipe(output);
-      for (const d of downloaded) {
-        archive.append(d.buffer, { name: d.name });
+      // Add files preserving relative paths under the requested remote base
+      for (const d of downloadedEntries) {
+        archive.append(d.buffer, { name: d.relPath });
       }
       await archive.finalize();
       // wait for stream to finish
