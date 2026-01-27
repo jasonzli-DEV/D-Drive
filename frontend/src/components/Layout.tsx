@@ -129,7 +129,17 @@ export default function Layout({ children }: LayoutProps) {
                   onClick={(e) => {
                     const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                     // dispatch a global event with approximate anchor coordinates
-                    window.dispatchEvent(new CustomEvent('ddrive:new', { detail: { x: Math.round(rect.left + 8), y: Math.round(rect.top + 40) } }));
+                    const detail = { x: Math.round(rect.left + 8), y: Math.round(rect.top + 40) };
+                    // If we're not currently on a Drive route, navigate to root first so
+                    // the DrivePage can handle the event and create/upload into root.
+                    const isDriveRoute = location.pathname === '/' || location.pathname.startsWith('/drive');
+                    if (!isDriveRoute) {
+                      navigate('/');
+                      // wait briefly for DrivePage to mount and register its listener
+                      setTimeout(() => window.dispatchEvent(new CustomEvent('ddrive:new', { detail })), 220);
+                    } else {
+                      window.dispatchEvent(new CustomEvent('ddrive:new', { detail }));
+                    }
                   }}
                   sx={{ mb: 1 }}
                 >
