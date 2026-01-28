@@ -193,8 +193,38 @@ export async function runTaskNow(taskId: string) {
     // If compression requested, create single archive buffer
     let uploadEntries: { name: string; buffer: Buffer }[] = [];
     if (task.compress === 'NONE' || task.compress === null) {
-      // non-compressed: keep only base names (legacy behavior)
-      uploadEntries = downloadedEntries.map(d => ({ name: path.basename(d.relPath), buffer: d.buffer }));
+      // non-compressed: preserve directory structure by creating folders under the
+      // run folder and storing files into their relative paths
+      const baseParentPath = (await prisma.file.findUnique({ where: { id: targetParentId! }, select: { path: true } }))?.path || null;
+      for (const d of downloadedEntries) {
+        const relDir = path.posix.dirname(d.relPath);
+        let destParent = targetParentId!;
+        let currentPath = baseParentPath;
+        if (relDir && relDir !== '.' && relDir !== '') {
+          const parts = relDir.split('/');
+          for (const part of parts) {
+            let child = await prisma.file.findFirst({ where: { userId: task.userId, parentId: destParent, name: part, type: 'DIRECTORY' } });
+            if (!child) {
+              const childPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
+              child = await prisma.file.create({
+                data: {
+                  name: part,
+                  path: childPath,
+                  type: 'DIRECTORY',
+                  userId: task.userId,
+                  parentId: destParent,
+                },
+              });
+            }
+            destParent = child.id;
+            currentPath = child.path;
+          }
+        }
+        // store the file into the resolved destParent
+        await storeBufferAsFile(task.userId, destParent, path.posix.basename(d.relPath), d.buffer, undefined, shouldEncrypt);
+      }
+      // nothing more to upload
+      uploadEntries = [];
     } else {
       const timestamp = formatTimestamp(new Date());
       const archiveName = `${timestamp}.${(task.name || 'backup')}`;
@@ -249,15 +279,11 @@ export async function runTaskNow(taskId: string) {
     // For each upload entry, store it using storage helper into the chosen parent (folder or destination)
     for (const entry of uploadEntries) {
       let nameToUse: string;
-      if (task.compress === 'NONE' || task.compress === null) {
-        nameToUse = entry.name;
+      if (task.timestampNames) {
+        // Don't double-prefix if entry already begins with a timestamp
+        nameToUse = looksLikeTimestampPrefix(entry.name) ? entry.name : `${formatTimestamp(new Date())}.${entry.name}`;
       } else {
-        if (task.timestampNames) {
-          // Don't double-prefix if entry already begins with a timestamp
-          nameToUse = looksLikeTimestampPrefix(entry.name) ? entry.name : `${formatTimestamp(new Date())}.${entry.name}`;
-        } else {
-          nameToUse = entry.name;
-        }
+        nameToUse = entry.name;
       }
       await storeBufferAsFile(task.userId, targetParentId, nameToUse, entry.buffer, undefined, shouldEncrypt);
     }
