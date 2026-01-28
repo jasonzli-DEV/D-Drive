@@ -190,9 +190,39 @@ export async function runTaskNow(taskId: string) {
     const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
     const downloadedEntries = await walkRemote(task.sftpPath);
 
-    // (moved) Determine encryption preference and create run folder later in flow
+    // Determine encryption preference: task explicit OR user's default
+    const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
 
-    // If compression requested, create single archive buffer
+    // If not compressing, create a directory for this run and place files inside it.
+    let targetParentId: string | null = task.destinationId || null;
+
+    if (task.compress === 'NONE' || task.compress === null) {
+      const baseFolderName = task.name || 'backup';
+      const folderBase = task.timestampNames ? `${formatTimestamp(new Date())}.${baseFolderName}` : baseFolderName;
+
+      const parentPath = task.destinationId ? (await prisma.file.findUnique({ where: { id: task.destinationId }, select: { path: true } }))?.path : null;
+      let candidateName = folderBase;
+      let candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
+      let counter = 1;
+      while (await prisma.file.findFirst({ where: { userId: task.userId, path: candidatePath } })) {
+        candidateName = `${folderBase} (${counter++})`;
+        candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
+      }
+
+      const folder = await prisma.file.create({
+        data: {
+          name: candidateName,
+          path: candidatePath,
+          type: 'DIRECTORY',
+          userId: task.userId,
+          parentId: task.destinationId || null,
+        },
+      });
+
+      targetParentId = folder.id;
+    }
+
+    // Build upload entries for compressed runs; for uncompressed runs we'll store files directly
     let uploadEntries: { name: string; buffer: Buffer }[] = [];
     if (task.compress === 'NONE' || task.compress === null) {
       // non-compressed: preserve directory structure by creating folders under the
@@ -244,38 +274,6 @@ export async function runTaskNow(taskId: string) {
       await new Promise<void>((res, rej) => output.on('close', () => res()).on('error', (e) => rej(e)));
       const buf = await fs.promises.readFile(archivePath);
       uploadEntries = [{ name: path.basename(archivePath), buffer: buf }];
-    }
-
-    // Determine encryption preference: task explicit OR user's default
-    const shouldEncrypt = (task.encrypt === true) || (task.user?.encryptByDefault === true);
-
-    // If not compressing, create a directory for this run and place files inside it.
-    let targetParentId: string | null = task.destinationId || null;
-
-    if (task.compress === 'NONE' || task.compress === null) {
-      const baseFolderName = task.name || 'backup';
-      const folderBase = task.timestampNames ? `${formatTimestamp(new Date())}.${baseFolderName}` : baseFolderName;
-
-      const parentPath = task.destinationId ? (await prisma.file.findUnique({ where: { id: task.destinationId }, select: { path: true } }))?.path : null;
-      let candidateName = folderBase;
-      let candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
-      let counter = 1;
-      while (await prisma.file.findFirst({ where: { userId: task.userId, path: candidatePath } })) {
-        candidateName = `${folderBase} (${counter++})`;
-        candidatePath = parentPath ? `${parentPath}/${candidateName}` : `/${candidateName}`;
-      }
-
-      const folder = await prisma.file.create({
-        data: {
-          name: candidateName,
-          path: candidatePath,
-          type: 'DIRECTORY',
-          userId: task.userId,
-          parentId: task.destinationId || null,
-        },
-      });
-
-      targetParentId = folder.id;
     }
 
     // For each upload entry, store it using storage helper into the chosen parent (folder or destination)
