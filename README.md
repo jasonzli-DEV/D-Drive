@@ -14,12 +14,10 @@ curl -fsSL https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.s
 Windows (PowerShell)
 
 ```powershell
-# From the repository root
-.\install.ps1
-
-# Or remote one-liner (PowerShell)
-# iwr -useb https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.ps1 | iex
+# Remote one-liner (PowerShell)
+iwr -useb https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.ps1 | iex
 ```
+
 
 Then open [http://localhost](http://localhost) and complete the setup wizard.
 
