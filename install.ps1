@@ -34,15 +34,35 @@ if (-not (Test-Command git)) { Write-Err "git is required but not found in PATH.
 
 Write-Info "Checking for Docker..."
 if (-not (Test-Command docker)) { Write-Err "Docker is not installed or not in PATH."; exit 1 }
-else { docker --version | Write-Host }
+else {
+    docker --version | Write-Host
+    try { docker info *> $null } catch { Write-Err "Docker daemon is not running or not accessible. Please start Docker Desktop or the Docker service."; exit 1 }
+}
 
 Write-Info "Checking for Docker Compose..."
-$composeCmd = $null
-try { docker compose version *> $null; $composeCmd = 'docker compose' } catch { }
-if (-not $composeCmd) {
-    if (Test-Command docker-compose) { $composeCmd = 'docker-compose' } else { Write-Err "Docker Compose not found."; exit 1 }
+$composeMode = $null
+try {
+    docker compose version *> $null
+    $composeMode = 'v2'
+} catch {
+    # v2 not available
 }
-Write-Info "Using: $composeCmd"
+if (-not $composeMode) {
+    if (Test-Command docker-compose) { $composeMode = 'v1' } else { Write-Err "Docker Compose not found."; exit 1 }
+}
+Write-Info ("Using: {0}" -f (if ($composeMode -eq 'v2') { 'docker compose (v2)' } else { 'docker-compose (v1)' }))
+
+function Invoke-Compose {
+    param(
+        [Parameter(ValueFromRemainingArguments=$true)]
+        [string[]]$Args
+    )
+    if ($composeMode -eq 'v2') {
+        & docker compose @Args
+    } else {
+        & docker-compose @Args
+    }
+}
 
 # Clone or update repo
 if (Test-Path $InstallDir) {
@@ -108,17 +128,17 @@ VITE_API_URL=/api
 
 # Start services
 Write-Info "Building and starting D-Drive services..."
-& $composeCmd build
+Invoke-Compose build
 
 Write-Info "Starting postgres service..."
-& $composeCmd up -d postgres
+Invoke-Compose up -d postgres
 
 # Wait for postgres
 Write-Info "Waiting for database to be ready..."
 $ready = $false
 for ($i=0; $i -lt 60; $i++) {
     try {
-        & $composeCmd exec -T postgres pg_isready -U ddrive *> $null
+        Invoke-Compose exec -T postgres pg_isready -U ddrive *> $null
         if ($LASTEXITCODE -eq 0) { $ready = $true; break }
     } catch { }
     Start-Sleep -Seconds 2
@@ -128,13 +148,13 @@ if (-not $ready) {
 }
 
 Write-Info "Starting backend..."
-& $composeCmd up -d backend
+Invoke-Compose up -d backend
 
 Write-Info "Starting frontend..."
-& $composeCmd up -d frontend
+Invoke-Compose up -d frontend
 
 Write-Info "Services started. Current status:"
-& $composeCmd ps | Write-Host
+Invoke-Compose ps | Write-Host
 
 Write-Host "`nInstallation complete. Open http://localhost in your browser and complete the setup wizard." -ForegroundColor Cyan
 Write-Host "To view logs: $composeCmd logs -f" -ForegroundColor Yellow
