@@ -6,6 +6,8 @@
 
 ## Quick Install
 
+macOS / Linux (bash)
+
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.sh | bash
 ```
