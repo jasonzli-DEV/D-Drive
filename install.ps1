@@ -33,10 +33,48 @@ Write-Info "Checking for Git..."
 if (-not (Test-Command git)) { Write-Err "git is required but not found in PATH."; exit 1 }
 
 Write-Info "Checking for Docker..."
-if (-not (Test-Command docker)) { Write-Err "Docker is not installed or not in PATH."; exit 1 }
-else {
+if (-not (Test-Command docker)) {
+    Write-Warn "Docker is not installed or not in PATH. Attempting automatic install where possible..."
+
+    # Try winget first (Windows 10/11)
+    if (Test-Command winget) {
+        Write-Info "Installing Docker Desktop via winget (may require elevation)..."
+        try { winget install --id Docker.DockerDesktop -e --accept-package-agreements --accept-source-agreements } catch { Write-Warn "winget install failed or requires manual approval." }
+    }
+
+    # Fallback to Chocolatey if available
+    if (-not (Test-Command docker) -and (Test-Command choco)) {
+        Write-Info "Installing Docker Desktop via Chocolatey..."
+        try { choco install docker-desktop -y } catch { Write-Warn "choco install failed." }
+    }
+
+    # Allow time for installer to finish and PATH to refresh
+    $installed = $false
+    for ($i=0; $i -lt 60; $i++) {
+        if (Test-Command docker) { Write-Info "Docker installed: $(docker --version)"; $installed = $true; break }
+        Start-Sleep -Seconds 2
+    }
+
+    if (-not $installed) {
+        Write-Err "Automatic Docker installation did not succeed. Please install Docker Desktop manually from https://docs.docker.com/desktop/windows/."
+        exit 1
+    }
+} else {
     docker --version | Write-Host
-    try { docker info *> $null } catch { Write-Err "Docker daemon is not running or not accessible. Please start Docker Desktop or the Docker service."; exit 1 }
+}
+
+# Ensure Docker daemon is running
+try {
+    docker info *> $null
+} catch {
+    Write-Warn "Docker daemon is not running or not accessible. Attempting to start Docker Desktop..."
+    try { Start-Process 'Docker Desktop' -ErrorAction SilentlyContinue } catch { }
+
+    $ready = $false
+    for ($i=0; $i -lt 60; $i++) {
+        try { docker info *> $null; $ready = $true; break } catch { Start-Sleep -Seconds 2 }
+    }
+    if (-not $ready) { Write-Err "Docker daemon did not become available. Please start Docker Desktop or the Docker service."; exit 1 }
 }
 
 Write-Info "Checking for Docker Compose..."

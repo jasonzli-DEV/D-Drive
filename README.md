@@ -7,14 +7,12 @@
 ## Quick Install
 
 ```bash
-# macOS / Linux (bash)
 curl -fsSL https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.sh | bash
 ```
 
 Windows (PowerShell)
 
 ```powershell
-# Remote one-liner (PowerShell)
 iwr -useb https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.ps1 | iex
 ```
 
