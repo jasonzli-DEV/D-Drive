@@ -113,10 +113,36 @@ check_docker_running() {
     log_info "Checking if Docker daemon is running..."
     
     if ! docker info &> /dev/null; then
-        log_error "Docker daemon is not running."
-        echo ""
-        echo "Please start Docker Desktop or the Docker service."
-        exit 1
+        log_warn "Docker daemon is not running. Attempting to start Docker..."
+        # macOS: open Docker Desktop app
+        if [[ "$(uname)" == "Darwin" ]]; then
+            open -a Docker || true
+            for i in {1..60}; do
+                if docker info &>/dev/null; then
+                    log_info "Docker daemon is running"
+                    return
+                fi
+                sleep 2
+            done
+            log_error "Docker daemon did not start. Please start Docker Desktop manually."
+            exit 1
+        # Linux: try to start systemd service
+        elif [[ "$(uname -s)" == "Linux" ]]; then
+            sudo systemctl start docker || true
+            sudo systemctl enable docker || true
+            for i in {1..30}; do
+                if docker info &>/dev/null; then
+                    log_info "Docker daemon is running"
+                    return
+                fi
+                sleep 2
+            done
+            log_error "Docker daemon is not running. Please start Docker service."
+            exit 1
+        else
+            log_error "Docker daemon is not running. Please start Docker Desktop or the Docker service."
+            exit 1
+        fi
     fi
     
     log_info "Docker daemon is running"
