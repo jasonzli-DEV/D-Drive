@@ -36,6 +36,9 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 
+# Local runtime data
+backend/data/
+
 # Testing
 coverage/
 .nyc_output/
