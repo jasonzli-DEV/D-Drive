@@ -200,6 +200,20 @@ export default function DrivePage() {
 
     const fetchImage = async () => {
       try {
+        const isVideo = (current.mimeType && current.mimeType.startsWith('video/')) || isVideoFile(current);
+        
+        // For videos, use direct URL so browser can make Range requests for streaming
+        // This allows seeking and efficient playback without downloading entire file first
+        if (isVideo) {
+          const token = localStorage.getItem('token');
+          const baseUrl = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
+          // Use direct URL with auth token in query string for video element
+          const videoUrl = `${baseUrl}/files/${current.id}/download?inline=1${token ? `&token=${encodeURIComponent(token)}` : ''}`;
+          setImageBlobUrl(videoUrl);
+          setImageLoading(false);
+          return;
+        }
+        
         // For PDFs, add a cache-busting param to avoid 304 cached responses
         // which can result in empty blobs when fetched via XHR. Use inline=1
         // so the backend returns inline Content-Disposition.
@@ -212,7 +226,7 @@ export default function DrivePage() {
         });
         if (!active) return;
         const blob = res.data as Blob;
-        // Create object URL for images, videos, PDFs
+        // Create object URL for images and PDFs
         localUrl = URL.createObjectURL(blob);
         setImageBlobUrl(localUrl);
       } catch (err: any) {
