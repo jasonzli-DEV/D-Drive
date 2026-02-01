@@ -47,35 +47,15 @@ check_docker() {
     log_info "Checking for Docker..."
     
     if ! command -v docker &> /dev/null; then
-        log_warn "Docker is not installed. Attempting automatic install where possible..."
-        # macOS: use Homebrew Cask if available
-        if [[ "$(uname)" == "Darwin" ]]; then
-            if command -v brew &>/dev/null; then
-                log_info "Installing Docker Desktop via Homebrew..."
-                brew install --cask docker --no-quarantine || true
-                open -a Docker || true
-                log_info "Waiting for Docker Desktop to start..."
-                for i in {1..60}; do
-                    if docker ps &>/dev/null; then
-                        log_info "Docker is ready."
-                        break
-                    fi
-                    sleep 2
-                done
-            else
-                log_error "Homebrew not found. Please install Docker Desktop manually."
-                exit 1
-            fi
-        # Linux: use official convenience script
-        elif [[ "$(uname -s)" == "Linux" ]]; then
-            log_info "Installing Docker using get.docker.com script..."
-            curl -fsSL https://get.docker.com | sh || { log_error "Automatic Docker install failed"; exit 1; }
-            sudo systemctl start docker || true
-            sudo systemctl enable docker || true
-        else
-            log_error "Unsupported OS. Please install Docker manually."
-            exit 1
-        fi
+        log_error "Docker is not installed."
+        echo ""
+        echo "Please install Docker first:"
+        echo "  - macOS: https://docs.docker.com/desktop/install/mac-install/"
+        echo "  - Windows: https://docs.docker.com/desktop/install/windows-install/"
+        echo "  - Linux: https://docs.docker.com/engine/install/"
+        echo ""
+        echo "Or run: curl -fsSL https://get.docker.com | sh"
+        exit 1
     fi
     
     log_info "Docker found: $(docker --version)"
@@ -92,15 +72,6 @@ check_docker_compose() {
         COMPOSE_CMD="docker-compose"
         log_info "Docker Compose found: $(docker-compose --version)"
     else
-        log_warn "Docker Compose plugin not found. Attempting to install plugin on Linux..."
-        if [[ "$(uname -s)" == "Linux" ]]; then
-            sudo apt update && sudo apt install -y docker-compose-plugin || true
-            if docker compose version &>/dev/null; then
-                COMPOSE_CMD="docker compose"
-                log_info "Installed Docker Compose plugin."
-                return
-            fi
-        fi
         log_error "Docker Compose is not installed."
         echo ""
         echo "Docker Compose is usually included with Docker Desktop."
@@ -113,36 +84,10 @@ check_docker_running() {
     log_info "Checking if Docker daemon is running..."
     
     if ! docker info &> /dev/null; then
-        log_warn "Docker daemon is not running. Attempting to start Docker..."
-        # macOS: open Docker Desktop app
-        if [[ "$(uname)" == "Darwin" ]]; then
-            open -a Docker || true
-            for i in {1..60}; do
-                if docker info &>/dev/null; then
-                    log_info "Docker daemon is running"
-                    return
-                fi
-                sleep 2
-            done
-            log_error "Docker daemon did not start. Please start Docker Desktop manually."
-            exit 1
-        # Linux: try to start systemd service
-        elif [[ "$(uname -s)" == "Linux" ]]; then
-            sudo systemctl start docker || true
-            sudo systemctl enable docker || true
-            for i in {1..30}; do
-                if docker info &>/dev/null; then
-                    log_info "Docker daemon is running"
-                    return
-                fi
-                sleep 2
-            done
-            log_error "Docker daemon is not running. Please start Docker service."
-            exit 1
-        else
-            log_error "Docker daemon is not running. Please start Docker Desktop or the Docker service."
-            exit 1
-        fi
+        log_error "Docker daemon is not running."
+        echo ""
+        echo "Please start Docker Desktop or the Docker service."
+        exit 1
     fi
     
     log_info "Docker daemon is running"

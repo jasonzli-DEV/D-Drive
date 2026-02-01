@@ -6,18 +6,9 @@
 
 ## Quick Install
 
-macOS / Linux (bash)
-
 ```bash
 curl -fsSL https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.sh | bash
 ```
-
-Windows (PowerShell)
-
-```powershell
-iwr -useb https://raw.githubusercontent.com/jasonzli-DEV/D-Drive/main/install.ps1 | iex
-```
-
 
 Then open [http://localhost](http://localhost) and complete the setup wizard.
 
