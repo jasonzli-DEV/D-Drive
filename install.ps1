@@ -169,33 +169,43 @@ VITE_API_URL=/api
 Write-Info "Building and starting D-Drive services..."
 Invoke-Compose build
 
-Write-Info "Starting postgres service..."
-Invoke-Compose up -d postgres
+Write-Info "Starting all services..."
+$null = Start-Job -ScriptBlock { 
+    param($dir, $mode)
+    Set-Location $dir
+    if ($mode -eq 'v2') {
+        & docker compose up -d
+    } else {
+        & docker-compose up -d
+    }
+} -ArgumentList $InstallDir, $composeMode | Wait-Job | Receive-Job
 
-# Wait for postgres
-Write-Info "Waiting for database to be ready..."
-$ready = $false
-for ($i=0; $i -lt 60; $i++) {
+# Wait for services to be healthy
+Write-Info "Waiting for services to be ready..."
+Start-Sleep -Seconds 5
+
+$maxAttempts = 30
+for ($i = 0; $i -lt $maxAttempts; $i++) {
     try {
-        Invoke-Compose exec -T postgres pg_isready -U ddrive *> $null
-        if ($LASTEXITCODE -eq 0) { $ready = $true; break }
+        $psOutput = Invoke-Compose ps --format json 2>$null
+        if ($psOutput) {
+            $containers = $psOutput | ConvertFrom-Json
+            $healthyCount = ($containers | Where-Object { 
+                $_.Health -eq 'healthy' -or ($_.State -eq 'running' -and -not $_.Health) 
+            }).Count
+            
+            if ($healthyCount -ge 3) {
+                break
+            }
+        }
     } catch { }
     Start-Sleep -Seconds 2
 }
-if (-not $ready) {
-    $composeCmd = if ($composeMode -eq 'v2') { 'docker compose' } else { 'docker-compose' }
-    Write-Warn "Postgres did not report ready within timeout. Check logs with: $composeCmd logs postgres"
-}
-
-Write-Info "Starting backend..."
-Invoke-Compose up -d backend
-
-Write-Info "Starting frontend..."
-Invoke-Compose up -d frontend
 
 Write-Info "Services started. Current status:"
 Invoke-Compose ps | Write-Host
 
 $composeCmd = if ($composeMode -eq 'v2') { 'docker compose' } else { 'docker-compose' }
-Write-Host "`nInstallation complete. Open http://localhost in your browser and complete the setup wizard." -ForegroundColor Cyan
-Write-Host "To view logs: $composeCmd logs -f" -ForegroundColor Yellow
+Write-Host "`n✅ Installation complete! D-Drive is running at http://localhost" -ForegroundColor Green
+Write-Host "   Complete the setup wizard to configure Discord OAuth" -ForegroundColor Cyan
+Write-Host "`nTo view logs: $composeCmd logs -f" -ForegroundColor Gray
