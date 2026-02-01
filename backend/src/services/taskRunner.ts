@@ -26,6 +26,9 @@ interface TaskRunInfo {
     startTime: Date;
     uploadChunk?: number;        // Current chunk being uploaded
     uploadTotalChunks?: number;  // Total chunks to upload
+    memoryAvailableMB?: number;  // Available RAM in MB
+    swapTotalMB?: number;        // Total swap in MB
+    swapUsedMB?: number;         // Used swap in MB
   };
 }
 
@@ -106,10 +109,17 @@ export async function stopTask(taskId: string) {
   // Force cleanup temp directory if it exists
   if (runInfo.tmpDir) {
     try {
-      await fs.promises.rm(runInfo.tmpDir, { recursive: true, force: true });
-      logger.info('Cleaned up temp directory', { taskId, tmpDir: runInfo.tmpDir });
-    } catch (err) {
-      logger.warn('Failed to cleanup temp directory', { taskId, tmpDir: runInfo.tmpDir, err });
+      // Check if tmpDir actually exists before attempting removal
+      const stats = await fs.promises.stat(runInfo.tmpDir);
+      if (stats.isDirectory()) {
+        await fs.promises.rm(runInfo.tmpDir, { recursive: true, force: true });
+        logger.info('Cleaned up temp directory', { taskId, tmpDir: runInfo.tmpDir });
+      }
+    } catch (err: any) {
+      // ENOENT is expected if archive was already uploaded and dir cleaned
+      if (err.code !== 'ENOENT') {
+        logger.warn('Failed to cleanup temp directory', { taskId, tmpDir: runInfo.tmpDir, err });
+      }
     }
   }
   
@@ -381,6 +391,29 @@ export async function runTaskNow(taskId: string) {
   const updateProgress = (updates: Partial<TaskRunInfo['progress']>) => {
     const info = runningTasks.get(taskId);
     if (info?.progress) {
+      // Add memory and swap stats on each update
+      try {
+        const freeMem = os.freemem();
+        updates.memoryAvailableMB = Math.floor(freeMem / (1024 * 1024));
+        
+        // Try to get swap info (Linux/Unix only)
+        try {
+          const swapInfo = fs.readFileSync('/proc/meminfo', 'utf-8');
+          const swapTotalMatch = swapInfo.match(/SwapTotal:\s+(\d+)\s+kB/);
+          const swapFreeMatch = swapInfo.match(/SwapFree:\s+(\d+)\s+kB/);
+          if (swapTotalMatch && swapFreeMatch) {
+            const swapTotalKB = parseInt(swapTotalMatch[1]);
+            const swapFreeKB = parseInt(swapFreeMatch[1]);
+            updates.swapTotalMB = Math.floor(swapTotalKB / 1024);
+            updates.swapUsedMB = Math.floor((swapTotalKB - swapFreeKB) / 1024);
+          }
+        } catch (swapErr) {
+          // Swap info not available (non-Linux or permission issue)
+        }
+      } catch (memErr) {
+        // Memory stats not available
+      }
+      
       Object.assign(info.progress, updates);
     }
   };
@@ -1207,11 +1240,13 @@ export async function runTaskNow(taskId: string) {
     try {
       const task = await prisma.task.findUnique({ where: { id: taskId } });
       
+      // Update lastRun but DON'T update lastRuntime on failure
+      // lastRuntime should only reflect successful runs
       await prisma.task.update({
         where: { id: taskId },
         data: {
           lastRun: endTime,
-          lastRuntime: runtimeSeconds
+          // Intentionally NOT updating lastRuntime - task failed, not completed successfully
         }
       });
       

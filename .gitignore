@@ -36,13 +36,11 @@ Thumbs.db
 # Docker
 docker-compose.override.yml
 
-# Local runtime data
-backend/data/
-
 # Testing
 coverage/
 .nyc_output/
 .playwright-mcp/
+AGENTS.md
 
 # Temporary files
 tmp/

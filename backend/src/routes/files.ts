@@ -399,14 +399,21 @@ router.delete('/recycle-bin/:id', authenticate, async (req: Request, res: Respon
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get all files that were deleted together (including children)
+    // Get all files that were deleted together (including all nested children)
+    // Use recursive path matching to find all descendants
     const filesToDelete = await prisma.file.findMany({
       where: {
         userId,
-        deletedAt: file.deletedAt,
+        deletedAt: { not: null },
         OR: [
           { id: file.id },
-          { path: { startsWith: `${file.path}/` } }
+          { path: { startsWith: `${file.path}/` } },
+          // Also match if this file's path starts with another deleted parent
+          // This handles cases where nested folders are deleted
+          { AND: [
+            { deletedAt: file.deletedAt },
+            { path: { contains: file.path } }
+          ]}
         ]
       },
       select: { id: true }

@@ -99,13 +99,33 @@ export default function Layout({ children }: LayoutProps) {
         <ListItemText primary={"New"} />
       </ListItemButton>
 
-      <ListItemButton onClick={() => handleNavigation('/') }>
+      <ListItemButton 
+        onClick={() => handleNavigation('/')} 
+        selected={location.pathname === '/' || location.pathname.startsWith('/drive')}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
         <ListItemIcon>
           <Home size={18} />
         </ListItemIcon>
         <ListItemText primary={"Home"} />
       </ListItemButton>
-      <ListItemButton onClick={() => handleNavigation('/tasks') }>
+      <ListItemButton 
+        onClick={() => handleNavigation('/tasks')} 
+        selected={location.pathname === '/tasks'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
         <ListItemIcon>
           <Play size={18} />
         </ListItemIcon>
@@ -114,19 +134,49 @@ export default function Layout({ children }: LayoutProps) {
       
       <Divider sx={{ my: 1 }} />
       
-      <ListItemButton onClick={() => handleNavigation('/starred') }>
+      <ListItemButton 
+        onClick={() => handleNavigation('/starred')} 
+        selected={location.pathname === '/starred'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
         <ListItemIcon>
           <Star size={18} />
         </ListItemIcon>
         <ListItemText primary={"Starred"} />
       </ListItemButton>
-      <ListItemButton onClick={() => handleNavigation('/shared') }>
+      <ListItemButton 
+        onClick={() => handleNavigation('/shared')} 
+        selected={location.pathname === '/shared'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
         <ListItemIcon>
           <Share2 size={18} />
         </ListItemIcon>
         <ListItemText primary={"Shared"} />
       </ListItemButton>
-      <ListItemButton onClick={() => handleNavigation('/recycle-bin') }>
+      <ListItemButton 
+        onClick={() => handleNavigation('/recycle-bin')} 
+        selected={location.pathname === '/recycle-bin'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
         <ListItemIcon>
           <Trash2 size={18} />
         </ListItemIcon>

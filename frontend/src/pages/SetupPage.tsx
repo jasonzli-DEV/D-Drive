@@ -170,10 +170,22 @@ export default function SetupPage() {
                   <li>Go to <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Discord Developer Portal</a></li>
                   <li>Click "New Application" and give it a name (e.g., "D-Drive")</li>
                   <li>Go to "OAuth2" → Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></li>
-                  <li>Add redirect URL: <code className="bg-gray-800 px-2 py-0.5 rounded text-xs">{window.location.origin}/auth/callback</code></li>
+                  <li>Add redirect URLs (add all domains you'll use):
+                    <div className="ml-4 mt-1 space-y-1">
+                      <code className="block bg-gray-800 px-2 py-0.5 rounded text-xs">{window.location.origin}/auth/callback</code>
+                      <code className="block bg-gray-800 px-2 py-0.5 rounded text-xs">https://pi.local/auth/callback</code>
+                      <code className="block bg-gray-800 px-2 py-0.5 rounded text-xs">https://drive.yourdomain.com/auth/callback</code>
+                    </div>
+                  </li>
                   <li>Go to "Bot" → Click "Add Bot" → Copy the <strong>Bot Token</strong></li>
                   <li>Enable "Message Content Intent" under Privileged Gateway Intents</li>
                 </ol>
+                <div className="mt-3 p-3 bg-blue-500/10 border border-blue-500/20 rounded">
+                  <p className="text-blue-400 text-xs">
+                    <strong>Multi-Domain Support:</strong> Set <code className="bg-gray-800 px-1 rounded">FRONTEND_URL</code> in .env to your primary domain. 
+                    Add all domains as Discord OAuth redirect URLs above.
+                  </p>
+                </div>
               </div>
 
               <div className="space-y-4">

@@ -648,7 +648,25 @@ export default function TasksPage() {
                         if (!progress) return null;
                         
                         // Build phase text with chunk info for uploading
-                        let phaseText = progress.phase === 'scanning' ? 'Scanning...' 
+                        let phaseText = progress.phase === 'connecting' ? (
+                          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                            Connect
+                            <Box component="span" sx={{ 
+                              '@keyframes dotPulse': {
+                                '0%, 20%': { content: '""' },
+                                '40%': { content: '"."' },
+                                '60%': { content: '".."' },
+                                '80%, 100%': { content: '"..."' },
+                              },
+                              '&::after': {
+                                content: '""',
+                                animation: 'dotPulse 1.5s infinite',
+                                display: 'inline-block',
+                                width: '1.5em',
+                              }
+                            }} />
+                          </Box>
+                        ) : progress.phase === 'scanning' ? 'Scanning...' 
                           : progress.phase === 'downloading' ? 'Downloading' 
                           : progress.phase === 'archiving' ? 'Creating archive' 
                           : progress.phase === 'uploading' ? 'Uploading to Discord' 
@@ -668,8 +686,13 @@ export default function TasksPage() {
                             ) : progress.filesProcessed > 0 ? (
                               <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
                             ) : null}
-                            {progress.currentDir && <Box sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
+                            {progress.currentDir && <Box sx={{ maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
                             {progress.reconnects > 0 && <Box sx={{ color: 'warning.main' }}>{progress.reconnects} reconnects</Box>}
+                            {(progress.memoryAvailableMB || progress.swapUsedMB) && (
+                              <Box sx={{ color: 'info.main' }}>
+                                RAM: {progress.memoryAvailableMB || 0} MB free\n                                {progress.swapTotalMB > 0 && ` • Swap: ${progress.swapUsedMB || 0}/${progress.swapTotalMB} MB`}
+                              </Box>
+                            )}
                           </Box>
                         );
                       })()}
