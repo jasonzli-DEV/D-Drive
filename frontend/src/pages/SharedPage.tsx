@@ -814,7 +814,6 @@ export default function SharedPage() {
                 <TableRow 
                   key={share.id} 
                   hover
-                  onContextMenu={(e) => handleContextMenu(e, share.file as FolderFile)}
                   onClick={() => {
                     if (share.file.type === 'DIRECTORY' && tab === 0) {
                       openFolder(share);
@@ -824,7 +823,7 @@ export default function SharedPage() {
                   }}
                   sx={{ cursor: (share.file.type === 'DIRECTORY' && tab === 0) || (share.file.type === 'FILE' && tab === 0 && canPreview(share.file)) ? 'pointer' : 'default' }}
                 >
-                  <TableCell>
+                  <TableCell onContextMenu={(e) => handleContextMenu(e, share.file as FolderFile)}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       {share.file.type === 'DIRECTORY' ? (
                         <Folder size={20} style={{ color: theme.palette.warning.main }} />
@@ -840,7 +839,7 @@ export default function SharedPage() {
                       {share.file.name}
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onContextMenu={(e) => handleContextMenu(e, share.file as FolderFile)}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Avatar 
                         sx={{ width: 24, height: 24 }}
@@ -851,7 +850,7 @@ export default function SharedPage() {
                       {user?.username}
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell onContextMenu={(e) => handleContextMenu(e, share.file as FolderFile)}>
                     <Chip
                       size="small"
                       icon={permissionIcons[share.permission]}
@@ -859,10 +858,10 @@ export default function SharedPage() {
                       color={permissionColors[share.permission]}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell onContextMenu={(e) => handleContextMenu(e, share.file as FolderFile)}>
                     {share.file.type === 'DIRECTORY' ? '-' : formatBytes(parseInt(share.file.size))}
                   </TableCell>
-                  <TableCell>
+                  <TableCell onContextMenu={(e) => handleContextMenu(e, share.file as FolderFile)}>
                     <Tooltip title={new Date(share.createdAt).toLocaleString()}>
                       <span>
                         {formatDistance(new Date(share.createdAt), new Date(), { addSuffix: true })}
