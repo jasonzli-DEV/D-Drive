@@ -21,22 +21,18 @@ const PORT = process.env.PORT || 5000;
 app.use(helmet());
 
 // Configure CORS to support multiple origins
-const allowedOrigins = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim())
-  : [process.env.FRONTEND_URL || 'http://localhost:3000'];
-
 app.use(cors({
   origin: (origin, callback) => {
+    // During initial setup (no ALLOWED_ORIGINS configured), allow all origins
+    if (!process.env.ALLOWED_ORIGINS) {
+      return callback(null, true);
+    }
+    
+    // After setup, enforce configured origins
+    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim());
+    
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    // During initial setup (no ALLOWED_ORIGINS configured), allow localhost origins
-    if (!process.env.ALLOWED_ORIGINS && origin) {
-      const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
-      if (localhostPattern.test(origin)) {
-        return callback(null, true);
-      }
-    }
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
