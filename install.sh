@@ -126,6 +126,7 @@ JWT_SECRET=${JWT_SECRET}
 
 # URLs (adjust if running on different host/port)
 FRONTEND_URL=http://localhost
+ALLOWED_ORIGINS=http://localhost
 # Use /api for Docker deployment (nginx proxies to backend)
 VITE_API_URL=/api
 
