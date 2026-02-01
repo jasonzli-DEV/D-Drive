@@ -156,9 +156,15 @@ router.post('/configure', async (req, res) => {
     
     res.json({
       success: true,
-      message: 'Configuration saved. Please restart the server for changes to take effect.',
+      message: 'Configuration saved. Server will restart automatically.',
       restartRequired: true,
     });
+    
+    // Trigger automatic restart after response is sent
+    setTimeout(() => {
+      logger.info('Triggering automatic restart to load new configuration...');
+      process.exit(0); // Docker will restart the container
+    }, 1000);
   } catch (error) {
     logger.error('Failed to save configuration:', error);
     res.status(500).json({
