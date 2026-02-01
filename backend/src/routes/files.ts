@@ -552,22 +552,74 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       let decryptedChunks: Buffer[] = encryptedChunkBuffers;
       if (file.encrypted && file.user.encryptionKey) {
         try {
-      let decryptedChunks: Buffer[] = encryptedChunkBuffers;
-      if (file.encrypted && file.user.encryptionKey) {
-        try {
-          // Try to decrypt all chunks
-          decryptedChunks = encryptedChunkBuffers.map((b) => decryptBuffer(b, file.user.encryptionKey!));
-        } catch (decErr: any) {
-          logger.warn('Decryption failed for one or more chunks during range request; marking file as unencrypted and serving raw bytes', { fileId: file.id, err: decErr?.message });
-          try {
-            await prisma.file.update({ where: { id: file.id }, data: { encrypted: false } });
-          } catch (updateErr) {
-            logger.error('Failed to update file.encrypted flag after decryption failure', { fileId: file.id, err: updateErr });
+          decryptedChunks = [];
+          const MIN_ENCRYPTED_SIZE = 16 + 12 + 16; // salt + iv + authTag minimum
+          
+          for (let idx = 0; idx < encryptedChunkBuffers.length; idx++) {
+            const encryptedBuffer = encryptedChunkBuffers[idx];
+            const expectedDecryptedSize = neededChunks[idx].size;
+            
+            // Check if buffer looks encrypted (has salt/iv/authTag header)
+            if (encryptedBuffer.length < MIN_ENCRYPTED_SIZE) {
+              logger.warn(`Chunk ${neededChunks[idx].chunkIndex} is too small to be encrypted (${encryptedBuffer.length} bytes), using as-is`);
+              decryptedChunks.push(encryptedBuffer);
+              continue;
+            }
+            
+            // If encrypted size matches decrypted size exactly, chunk might not be encrypted
+            if (encryptedBuffer.length === expectedDecryptedSize) {
+              logger.warn(`Chunk ${neededChunks[idx].chunkIndex} size matches decrypted size, might not be encrypted`);
+              // Try decryption first, if it fails use as-is
+              try {
+                const decrypted = decryptBuffer(encryptedBuffer, file.user.encryptionKey!);
+                decryptedChunks.push(decrypted);
+              } catch (decErr) {
+                logger.warn(`Decryption failed for chunk ${neededChunks[idx].chunkIndex}, using as-is:`, decErr);
+                decryptedChunks.push(encryptedBuffer);
+              }
+              continue;
+            }
+            
+            try {
+              const decrypted = decryptBuffer(encryptedBuffer, file.user.encryptionKey!);
+              // Verify decrypted size matches expected
+              if (decrypted.length !== expectedDecryptedSize) {
+                logger.warn(`Chunk ${neededChunks[idx].chunkIndex} decrypted size mismatch: got ${decrypted.length}, expected ${expectedDecryptedSize}`);
+              }
+              decryptedChunks.push(decrypted);
+            } catch (decErr: any) {
+              logger.error(`Failed to decrypt chunk ${neededChunks[idx].chunkIndex} (encrypted: ${encryptedBuffer.length} bytes, expected decrypted: ${expectedDecryptedSize} bytes):`, decErr);
+              throw new Error(`Decryption failed for chunk ${neededChunks[idx].chunkIndex}: ${decErr.message}`);
+            }
           }
-          // Use raw buffers as-is (they are likely the original plaintext)
-          decryptedChunks = encryptedChunkBuffers;
+        } catch (decryptError: any) {
+          logger.error('Decryption failed:', decryptError);
+          return res.status(500).json({ error: `Failed to decrypt file: ${decryptError.message}` });
         }
       }
+      
+      // Concatenate decrypted chunks
+      const fullData = Buffer.concat(decryptedChunks);
+      
+      // Calculate the range within the concatenated chunks
+      // startOffsetInChunk is the offset within the first chunk
+      const endOffsetInData = Math.min(end - (start - startOffsetInChunk), fullData.length - 1);
+      const rangeData = fullData.slice(startOffsetInChunk, endOffsetInData + 1);
+      
+      // Calculate actual end byte (may be less than requested if near end of file)
+      const actualEnd = Math.min(start + rangeData.length - 1, totalFileSize - 1);
+      
+      res.status(206); // Partial Content
+      res.setHeader('Content-Range', `bytes ${start}-${actualEnd}/${totalFileSize}`);
+      res.setHeader('Content-Length', rangeData.length.toString());
+      
+      const disposition = preferInline ? 'inline' : 'attachment';
+      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
+      
+      return res.send(rangeData);
+    }
+    
+    // Non-range request - download all chunks (for small files or non-streaming requests)
     const chunkBuffers: Buffer[] = [];
     for (const chunk of file.chunks) {
       const buffer = await downloadChunkFromDiscord(chunk.messageId, chunk.channelId);
@@ -577,19 +629,14 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
     // Buffer.concat may produce Buffer<ArrayBufferLike> depending on lib types; cast to plain Buffer
     let fileData = Buffer.concat(chunkBuffers) as unknown as Buffer;
 
-    // Decrypt if encrypted; if decryption fails, mark unencrypted and serve raw bytes
+    // Decrypt if encrypted
     if (file.encrypted && file.user.encryptionKey) {
       try {
         fileData = decryptBuffer(fileData, file.user.encryptionKey);
         logger.info(`File decrypted: ${file.name}`);
-      } catch (decryptError: any) {
-        logger.warn('Decryption failed for full download; marking file as unencrypted and serving raw bytes', { fileId: file.id, err: decryptError?.message });
-        try {
-          await prisma.file.update({ where: { id: file.id }, data: { encrypted: false } });
-        } catch (updateErr) {
-          logger.error('Failed to update file.encrypted flag after decryption failure', { fileId: file.id, err: updateErr });
-        }
-        // leave fileData as the raw stored bytes
+      } catch (decryptError) {
+        logger.error('Decryption failed:', decryptError);
+        return res.status(500).json({ error: 'Failed to decrypt file' });
       }
     }
     
