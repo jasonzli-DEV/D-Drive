@@ -114,10 +114,14 @@ router.post('/configure', async (req, res) => {
       envContent = fs.readFileSync(ENV_FILE_PATH, 'utf-8');
     }
     
+    // Generate JWT secret if not exists
+    const jwtSecret = process.env.JWT_SECRET || require('crypto').randomBytes(32).toString('hex');
+    
     // Update or add Discord configuration
     const envUpdates: Record<string, string> = {
       FRONTEND_URL: allowedUrls[0], // Primary URL
       ALLOWED_ORIGINS: allowedUrls.join(','), // All allowed origins for CORS
+      JWT_SECRET: jwtSecret,
       DISCORD_CLIENT_ID: discordClientId,
       DISCORD_CLIENT_SECRET: discordClientSecret,
       DISCORD_BOT_TOKEN: discordBotToken,
