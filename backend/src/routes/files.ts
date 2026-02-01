@@ -499,7 +499,7 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       }
       
       // Calculate cumulative sizes to find which chunks contain the requested range
-      // chunk.size is the decrypted size of each chunk
+      // chunk.size is the decrypted size of each chunk (as stored during upload)
       let cumulativeSize = 0;
       let startChunkIndex = -1;
       let endChunkIndex = -1;
@@ -516,7 +516,7 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
           }
         }
         
-        if (end < cumulativeSize + chunkDecryptedSize) {
+        if (startChunkIndex !== -1 && end < cumulativeSize + chunkDecryptedSize) {
           endChunkIndex = i;
           break;
         }
@@ -527,6 +527,12 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       // If end is beyond all chunks, use last chunk
       if (endChunkIndex === -1) {
         endChunkIndex = file.chunks.length - 1;
+      }
+      
+      // Safety check
+      if (startChunkIndex === -1 || startChunkIndex >= file.chunks.length) {
+        logger.error(`Invalid startChunkIndex: ${startChunkIndex} for start byte: ${start}`);
+        return res.status(500).json({ error: 'Invalid range calculation' });
       }
       
       // Get the chunks we need
@@ -546,17 +552,21 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       let decryptedChunks: Buffer[] = encryptedChunkBuffers;
       if (file.encrypted && file.user.encryptionKey) {
         try {
-          decryptedChunks = encryptedChunkBuffers.map((encrypted, idx) => {
+          decryptedChunks = [];
+          for (let idx = 0; idx < encryptedChunkBuffers.length; idx++) {
             try {
-              return decryptBuffer(encrypted, file.user.encryptionKey!);
-            } catch (decErr) {
-              logger.error(`Failed to decrypt chunk ${neededChunks[idx].chunkIndex}:`, decErr);
-              throw decErr;
+              const decrypted = decryptBuffer(encryptedChunkBuffers[idx], file.user.encryptionKey!);
+              decryptedChunks.push(decrypted);
+            } catch (decErr: any) {
+              logger.error(`Failed to decrypt chunk ${neededChunks[idx].chunkIndex} (encrypted size: ${encryptedChunkBuffers[idx].length}, expected decrypted: ${neededChunks[idx].size}):`, decErr);
+              // If decryption fails, it might be because the chunk wasn't actually encrypted
+              // Try using the encrypted buffer as-is (though this shouldn't happen)
+              throw new Error(`Decryption failed for chunk ${neededChunks[idx].chunkIndex}: ${decErr.message}`);
             }
-          });
-        } catch (decryptError) {
+          }
+        } catch (decryptError: any) {
           logger.error('Decryption failed:', decryptError);
-          return res.status(500).json({ error: 'Failed to decrypt file' });
+          return res.status(500).json({ error: `Failed to decrypt file: ${decryptError.message}` });
         }
       }
       
