@@ -95,14 +95,14 @@ export default function SetupPage() {
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Setup Complete!</h2>
           <p className="text-gray-400 mb-6">
-            D-Drive has been configured successfully. The server needs to restart to apply the changes.
+            D-Drive has been configured successfully. The server is restarting automatically...
           </p>
           <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-6">
             <p className="text-yellow-400 text-sm">
-              <strong>Action Required:</strong> Restart the Docker containers to apply the new configuration.
+              <strong>Please wait:</strong> The server is restarting to load your configuration. This takes 5-10 seconds.
             </p>
             <code className="block mt-2 text-xs text-gray-400 bg-gray-900 rounded p-2">
-              docker compose restart
+              Automatic restart in progress...
             </code>
           </div>
           <button
@@ -486,3 +486,4 @@ export default function SetupPage() {
     </div>
   );
 }
+
