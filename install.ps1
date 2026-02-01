@@ -88,7 +88,8 @@ try {
 if (-not $composeMode) {
     if (Test-Command docker-compose) { $composeMode = 'v1' } else { Write-Err "Docker Compose not found."; exit 1 }
 }
-Write-Info ("Using: {0}" -f (if ($composeMode -eq 'v2') { 'docker compose (v2)' } else { 'docker-compose (v1)' }))
+$composeLabel = if ($composeMode -eq 'v2') { 'docker compose (v2)' } else { 'docker-compose (v1)' }
+Write-Info "Using: $composeLabel"
 
 function Invoke-Compose {
     param(
@@ -117,7 +118,7 @@ Set-Location $InstallDir
 
 # Generate secrets
 $envFile = Join-Path $InstallDir '.env'
-if (Test-Path $envFile -and -not $Force) {
+if ((Test-Path $envFile) -and (-not $Force)) {
     Write-Warn ".env already exists. Use -Force to overwrite. Skipping secret generation."
 } else {
     Write-Info "Generating secure secrets..."
@@ -182,6 +183,7 @@ for ($i=0; $i -lt 60; $i++) {
     Start-Sleep -Seconds 2
 }
 if (-not $ready) {
+    $composeCmd = if ($composeMode -eq 'v2') { 'docker compose' } else { 'docker-compose' }
     Write-Warn "Postgres did not report ready within timeout. Check logs with: $composeCmd logs postgres"
 }
 
@@ -194,5 +196,6 @@ Invoke-Compose up -d frontend
 Write-Info "Services started. Current status:"
 Invoke-Compose ps | Write-Host
 
+$composeCmd = if ($composeMode -eq 'v2') { 'docker compose' } else { 'docker-compose' }
 Write-Host "`nInstallation complete. Open http://localhost in your browser and complete the setup wizard." -ForegroundColor Cyan
 Write-Host "To view logs: $composeCmd logs -f" -ForegroundColor Yellow

@@ -107,12 +107,29 @@ export default function LoginPage() {
             {/* Left side - Hero content */}
             <Grid item xs={12} md={6}>
               <Box sx={{ color: 'white', pr: { md: 4 } }}>
-                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
+                <Box 
+                  sx={{ 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: { xs: 'center', md: 'flex-start' },
+                    mb: 4 
+                  }}
+                >
                   <Box
                     component="img"
                     src="/D-Drive Dark.png"
                     alt="D-Drive"
-                    sx={{ width: 140, height: 140, filter: 'drop-shadow(0 4px 12px rgba(88, 101, 242, 0.5))' }}
+                    sx={{ 
+                      maxWidth: { xs: '280px', sm: '340px', md: '400px' },
+                      width: '100%',
+                      height: 'auto',
+                      filter: 'drop-shadow(0 8px 24px rgba(88, 101, 242, 0.6)) drop-shadow(0 0 60px rgba(88, 101, 242, 0.3))',
+                      transition: 'all 0.3s ease',
+                      '&:hover': {
+                        transform: 'scale(1.05)',
+                        filter: 'drop-shadow(0 12px 32px rgba(88, 101, 242, 0.8)) drop-shadow(0 0 80px rgba(88, 101, 242, 0.4))',
+                      }
+                    }}
                     onError={(e) => {
                       e.currentTarget.style.display = 'none';
                     }}
