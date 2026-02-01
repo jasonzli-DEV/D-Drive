@@ -30,6 +30,14 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // During initial setup (no ALLOWED_ORIGINS configured), allow localhost origins
+    if (!process.env.ALLOWED_ORIGINS && origin) {
+      const localhostPattern = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+      if (localhostPattern.test(origin)) {
+        return callback(null, true);
+      }
+    }
+    
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {

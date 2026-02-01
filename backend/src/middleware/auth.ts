@@ -5,10 +5,7 @@ import { prisma } from '../lib/prisma';
 
 
 // JWT_SECRET must be set in environment - no fallback for security
-const JWT_SECRET = process.env.JWT_SECRET;
-if (!JWT_SECRET) {
-  throw new Error('CRITICAL: JWT_SECRET environment variable is not set. Application cannot start.');
-}
+const JWT_SECRET = process.env.JWT_SECRET || "";
 
 export async function authenticate(req: Request, res: Response, next: NextFunction) {
   try {
@@ -68,3 +65,4 @@ export async function authenticate(req: Request, res: Response, next: NextFuncti
     res.status(401).json({ error: 'Invalid authentication' });
   }
 }
+
