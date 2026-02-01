@@ -569,8 +569,7 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       // Concatenate the decrypted chunks we downloaded and slice the requested range
       const combined = Buffer.concat(decryptedChunks);
       const requestedLength = end - start + 1;
-      const rangeStartInCombined = startOffsetInChunk;
-      const rangeBuffer = combined.slice(rangeStartInCombined, rangeStartInCombined + requestedLength);
+        const rangeBuffer = combined.slice(startOffsetInChunk, startOffsetInChunk + requestedLength);
 
       res.status(206);
       res.setHeader('Content-Range', `bytes ${start}-${end}/${totalFileSize}`);
