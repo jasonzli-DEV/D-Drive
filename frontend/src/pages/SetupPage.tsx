@@ -102,7 +102,7 @@ export default function SetupPage() {
               <strong>Please wait:</strong> The server is restarting to load your configuration. This takes 5-10 seconds.
             </p>
             <code className="block mt-2 text-xs text-gray-400 bg-gray-900 rounded p-2">
-              Automatic restart in progress...
+              Thanks for using D-Drive!
             </code>
           </div>
           <button
