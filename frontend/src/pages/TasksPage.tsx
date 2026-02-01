@@ -688,9 +688,10 @@ export default function TasksPage() {
                             ) : null}
                             {progress.currentDir && <Box sx={{ maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
                             {progress.reconnects > 0 && <Box sx={{ color: 'warning.main' }}>{progress.reconnects} reconnects</Box>}
-                            {(progress.memoryAvailableMB || progress.swapUsedMB) && (
+                            {progress.memoryAvailableMB !== undefined && (
                               <Box sx={{ color: 'info.main' }}>
-                                RAM: {progress.memoryAvailableMB || 0} MB free\n                                {progress.swapTotalMB > 0 && ` • Swap: ${progress.swapUsedMB || 0}/${progress.swapTotalMB} MB`}
+                                RAM: {progress.memoryAvailableMB} MB free
+                                {(progress.swapTotalMB !== undefined && progress.swapTotalMB > 0) && ` • Swap: ${progress.swapUsedMB || 0}/${progress.swapTotalMB} MB`}
                               </Box>
                             )}
                           </Box>
