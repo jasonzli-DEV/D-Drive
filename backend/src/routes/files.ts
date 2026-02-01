@@ -876,7 +876,6 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
           'flv': 'video/x-flv',
           'webm': 'video/webm',
           'mkv': 'video/x-matroska',
-          'ogg': 'video/ogg',
           'ogv': 'video/ogg',
           // Image
           'jpg': 'image/jpeg',
