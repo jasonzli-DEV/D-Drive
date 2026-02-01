@@ -38,6 +38,8 @@ import {
   FolderPlus,
   Folder,
   File,
+  FileText,
+  Play,
   Download,
   Trash2,
   Move,
