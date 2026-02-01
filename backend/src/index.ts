@@ -9,8 +9,10 @@ import { errorHandler } from './middleware/errorHandler';
 import { initDiscordBot } from './services/discord';
 import scheduler from './services/scheduler';
 import { logger } from './utils/logger';
+import path from 'path';
 
-dotenv.config();
+// Load environment variables from /.env (mounted volume)
+dotenv.config({ path: path.join('/', '.env') });
 
 const app = express();
 const PORT = process.env.PORT || 5000;
