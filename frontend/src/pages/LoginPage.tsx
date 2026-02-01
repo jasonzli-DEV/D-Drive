@@ -30,12 +30,6 @@ export default function LoginPage() {
       }
     };
     
-    // If no Discord Client ID is configured, redirect to setup
-    if (!DISCORD_CLIENT_ID || DISCORD_CLIENT_ID === 'placeholder' || DISCORD_CLIENT_ID === '') {
-      navigate('/setup', { replace: true });
-      return;
-    }
-    
     checkSetup();
   }, [navigate]);
 
