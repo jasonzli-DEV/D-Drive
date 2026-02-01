@@ -576,7 +576,7 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       res.setHeader('Content-Range', `bytes ${start}-${end}/${totalFileSize}`);
       res.setHeader('Content-Length', rangeBuffer.length.toString());
       const disposition = preferInline ? 'inline' : 'attachment';
-      res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
+      res.setHeader('Content-Disposition', disposition + '; filename="' + sanitizedName + '"');
 
       return res.send(rangeBuffer);
       }
