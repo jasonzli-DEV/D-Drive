@@ -174,9 +174,9 @@ $null = Start-Job -ScriptBlock {
     param($dir, $mode)
     Set-Location $dir
     if ($mode -eq 'v2') {
-        & docker compose up -d
+        & docker compose up -d 2>$null
     } else {
-        & docker-compose up -d
+        & docker-compose up -d 2>$null
     }
 } -ArgumentList $InstallDir, $composeMode | Wait-Job | Receive-Job
 
