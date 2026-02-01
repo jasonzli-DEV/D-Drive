@@ -170,15 +170,11 @@ Write-Info "Building and starting D-Drive services..."
 Invoke-Compose build 2>$null
 
 Write-Info "Starting all services..."
-$null = Start-Job -ScriptBlock { 
-    param($dir, $mode)
-    Set-Location $dir
-    if ($mode -eq 'v2') {
-        & docker compose up -d 2>$null
-    } else {
-        & docker-compose up -d 2>$null
-    }
-} -ArgumentList $InstallDir, $composeMode | Wait-Job | Receive-Job
+if ($composeMode -eq 'v2') {
+    docker compose up -d 2>$null
+} else {
+    docker-compose up -d 2>$null
+}
 
 # Wait for services to be healthy
 Write-Info "Waiting for services to be ready..."
