@@ -167,7 +167,7 @@ VITE_API_URL=/api
 
 # Start services
 Write-Info "Building and starting D-Drive services..."
-Invoke-Compose build
+Invoke-Compose build 2>$null
 
 Write-Info "Starting all services..."
 $null = Start-Job -ScriptBlock { 

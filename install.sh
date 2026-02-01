@@ -146,7 +146,7 @@ EOF
 start_services() {
     log_info "Building and starting D-Drive services..."
     
-    $COMPOSE_CMD build
+    $COMPOSE_CMD build 2>/dev/null
     
     # Start only postgres first
     log_info "Starting database..."
