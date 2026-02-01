@@ -847,43 +847,58 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process files in batches for better throughput
-          // ADAPTIVE BATCHING: Dynamically adjust batch size based on available RAM
-          // Conservative thresholds to prevent OOM (system reports total free, not container limit)
+          // ADAPTIVE BATCHING: Use RAM + SWAP to dynamically adjust batch size
           const TINY_FILE_THRESHOLD = 100 * 1024;    // 100KB - batch many of these
           const SMALL_FILE_THRESHOLD = 1024 * 1024;  // 1MB - batch fewer of these
-          const MIN_AVAILABLE_RAM_MB = 1500;         // Keep at least 1.5GB free (conservative for 4GB system)
-          const MIN_BATCH_SIZE = 5;                  // Minimum batch size
-          const MAX_BATCH_SIZE = 100;                // Maximum batch size (reduced from 200)
+          const MIN_AVAILABLE_MEMORY_MB = 512;       // Keep at least 512MB available (RAM + swap)
+          const MIN_BATCH_SIZE = 5;
+          const MAX_BATCH_SIZE = 150;
           
-          // Helper to get available memory (system-wide, includes all containers)
+          // Get available memory including swap
           const getAvailableMemoryMB = () => {
-            const freeMem = require('os').freemem();
-            return Math.floor(freeMem / (1024 * 1024));
-          };
-          
-          // Calculate batch size based on available RAM - very conservative to prevent OOM
-          const calculateBatchSize = (avgFileSize: number): number => {
-            // Force garbage collection if available (reduce memory pressure)
-            if (global.gc) {
-              global.gc();
+            const os = require('os');
+            const freeMem = os.freemem();
+            const totalMem = os.totalmem();
+            
+            // Try to read swap info from /proc/meminfo (Linux)
+            let swapFree = 0;
+            try {
+              const fs = require('fs');
+              const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+              const swapFreeMatch = meminfo.match(/SwapFree:\s+(\d+)\s+kB/);
+              if (swapFreeMatch) {
+                swapFree = parseInt(swapFreeMatch[1]) * 1024; // Convert KB to bytes
+              }
+            } catch (err) {
+              // Swap info not available (non-Linux or no swap configured)
             }
             
-            const availableMB = getAvailableMemoryMB();
-            const excessMB = Math.max(0, availableMB - MIN_AVAILABLE_RAM_MB);
+            const totalAvailable = freeMem + swapFree;
+            return Math.floor(totalAvailable / (1024 * 1024));
+          };
+          
+          // Calculate batch size based on available memory (RAM + swap)
+          const calculateBatchSize = (avgFileSize: number): number => {
+            if (global.gc) global.gc();
             
-            // Much more conservative thresholds since we're in a container
-            if (excessMB > 1500) {
-              return MAX_BATCH_SIZE; // 3GB+ free: max speed (100 files)
+            const availableMB = getAvailableMemoryMB();
+            const excessMB = Math.max(0, availableMB - MIN_AVAILABLE_MEMORY_MB);
+            
+            // Adjust batching based on total available memory (including swap)
+            if (excessMB > 2500) {
+              return MAX_BATCH_SIZE; // 3GB+ available: max speed
+            } else if (excessMB > 2000) {
+              return 100; // 2.5-3GB: fast
+            } else if (excessMB > 1500) {
+              return 75; // 2-2.5GB: moderate
             } else if (excessMB > 1000) {
-              return 75; // 2.5-3GB free: fast
-            } else if (excessMB > 600) {
-              return 50; // 2.1-2.5GB free: moderate
-            } else if (excessMB > 300) {
-              return 30; // 1.8-2.1GB free: conservative
-            } else if (excessMB > 100) {
-              return 15; // 1.6-1.8GB free: very conservative
+              return 50; // 1.5-2GB: conservative
+            } else if (excessMB > 500) {
+              return 30; // 1-1.5GB: very conservative
+            } else if (excessMB > 200) {
+              return 15; // 700MB-1GB: minimal
             } else {
-              return MIN_BATCH_SIZE; // <1.6GB free: minimal batching
+              return MIN_BATCH_SIZE; // <700MB: slowest
             }
           };
           

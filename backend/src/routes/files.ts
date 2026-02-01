@@ -859,10 +859,67 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
     const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
     const inlineParam = String(req.query.inline || '').toLowerCase();
     const preferInline = inlineParam === '1' || inlineParam === 'true';
-    const isPdf = (file.mimeType && file.mimeType.includes('pdf')) || (sanitizedName.toLowerCase().endsWith('.pdf'));
-    const isVideo = (file.mimeType && file.mimeType.startsWith('video/')) || 
-                    sanitizedName.match(/\.(mp4|webm|ogg|mov|avi|mkv|flv|wmv|m4v)$/i);
-    const contentType = (preferInline && isPdf) ? 'application/pdf' : (file.mimeType || 'application/octet-stream');
+    
+    // Detect MIME type by file extension first (before isPdf/isVideo checks)
+    let contentType = file.mimeType || 'application/octet-stream';
+    if (!file.mimeType || file.mimeType === 'application/octet-stream') {
+      const ext = sanitizedName.toLowerCase().match(/\.([^.]+)$/);
+      if (ext) {
+        const extension = ext[1];
+        const mimeMap: Record<string, string> = {
+          // Video
+          'mp4': 'video/mp4',
+          'm4v': 'video/mp4',
+          'mov': 'video/quicktime',
+          'avi': 'video/x-msvideo',
+          'wmv': 'video/x-ms-wmv',
+          'flv': 'video/x-flv',
+          'webm': 'video/webm',
+          'mkv': 'video/x-matroska',
+          'ogg': 'video/ogg',
+          'ogv': 'video/ogg',
+          // Image
+          'jpg': 'image/jpeg',
+          'jpeg': 'image/jpeg',
+          'png': 'image/png',
+          'gif': 'image/gif',
+          'webp': 'image/webp',
+          'svg': 'image/svg+xml',
+          'bmp': 'image/bmp',
+          'ico': 'image/x-icon',
+          // Audio
+          'mp3': 'audio/mpeg',
+          'wav': 'audio/wav',
+          'ogg': 'audio/ogg',
+          'oga': 'audio/ogg',
+          'flac': 'audio/flac',
+          'm4a': 'audio/mp4',
+          // Documents
+          'pdf': 'application/pdf',
+          'doc': 'application/msword',
+          'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'xls': 'application/vnd.ms-excel',
+          'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+          'ppt': 'application/vnd.ms-powerpoint',
+          'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+          // Text
+          'txt': 'text/plain',
+          'html': 'text/html',
+          'css': 'text/css',
+          'js': 'text/javascript',
+          'json': 'application/json',
+          'xml': 'application/xml',
+          // Archives
+          'zip': 'application/zip',
+          'tar': 'application/x-tar',
+          'gz': 'application/gzip',
+          'bz2': 'application/x-bzip2',
+          '7z': 'application/x-7z-compressed',
+          'rar': 'application/vnd.rar',
+        };
+        contentType = mimeMap[extension] || 'application/octet-stream';
+      }
+    }
     
     // Calculate total file size (decrypted size)
     const totalFileSize = Number(file.size);
