@@ -22,12 +22,15 @@ export default function SetupPage() {
   const [validation, setValidation] = useState<ValidationResult | null>(null);
   
   const [config, setConfig] = useState({
+    allowedUrls: [window.location.origin],
     discordClientId: '',
     discordClientSecret: '',
     discordBotToken: '',
     discordGuildId: '',
     discordChannelId: '',
   });
+
+  const [urlInput, setUrlInput] = useState('');
 
   // No need to check setup status here - App.tsx handles the redirect
   // Just mark loading as false immediately
@@ -50,7 +53,7 @@ export default function SetupPage() {
       setValidation(response.data);
       
       if (response.data.valid) {
-        setStep(3);
+        setStep(4);
       }
     } catch (err) {
       setError('Failed to validate Discord credentials');
@@ -131,7 +134,7 @@ export default function SetupPage() {
 
         {/* Progress Steps */}
         <div className="flex items-center justify-center mb-8">
-          {[1, 2, 3].map((s) => (
+          {[1, 2, 3, 4].map((s) => (
             <div key={s} className="flex items-center">
               <div className={`w-10 h-10 rounded-full flex items-center justify-center font-semibold ${
                 step >= s ? 'bg-indigo-600 text-white' : 'bg-gray-700 text-gray-400'
@@ -142,8 +145,8 @@ export default function SetupPage() {
                   </svg>
                 ) : s}
               </div>
-              {s < 3 && (
-                <div className={`w-20 h-1 ${step > s ? 'bg-indigo-600' : 'bg-gray-700'}`} />
+              {s < 4 && (
+                <div className={`w-16 h-1 ${step > s ? 'bg-indigo-600' : 'bg-gray-700'}`} />
               )}
             </div>
           ))}
@@ -159,7 +162,113 @@ export default function SetupPage() {
 
           {step === 1 && (
             <>
-              <h2 className="text-xl font-semibold text-white mb-2">Step 1: Discord Application</h2>
+              <h2 className="text-xl font-semibold text-white mb-2">Step 1: Configure Access URLs</h2>
+              <p className="text-gray-400 mb-6">
+                Add all domains that will access this D-Drive instance. These URLs will be used for CORS policy and Discord OAuth redirects.
+              </p>
+
+              <div className="bg-gray-700/50 rounded-lg p-4 mb-6">
+                <h3 className="text-white font-medium mb-2">Current Access URLs:</h3>
+                <div className="space-y-2">
+                  {config.allowedUrls.map((url, index) => (
+                    <div key={index} className="flex items-center justify-between bg-gray-800 rounded px-3 py-2">
+                      <code className="text-sm text-green-400">{url}</code>
+                      {config.allowedUrls.length > 1 && (
+                        <button
+                          onClick={() => setConfig({
+                            ...config,
+                            allowedUrls: config.allowedUrls.filter((_, i) => i !== index)
+                          })}
+                          className="text-red-400 hover:text-red-300 transition-colors"
+                        >
+                          <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                          </svg>
+                        </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-300 mb-1">Add URL</label>
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={urlInput}
+                      onChange={(e) => setUrlInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter' && urlInput.trim()) {
+                          const url = urlInput.trim();
+                          if (url.match(/^https?:\/\/.+/)) {
+                            if (!config.allowedUrls.includes(url)) {
+                              setConfig({ ...config, allowedUrls: [...config.allowedUrls, url] });
+                              setUrlInput('');
+                            } else {
+                              setError('URL already added');
+                              setTimeout(() => setError(null), 3000);
+                            }
+                          } else {
+                            setError('URL must start with http:// or https://');
+                            setTimeout(() => setError(null), 3000);
+                          }
+                        }
+                      }}
+                      placeholder="https://drive.yourdomain.com"
+                      className="flex-1 bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    />
+                    <button
+                      onClick={() => {
+                        const url = urlInput.trim();
+                        if (url.match(/^https?:\/\/.+/)) {
+                          if (!config.allowedUrls.includes(url)) {
+                            setConfig({ ...config, allowedUrls: [...config.allowedUrls, url] });
+                            setUrlInput('');
+                          } else {
+                            setError('URL already added');
+                            setTimeout(() => setError(null), 3000);
+                          }
+                        } else {
+                          setError('URL must start with http:// or https://');
+                          setTimeout(() => setError(null), 3000);
+                        }
+                      }}
+                      disabled={!urlInput.trim()}
+                      className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-4 rounded-lg transition-colors"
+                    >
+                      Add
+                    </button>
+                  </div>
+                  <p className="text-gray-400 text-sm mt-2">
+                    Examples: <code className="bg-gray-700 px-1 rounded text-xs">http://localhost</code>, <code className="bg-gray-700 px-1 rounded text-xs">https://pi.local</code>, <code className="bg-gray-700 px-1 rounded text-xs">https://drive.yourdomain.com</code>
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 bg-blue-500/10 border border-blue-500/20 rounded-lg p-4">
+                <p className="text-blue-400 text-sm">
+                  <strong>Important:</strong> You'll need to add these URLs as Discord OAuth redirect URLs in the next step.
+                  Each URL will have <code className="bg-gray-800 px-1 rounded">/auth/callback</code> appended.
+                </p>
+              </div>
+
+              <div className="mt-6 flex justify-end">
+                <button
+                  onClick={() => setStep(2)}
+                  disabled={config.allowedUrls.length === 0}
+                  className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors"
+                >
+                  Next
+                </button>
+              </div>
+            </>
+          )}
+
+          {step === 2 && (
+            <>
+              <h2 className="text-xl font-semibold text-white mb-2">Step 2: Discord Application</h2>
               <p className="text-gray-400 mb-6">
                 Create a Discord application and bot to enable authentication and file storage.
               </p>
@@ -170,11 +279,11 @@ export default function SetupPage() {
                   <li>Go to <a href="https://discord.com/developers/applications" target="_blank" rel="noopener noreferrer" className="text-indigo-400 hover:underline">Discord Developer Portal</a></li>
                   <li>Click "New Application" and give it a name (e.g., "D-Drive")</li>
                   <li>Go to "OAuth2" → Copy the <strong>Client ID</strong> and <strong>Client Secret</strong></li>
-                  <li>Add redirect URLs (add all domains you'll use):
+                  <li>Add redirect URLs (copy these exactly):
                     <div className="ml-4 mt-1 space-y-1">
-                      <code className="block bg-gray-800 px-2 py-0.5 rounded text-xs">{window.location.origin}/auth/callback</code>
-                      <code className="block bg-gray-800 px-2 py-0.5 rounded text-xs">https://pi.local/auth/callback</code>
-                      <code className="block bg-gray-800 px-2 py-0.5 rounded text-xs">https://drive.yourdomain.com/auth/callback</code>
+                      {config.allowedUrls.map((url, index) => (
+                        <code key={index} className="block bg-gray-800 px-2 py-0.5 rounded text-xs">{url}/auth/callback</code>
+                      ))}
                     </div>
                   </li>
                   <li>Go to "Bot" → Click "Add Bot" → Copy the <strong>Bot Token</strong></li>
@@ -221,9 +330,15 @@ export default function SetupPage() {
                 </div>
               </div>
 
-              <div className="mt-6 flex justify-end">
+              <div className="mt-6 flex justify-between">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(1)}
+                  className="text-gray-400 hover:text-white font-medium py-2 px-6 transition-colors"
+                >
+                  Back
+                </button>
+                <button
+                  onClick={() => setStep(3)}
                   disabled={!config.discordClientId || !config.discordClientSecret || !config.discordBotToken}
                   className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors"
                 >
@@ -233,9 +348,9 @@ export default function SetupPage() {
             </>
           )}
 
-          {step === 2 && (
+          {step === 3 && (
             <>
-              <h2 className="text-xl font-semibold text-white mb-2">Step 2: Storage Server</h2>
+              <h2 className="text-xl font-semibold text-white mb-2">Step 3: Storage Server</h2>
               <p className="text-gray-400 mb-6">
                 Choose a Discord server and channel where files will be stored.
               </p>
@@ -281,7 +396,7 @@ export default function SetupPage() {
 
               <div className="mt-6 flex justify-between">
                 <button
-                  onClick={() => setStep(1)}
+                  onClick={() => setStep(2)}
                   className="text-gray-400 hover:text-white font-medium py-2 px-6 transition-colors"
                 >
                   Back
@@ -300,9 +415,9 @@ export default function SetupPage() {
             </>
           )}
 
-          {step === 3 && (
+          {step === 4 && (
             <>
-              <h2 className="text-xl font-semibold text-white mb-2">Step 3: Confirm Setup</h2>
+              <h2 className="text-xl font-semibold text-white mb-2">Step 4: Confirm Setup</h2>
               <p className="text-gray-400 mb-6">
                 Review your configuration and complete the setup.
               </p>
@@ -324,7 +439,15 @@ export default function SetupPage() {
               )}
 
               <div className="bg-gray-700/50 rounded-lg p-4 space-y-3">
-                <div className="flex justify-between">
+                <div>
+                  <span className="text-gray-400 block mb-2">Allowed URLs ({config.allowedUrls.length})</span>
+                  <div className="space-y-1 ml-4">
+                    {config.allowedUrls.map((url, index) => (
+                      <div key={index} className="text-white font-mono text-sm text-green-400">{url}</div>
+                    ))}
+                  </div>
+                </div>
+                <div className="flex justify-between border-t border-gray-600 pt-3">
                   <span className="text-gray-400">Client ID</span>
                   <span className="text-white font-mono text-sm">{config.discordClientId}</span>
                 </div>
@@ -340,7 +463,7 @@ export default function SetupPage() {
 
               <div className="mt-6 flex justify-between">
                 <button
-                  onClick={() => setStep(2)}
+                  onClick={() => setStep(3)}
                   className="text-gray-400 hover:text-white font-medium py-2 px-6 transition-colors"
                 >
                   Back

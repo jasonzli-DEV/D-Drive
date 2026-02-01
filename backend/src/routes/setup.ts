@@ -65,6 +65,7 @@ router.post('/configure', async (req, res) => {
   }
   
   const {
+    allowedUrls,
     discordClientId,
     discordClientSecret,
     discordBotToken,
@@ -73,11 +74,24 @@ router.post('/configure', async (req, res) => {
   } = req.body;
   
   // Validate required fields
+  if (!allowedUrls || !Array.isArray(allowedUrls) || allowedUrls.length === 0) {
+    return res.status(400).json({
+      error: 'At least one allowed URL is required',
+    });
+  }
+  
   if (!discordClientId || !discordClientSecret || !discordBotToken || !discordGuildId || !discordChannelId) {
     return res.status(400).json({
       error: 'Missing required fields',
-      required: ['discordClientId', 'discordClientSecret', 'discordBotToken', 'discordGuildId', 'discordChannelId'],
+      required: ['allowedUrls', 'discordClientId', 'discordClientSecret', 'discordBotToken', 'discordGuildId', 'discordChannelId'],
     });
+  }
+  
+  // Validate URLs
+  for (const url of allowedUrls) {
+    if (!url.match(/^https?:\/\/.+/)) {
+      return res.status(400).json({ error: `Invalid URL format: ${url}` });
+    }
   }
   
   // Validate Discord credentials format
@@ -102,6 +116,8 @@ router.post('/configure', async (req, res) => {
     
     // Update or add Discord configuration
     const envUpdates: Record<string, string> = {
+      FRONTEND_URL: allowedUrls[0], // Primary URL
+      ALLOWED_ORIGINS: allowedUrls.join(','), // All allowed origins for CORS
       DISCORD_CLIENT_ID: discordClientId,
       DISCORD_CLIENT_SECRET: discordClientSecret,
       DISCORD_BOT_TOKEN: discordBotToken,

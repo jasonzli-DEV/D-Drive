@@ -25,6 +25,9 @@ if (!process.env.JWT_SECRET) {
 const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
 const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost';
+const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+  ? process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim())
+  : [FRONTEND_URL];
 const AVATAR_DIR = process.env.AVATAR_DIR || path.join(process.cwd(), 'data', 'avatars');
 
 if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
@@ -46,6 +49,13 @@ router.get('/discord/callback', async (req, res) => {
     return res.status(400).json({ error: 'No code provided' });
   }
 
+  // Determine which origin to use for redirect_uri
+  // Check the Origin or Referer header to match the frontend's origin
+  const requestOrigin = req.headers.origin || req.headers.referer?.split('/').slice(0, 3).join('/');
+  const redirectOrigin = ALLOWED_ORIGINS.includes(requestOrigin || '') 
+    ? requestOrigin 
+    : FRONTEND_URL;
+
   try {
     // Exchange code for access token
     const tokenResponse = await axios.post(
@@ -55,7 +65,7 @@ router.get('/discord/callback', async (req, res) => {
         client_secret: DISCORD_CLIENT_SECRET!,
         grant_type: 'authorization_code',
         code: code as string,
-        redirect_uri: `${FRONTEND_URL}/auth/callback`,
+        redirect_uri: `${redirectOrigin}/auth/callback`,
       }),
       {
         headers: {
