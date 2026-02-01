@@ -579,6 +579,8 @@ router.get('/:id/download', authenticateDownload, async (req: Request, res: Resp
       res.setHeader('Content-Disposition', `${disposition}; filename="${sanitizedName}"`);
 
       return res.send(rangeBuffer);
+      }
+    }
   } catch (error) {
     logger.error('Error downloading file:', error);
     if (!res.headersSent) {
