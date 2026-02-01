@@ -388,13 +388,15 @@ export async function runTaskNow(taskId: string) {
   });
   
   // Helper to update progress
-  const updateProgress = (updates: Partial<TaskRunInfo['progress']>) => {
+  const updateProgress = (updates?: Partial<TaskRunInfo['progress']>) => {
     const info = runningTasks.get(taskId);
     if (info?.progress) {
+      const progressUpdates = updates || {};
+      
       // Add memory and swap stats on each update
       try {
         const freeMem = os.freemem();
-        updates.memoryAvailableMB = Math.floor(freeMem / (1024 * 1024));
+        progressUpdates.memoryAvailableMB = Math.floor(freeMem / (1024 * 1024));
         
         // Try to get swap info (Linux/Unix only)
         try {
@@ -404,8 +406,8 @@ export async function runTaskNow(taskId: string) {
           if (swapTotalMatch && swapFreeMatch) {
             const swapTotalKB = parseInt(swapTotalMatch[1]);
             const swapFreeKB = parseInt(swapFreeMatch[1]);
-            updates.swapTotalMB = Math.floor(swapTotalKB / 1024);
-            updates.swapUsedMB = Math.floor((swapTotalKB - swapFreeKB) / 1024);
+            progressUpdates.swapTotalMB = Math.floor(swapTotalKB / 1024);
+            progressUpdates.swapUsedMB = Math.floor((swapTotalKB - swapFreeKB) / 1024);
           }
         } catch (swapErr) {
           // Swap info not available (non-Linux or permission issue)
@@ -414,7 +416,7 @@ export async function runTaskNow(taskId: string) {
         // Memory stats not available
       }
       
-      Object.assign(info.progress, updates);
+      Object.assign(info.progress, progressUpdates);
     }
   };
   
