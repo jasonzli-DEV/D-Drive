@@ -899,7 +899,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
           }
 
           // Otherwise split into multiple parts and upload each part
-          const parts = splitBuffer(buffer, DISCORD_MAX);
+          const parts = splitBuffer(toUpload, DISCORD_MAX);
           for (let i = 0; i < parts.length; i++) {
             const part = parts[i];
             const partName = `${src.name}.part${i}`;
