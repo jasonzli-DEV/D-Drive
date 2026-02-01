@@ -171,177 +171,97 @@ router.get('/:id', authenticate, async (req: Request, res: Response) => {
 });
 
 // Upload file
-router.post('/upload', authenticate, upload.single('file'), async (req: Request, res: Response) => {
+router.get('/:id/download', authenticateDownload, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
-    const { path, parentId, encrypt } = req.body;
-    const file = req.file;
+    const { id } = req.params;
 
-    if (!file) {
-      return res.status(400).json({ error: 'No file provided' });
-    }
+    const file = await prisma.file.findFirst({
+      where: { id, userId, type: 'FILE' },
+      include: {
+        chunks: { orderBy: { chunkIndex: 'asc' } },
+        user: { select: { encryptionKey: true } },
+      },
+    });
 
-    // Get user's encryption key if encryption is requested
-    let encryptionKey: string | null = null;
-    const shouldEncrypt = encrypt === 'true' || encrypt === true;
-    
-    if (shouldEncrypt) {
-      const user = await prisma.user.findUnique({ where: { id: userId } });
-      if (!user?.encryptionKey) {
-        // Generate encryption key for user if not exists
-        encryptionKey = generateEncryptionKey();
-        await prisma.user.update({
-          where: { id: userId },
-          data: { encryptionKey },
-        });
-      } else {
-        encryptionKey = user.encryptionKey;
-      }
-    }
+    if (!file) return res.status(404).json({ error: 'File not found' });
 
-    // Ensure filename is unique within the target parent folder.
-    // Resolve the parent path string. Only derive a parentPath from `parentId`
-    // (server-authoritative). Do NOT trust a client-supplied `path` value when
-    // `parentId` is not provided — that can create inconsistent `path` vs
-    // `parentId` state (e.g. paths that claim a file is inside a folder while
-    // `parentId` is null). If client omitted `parentId`, create at root.
-    const originalName = file.originalname;
-    let parentPath: string | null = null;
-    if (parentId) {
-      const parent = await prisma.file.findUnique({ where: { id: parentId }, select: { path: true } });
-      parentPath = parent?.path || null;
-    } else {
-      parentPath = null;
-    }
+    const sanitizedName = file.name.replace(/["\r\n\\]/g, '_');
+    const inlineParam = String(req.query.inline || '').toLowerCase();
+    const preferInline = inlineParam === '1' || inlineParam === 'true';
+    const isPdf = (file.mimeType && file.mimeType.includes('pdf')) || sanitizedName.toLowerCase().endsWith('.pdf');
+    const contentType = (preferInline && isPdf) ? 'application/pdf' : (file.mimeType || 'application/octet-stream');
 
-    // numeric/null parent id to store in DB
-    const targetParentId = parentId || null;
+    const totalFileSize = Number(file.size);
+    const rangeHeader = req.headers.range;
 
-    // Try to create the file record; if unique constraint fails, retry with a new unique name.
-    let fileRecord: any = null;
-    let uniqueName = await getUniqueName(userId, parentPath, originalName);
-    const maxAttempts = 5;
-    let attempt = 0;
-    while (!fileRecord && attempt < maxAttempts) {
-      try {
-        // computePath should include the current uniqueName so retries change the path too
-        const computedPath = parentPath ? `${parentPath}/${uniqueName}` : `/${uniqueName}`;
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Accept-Ranges', 'bytes');
 
-        fileRecord = await prisma.file.create({
-          data: {
-            name: uniqueName,
-            path: computedPath,
-            size: BigInt(file.size),
-            mimeType: file.mimetype,
-            type: 'FILE',
-            encrypted: shouldEncrypt,
-            userId,
-            parentId: targetParentId,
-          },
-        });
-      } catch (createErr: any) {
-        // Prisma unique constraint on (userId, path) — generate another unique name and retry
-        if (createErr?.code === 'P2002') {
-          logger.warn('Unique constraint on file path, retrying with a different name');
-          uniqueName = await getUniqueName(userId, parentPath, originalName);
-          attempt += 1;
-          continue;
+    // Helper to assemble and (optionally) decrypt a set of chunk buffers
+    const assembleBuffers = async (buffers: Buffer[]) => {
+      if (file.encrypted && file.user.encryptionKey) {
+        try {
+          const decrypted = buffers.map((b) => decryptBuffer(b, file.user.encryptionKey!));
+          return Buffer.concat(decrypted);
+        } catch (decErr: any) {
+          logger.warn('Decryption failed while assembling buffers; marking file as unencrypted', { fileId: file.id, err: decErr?.message });
+          try { await prisma.file.update({ where: { id: file.id }, data: { encrypted: false } }); } catch (_) {}
+          return Buffer.concat(buffers);
         }
-        throw createErr;
       }
+      return Buffer.concat(buffers);
+    };
+
+    if (rangeHeader) {
+      const parts = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(parts[0], 10);
+      const end = parts[1] ? parseInt(parts[1], 10) : totalFileSize - 1;
+
+      if (start >= totalFileSize || end >= totalFileSize) {
+        res.status(416).setHeader('Content-Range', `bytes */${totalFileSize}`);
+        return res.end();
+      }
+
+      // locate chunk boundaries
+      let cumulative = 0;
+      let sIdx = -1, eIdx = -1, sOffset = 0;
+      for (let i = 0; i < file.chunks.length; i++) {
+        const sz = file.chunks[i].size as number;
+        if (sIdx === -1 && start < cumulative + sz) { sIdx = i; sOffset = start - cumulative; }
+        if (sIdx !== -1 && end < cumulative + sz) { eIdx = i; break; }
+        cumulative += sz;
+      }
+      if (sIdx === -1) return res.status(500).json({ error: 'Invalid range calculation' });
+      if (eIdx === -1) eIdx = file.chunks.length - 1;
+
+      const needed = file.chunks.slice(sIdx, eIdx + 1);
+      const bufs = await Promise.all(needed.map(c => downloadChunkFromDiscord(c.messageId, c.channelId)));
+      const assembled = await assembleBuffers(bufs);
+      const relStart = sOffset;
+      const relLen = end - start + 1;
+      const out = assembled.slice(relStart, relStart + relLen);
+
+      res.status(206);
+      res.setHeader('Content-Range', `bytes ${start}-${end}/${totalFileSize}`);
+      res.setHeader('Content-Length', String(out.length));
+      const disposition = preferInline ? 'inline' : 'attachment';
+      res.setHeader('Content-Disposition', disposition + '; filename="' + sanitizedName + '"');
+      return res.send(out);
     }
 
-    if (!fileRecord) {
-      throw new Error('Failed to create unique file record after multiple attempts');
-    }
-
-    // Process file on disk to avoid high memory usage. We will read the
-    // uploaded temp file in CHUNK_SIZE blocks and stream each block to
-    // Discord. If encryption is requested we create a temporary encrypted
-    // file on disk (streaming encryption would be ideal, but the current
-    // helper operates on buffers so we write an encrypted temp file).
-    const tmpPath = (file as any).path as string;
-    let processingPath = tmpPath;
-    const chunks: any[] = [];
-    const uploadName = fileRecord.name;
-
-    try {
-      // If encryption requested, read file and write encrypted temp file
-      if (shouldEncrypt && encryptionKey) {
-        logger.info(`Encrypting uploaded file to temp file: ${file.originalname}`);
-        const raw = await fs.promises.readFile(tmpPath);
-        const encrypted = encryptBuffer(raw, encryptionKey);
-        const encPath = `${tmpPath}.enc`;
-        await fs.promises.writeFile(encPath, encrypted);
-        processingPath = encPath;
-      }
-
-      const fd = await fs.promises.open(processingPath, 'r');
-      const stat = await fd.stat();
-      const totalSize = stat.size;
-
-      let offset = 0;
-      let chunkCounter = 0;
-
-      while (offset < totalSize) {
-        const readSize = Math.min(CHUNK_SIZE, totalSize - offset);
-        const buffer = Buffer.alloc(readSize);
-        await fd.read(buffer, 0, readSize, offset);
-
-        const filename = `${fileRecord.id}_chunk_${chunkCounter}_${uploadName}`;
-        logger.info(`Uploading chunk ${chunkCounter + 1} for file ${uploadName} (bytes=${buffer.length})`);
-
-        const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(
-          filename,
-          buffer
-        );
-
-        const chunk = await prisma.fileChunk.create({
-          data: {
-            fileId: fileRecord.id,
-            chunkIndex: chunkCounter,
-            messageId,
-            channelId,
-            attachmentUrl,
-            size: buffer.length,
-          },
-        });
-
-        chunks.push(chunk);
-
-        // Move to next chunk
-        chunkCounter += 1;
-        offset += readSize;
-      }
-
-      await fd.close();
-
-      // Clean up temp files (original upload and encrypted temp if created)
-      try {
-        if (processingPath && processingPath !== tmpPath) {
-          await fs.promises.unlink(processingPath);
-        }
-        if (tmpPath) {
-          await fs.promises.unlink(tmpPath);
-        }
-      } catch (rmErr) {
-        logger.warn('Failed to remove temp upload files:', rmErr);
-      }
-
-      logger.info(`File uploaded successfully: ${uploadName} (${chunks.length} chunks)`);
-
-      // Return the created file (with stored name) and chunk count
-      const storedFile = await prisma.file.findUnique({ where: { id: fileRecord.id } });
-
-      return res.json({
-        file: serializeFile(storedFile),
-        chunks: chunks.length,
-        storedName: uploadName,
-      });
-    } catch (uploadError: any) {
-      logger.error(`Failed uploading chunks for file ${fileRecord.id}:`, uploadError);
-
-      // Attempt to clean up any uploaded chunks (best-effort)
+    // Full download
+    const allBufs = await Promise.all(file.chunks.map(c => downloadChunkFromDiscord(c.messageId, c.channelId)));
+    const fileBuf = await assembleBuffers(allBufs);
+    const disposition = preferInline ? 'inline' : 'attachment';
+    res.setHeader('Content-Disposition', disposition + '; filename="' + sanitizedName + '"');
+    res.setHeader('Content-Length', String(fileBuf.length));
+    return res.send(fileBuf);
+  } catch (error) {
+    logger.error('Error downloading file:', error);
+    if (!res.headersSent) return res.status(500).json({ error: 'Failed to download file' });
+  }
+});
       try {
         // Delete discord messages for created chunks
         const uploadedChunks = await prisma.fileChunk.findMany({ where: { fileId: fileRecord.id } });
