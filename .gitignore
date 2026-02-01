@@ -57,3 +57,4 @@ secrets/
 *.pem
 *.key
 config.json
+frontend/.env.production
