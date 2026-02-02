@@ -69,7 +69,7 @@ export async function storeBufferAsFile(userId: string, parentId: string | null,
     data: {
       name: uniqueName,
       path: computedPath,
-      size: BigInt(buffer.length),
+      size: BigInt(buffer.length),  // Original decrypted size
       mimeType: mimeType || 'application/octet-stream',
       type: 'FILE',
       encrypted: shouldEncrypt,
@@ -78,27 +78,38 @@ export async function storeBufferAsFile(userId: string, parentId: string | null,
     },
   });
 
-  // If encryption requested, encrypt buffer
-  let processingBuffer = buffer;
-  if (shouldEncrypt && encryptionKey) {
-    processingBuffer = encryptBuffer(buffer, encryptionKey);
-  }
-
-  const parts = splitBuffer(processingBuffer, CHUNK_SIZE);
+  // Split into chunks FIRST (plaintext), then encrypt each chunk if needed
+  const plaintextParts = splitBuffer(buffer, CHUNK_SIZE);
   const chunksCreated: any[] = [];
 
   try {
-    for (let i = 0; i < parts.length; i++) {
-      const part = parts[i];
+    for (let i = 0; i < plaintextParts.length; i++) {
+      const plaintextPart = plaintextParts[i];
+      
+      // Encrypt per-chunk if encryption is enabled
+      let toUpload = plaintextPart;
+      if (shouldEncrypt && encryptionKey) {
+        toUpload = encryptBuffer(plaintextPart, encryptionKey);
+      }
+      
       const filename = `${fileRecord.id}_chunk_${i}_${uniqueName}`;
-      const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(filename, part);
-      const chunk = await prisma.fileChunk.create({ data: { fileId: fileRecord.id, chunkIndex: i, messageId, channelId, attachmentUrl, size: part.length } });
+      const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(filename, toUpload);
+      
+      // Store the DECRYPTED size in chunk.size for Range calculations
+      const chunk = await prisma.fileChunk.create({ 
+        data: { 
+          fileId: fileRecord.id, 
+          chunkIndex: i, 
+          messageId, 
+          channelId, 
+          attachmentUrl, 
+          size: plaintextPart.length  // Decrypted size, NOT encrypted size
+        } 
+      });
       chunksCreated.push(chunk);
     }
 
-    // Update recorded size (in case encryption changed it)
-    await prisma.file.update({ where: { id: fileRecord.id }, data: { size: BigInt(processingBuffer.length) } });
-
+    // File size stays as original decrypted size (already set at creation)
     const stored = await prisma.file.findUnique({ where: { id: fileRecord.id } });
     return stored;
   } catch (err) {

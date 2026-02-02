@@ -256,27 +256,17 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
     }
 
     // Process file on disk to avoid high memory usage. We will read the
-    // uploaded temp file in CHUNK_SIZE blocks and stream each block to
-    // Discord. If encryption is requested we create a temporary encrypted
-    // file on disk (streaming encryption would be ideal, but the current
-    // helper operates on buffers so we write an encrypted temp file).
+    // uploaded temp file in CHUNK_SIZE blocks, optionally encrypt each chunk,
+    // and stream each block to Discord.
     const tmpPath = (file as any).path as string;
-    let processingPath = tmpPath;
     const chunks: any[] = [];
     const uploadName = fileRecord.name;
+    const ENCRYPTION_OVERHEAD = 16 + 12 + 16; // salt (16) + iv (12) + authTag (16) = 44 bytes
 
     try {
-      // If encryption requested, read file and write encrypted temp file
-      if (shouldEncrypt && encryptionKey) {
-        logger.info(`Encrypting uploaded file to temp file: ${file.originalname}`);
-        const raw = await fs.promises.readFile(tmpPath);
-        const encrypted = encryptBuffer(raw, encryptionKey);
-        const encPath = `${tmpPath}.enc`;
-        await fs.promises.writeFile(encPath, encrypted);
-        processingPath = encPath;
-      }
-
-      const fd = await fs.promises.open(processingPath, 'r');
+      // Process file in chunks directly from the original file (not whole-file encryption)
+      // Encryption is done per-chunk to match streaming upload behavior
+      const fd = await fs.promises.open(tmpPath, 'r');
       const stat = await fd.stat();
       const totalSize = stat.size;
 
@@ -288,14 +278,21 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         const buffer = Buffer.alloc(readSize);
         await fd.read(buffer, 0, readSize, offset);
 
+        // Encrypt per-chunk if encryption is enabled
+        let toUpload = buffer;
+        if (shouldEncrypt && encryptionKey) {
+          toUpload = encryptBuffer(buffer, encryptionKey);
+        }
+
         const filename = `${fileRecord.id}_chunk_${chunkCounter}_${uploadName}`;
-        logger.info(`Uploading chunk ${chunkCounter + 1} for file ${uploadName} (bytes=${buffer.length})`);
+        logger.info(`Uploading chunk ${chunkCounter + 1} for file ${uploadName} (plaintext=${buffer.length}, encrypted=${toUpload.length})`);
 
         const { messageId, attachmentUrl, channelId } = await uploadChunkToDiscord(
           filename,
-          buffer
+          toUpload
         );
 
+        // Store the DECRYPTED size in chunk.size for Range calculations
         const chunk = await prisma.fileChunk.create({
           data: {
             fileId: fileRecord.id,
@@ -303,7 +300,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
             messageId,
             channelId,
             attachmentUrl,
-            size: buffer.length,
+            size: buffer.length,  // Decrypted size, NOT encrypted size
           },
         });
 
@@ -316,16 +313,13 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
 
       await fd.close();
 
-      // Clean up temp files (original upload and encrypted temp if created)
+      // Clean up temp file (original upload)
       try {
-        if (processingPath && processingPath !== tmpPath) {
-          await fs.promises.unlink(processingPath);
-        }
         if (tmpPath) {
           await fs.promises.unlink(tmpPath);
         }
       } catch (rmErr) {
-        logger.warn('Failed to remove temp upload files:', rmErr);
+        logger.warn('Failed to remove temp upload file:', rmErr);
       }
 
       logger.info(`File uploaded successfully: ${uploadName} (${chunks.length} chunks)`);
