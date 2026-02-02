@@ -238,7 +238,9 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
           if (fOriginalPath !== parentPath) return false;
           
           // Compare timestamps - must be within 100ms (same transaction)
-          const timeDiff = Math.abs(f.deletedAt!.getTime() - file.deletedAt!.getTime());
+          // Check BOTH directions since items may be deleted in any order during transaction
+          if (!f.deletedAt || !file.deletedAt) return false;
+          const timeDiff = Math.abs(f.deletedAt.getTime() - file.deletedAt.getTime());
           return timeDiff < 100;
         });
         
