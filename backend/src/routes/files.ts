@@ -194,12 +194,10 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
   try {
     const userId = (req as any).user.userId;
 
-    // Find top-level deleted items (not deleted as part of a parent)
     const topLevelDeleted = await prisma.file.findMany({
       where: { 
         userId, 
         deletedAt: { not: null },
-        deletedWithParentId: null,
       },
       select: {
         id: true,
@@ -243,27 +241,25 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Find all items that were deleted with this item (children)
-    const childItems = await prisma.file.findMany({
+    const allDeleted = await prisma.file.findMany({
       where: {
         userId,
-        deletedWithParentId: id,
+        deletedAt: { not: null },
       },
       select: { id: true, originalPath: true, path: true, parentId: true, name: true }
     });
 
-    // Include the target item and all its children
-    const itemsToRestore = [
-      { id: file.id, originalPath: file.originalPath, path: file.path, parentId: file.parentId, name: file.name },
-      ...childItems
-    ];
+    const targetOriginalPath = file.originalPath || file.path;
+    const itemsToRestore = allDeleted.filter(f => {
+      const fOriginalPath = f.originalPath || f.path;
+      return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
+    });
 
     const targetPath = file.originalPath || file.path;
     const targetPathParts = targetPath.split('/').filter(Boolean);
     const fileName = targetPathParts.pop() || file.name;
     const originalParentPath = targetPathParts.length > 0 ? '/' + targetPathParts.join('/') : null;
     
-    // Check if original parent path exists
     let restoreToPath: string | null = null;
     let newParentId: string | null = null;
     
@@ -278,13 +274,11 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       }
     }
     
-    // If original parent doesn't exist, restore to root
     if (!restoreToPath) {
-      restoreToPath = null; // Root
+      restoreToPath = null;
       newParentId = null;
     }
     
-    // Get unique name using # scheme (file #2, file #3, etc.)
     let uniqueName = fileName;
     let counter = 2;
     while (true) {
@@ -294,7 +288,6 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       });
       if (!existing) break;
       
-      // Extract base name and extension
       const lastDot = fileName.lastIndexOf('.');
       if (lastDot > 0) {
         const baseName = fileName.substring(0, lastDot);
@@ -309,26 +302,21 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
     const finalPath = restoreToPath ? `${restoreToPath}/${uniqueName}` : `/${uniqueName}`;
     const wasRenamed = uniqueName !== fileName;
 
-    // Restore all files, updating paths if the root item was renamed
     await prisma.$transaction(async (tx) => {
       for (const f of itemsToRestore) {
         let restorePath = f.originalPath || f.path;
         let newName = f.name;
         
-        // If this is the root item being restored
         if (f.id === file.id) {
           restorePath = finalPath;
           newName = uniqueName;
         } else if (wasRenamed) {
-          // This is a child - update path to reflect parent rename
           const oldBasePath = targetPath;
           restorePath = restorePath.replace(oldBasePath, finalPath);
         }
         
-        // Determine the correct parentId for this file
         let parentId = f.parentId;
         if (f.id === file.id && newParentId !== null) {
-          // This is the root item being restored, use the recreated parent
           parentId = newParentId;
         }
         
@@ -336,7 +324,6 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
           where: { id: f.id },
           data: {
             deletedAt: null,
-            deletedWithParentId: null,
             name: f.id === file.id ? newName : f.name,
             path: restorePath,
             originalPath: null,
@@ -386,22 +373,22 @@ router.delete('/recycle-bin/:id', authenticate, async (req: Request, res: Respon
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get all files that were deleted at the same time (use deletion timestamp)
-    // Find all items that were deleted together (same deletedWithParentId or children)
-    const filesToDelete = await prisma.file.findMany({
+    const allDeleted = await prisma.file.findMany({
       where: {
         userId,
-        OR: [
-          { id: id },
-          { deletedWithParentId: id },
-        ]
+        deletedAt: { not: null },
       },
       select: { id: true, originalPath: true, path: true }
     });
 
+    const targetOriginalPath = file.originalPath || file.path;
+    const filesToDelete = allDeleted.filter(f => {
+      const fOriginalPath = f.originalPath || f.path;
+      return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
+    });
+
     const fileIds = filesToDelete.map(f => f.id);
 
-    // Permanently delete
     await prisma.$transaction(async (tx) => {
       await tx.fileChunk.deleteMany({ where: { fileId: { in: fileIds } } });
       await tx.file.deleteMany({ where: { id: { in: fileIds } } });
@@ -1233,17 +1220,13 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
         for (const fileId of filesToDelete) {
           const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true } });
           const originalPath = f?.path || '';
-          // Prefix path with /.trash/{trashId} to make it unique and hidden from normal queries
           const trashedPath = `/.trash/${trashId}${originalPath}`;
-          // Mark children with parent ID so they don't show separately in recycle bin
-          const isTopLevelItem = fileId === file.id;
           await tx.file.update({
             where: { id: fileId },
             data: {
               deletedAt: now,
               originalPath: originalPath,
               path: trashedPath,
-              deletedWithParentId: isTopLevelItem ? null : file.id,
             },
           });
         }
