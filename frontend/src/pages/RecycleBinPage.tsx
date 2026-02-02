@@ -90,7 +90,16 @@ export default function RecycleBinPage() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['recycleBin'] });
       queryClient.invalidateQueries({ queryKey: ['files'] });
-      toast.success(`Restored ${data.filesRestored} item(s)`);
+      
+      // Build a descriptive success message
+      let message = `Restored ${data.filesRestored} item(s)`;
+      if (data.restoredToRoot) {
+        message += ' to root (original folder no longer exists)';
+      }
+      if (data.renamedTo) {
+        message += ` as "${data.renamedTo}" (name conflict resolved)`;
+      }
+      toast.success(message);
     },
     onError: (error: any) => {
       const msg = error?.response?.data?.error || 'Failed to restore file';

@@ -5,6 +5,9 @@ import axios from 'axios';
 import { promises as fs } from 'fs';
 import path from 'path';
 
+// Days to keep files in recycle bin before permanent deletion
+const RECYCLE_BIN_RETENTION_DAYS = 30;
+
 
 
 const DISCORD_BOT_TOKEN = process.env.DISCORD_BOT_TOKEN || '';
@@ -158,5 +161,102 @@ export async function cleanupTempFiles() {
     
   } catch (err) {
     logger.error('Temp file cleanup failed:', err);
+  }
+}
+
+/**
+ * Cleanup recycle bin - permanently delete files older than 30 days
+ * This implements the standard Windows-style auto-delete for recycle bin items
+ */
+export async function cleanupOldRecycleBinFiles() {
+  logger.info('Starting recycle bin cleanup task...');
+  
+  try {
+    // Calculate the cutoff date (30 days ago)
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - RECYCLE_BIN_RETENTION_DAYS);
+    
+    // Find all files in recycle bin older than 30 days
+    const oldDeletedFiles = await prisma.file.findMany({
+      where: {
+        deletedAt: {
+          not: null,
+          lt: cutoffDate,
+        },
+      },
+      select: {
+        id: true,
+        name: true,
+        type: true,
+        deletedAt: true,
+        userId: true,
+        chunks: {
+          select: {
+            id: true,
+            messageId: true,
+            channelId: true,
+          },
+        },
+      },
+    });
+    
+    if (oldDeletedFiles.length === 0) {
+      logger.info('No old recycle bin files to clean up');
+      return;
+    }
+    
+    logger.info(`Found ${oldDeletedFiles.length} files older than ${RECYCLE_BIN_RETENTION_DAYS} days in recycle bin`);
+    
+    let deletedCount = 0;
+    let errorCount = 0;
+    
+    for (const file of oldDeletedFiles) {
+      try {
+        // Delete Discord chunks for this file
+        for (const chunk of file.chunks) {
+          try {
+            await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
+            // Small delay to avoid rate limiting
+            await new Promise(resolve => setTimeout(resolve, 100));
+          } catch (chunkErr) {
+            logger.warn(`Failed to delete Discord chunk for file ${file.name}:`, chunkErr);
+          }
+        }
+        
+        // Delete chunks and file from database
+        await prisma.$transaction(async (tx) => {
+          await tx.fileChunk.deleteMany({ where: { fileId: file.id } });
+          await tx.file.delete({ where: { id: file.id } });
+        });
+        
+        deletedCount++;
+        
+        // Log the auto-deletion
+        try {
+          const { createLog } = await import('../routes/logs');
+          await createLog(file.userId, 'AUTO_DELETE', `Auto-deleted from recycle bin after ${RECYCLE_BIN_RETENTION_DAYS} days: ${file.name}`, true, undefined, {
+            fileName: file.name,
+            fileType: file.type,
+            deletedAt: file.deletedAt,
+            retentionDays: RECYCLE_BIN_RETENTION_DAYS,
+          });
+        } catch (logErr) {
+          // Ignore logging errors
+        }
+        
+        if (deletedCount % 10 === 0) {
+          logger.info(`Recycle bin cleanup progress: ${deletedCount}/${oldDeletedFiles.length}`);
+        }
+        
+      } catch (err) {
+        errorCount++;
+        logger.warn(`Failed to permanently delete file ${file.name} (${file.id}):`, err);
+      }
+    }
+    
+    logger.info(`Recycle bin cleanup complete: permanently deleted ${deletedCount} files (${errorCount} errors)`);
+    
+  } catch (err) {
+    logger.error('Recycle bin cleanup task failed:', err);
   }
 }

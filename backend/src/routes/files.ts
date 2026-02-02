@@ -229,11 +229,14 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
 
 
 // Restore file from recycle bin
+// Restores to original location if parent folder still exists, otherwise to root.
+// If a file with the same name exists, appends (1), (2), etc. following Windows conventions.
 router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
     const { id } = req.params;
 
+    // Find the file to restore
     const file = await prisma.file.findFirst({
       where: { id, userId, deletedAt: { not: null } },
     });
@@ -242,46 +245,58 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
+    // Get all deleted files to find children that were deleted with this item
     const allDeleted = await prisma.file.findMany({
       where: {
         userId,
         deletedAt: { not: null },
       },
-      select: { id: true, originalPath: true, path: true, parentId: true, name: true }
+      select: { id: true, originalPath: true, path: true, parentId: true, name: true, type: true }
     });
 
+    // Find all items to restore: the file itself + any children deleted with it
     const targetOriginalPath = file.originalPath || file.path;
     const itemsToRestore = allDeleted.filter(f => {
       const fOriginalPath = f.originalPath || f.path;
       return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
     });
 
+    // Parse original path to determine restore location
     const targetPath = file.originalPath || file.path;
     const targetPathParts = targetPath.split('/').filter(Boolean);
     const fileName = targetPathParts.pop() || file.name;
     const originalParentPath = targetPathParts.length > 0 ? '/' + targetPathParts.join('/') : null;
     
+    // Determine where to restore: original parent if exists, otherwise root
     let restoreToPath: string | null = null;
     let newParentId: string | null = null;
+    let restoredToRoot = false;
     
     if (originalParentPath) {
+      // Check if the original parent folder still exists
       const existingParent = await prisma.file.findFirst({
         where: { userId, path: originalParentPath, type: 'DIRECTORY', deletedAt: null }
       });
       
       if (existingParent) {
+        // Original parent exists - restore there
         restoreToPath = originalParentPath;
         newParentId = existingParent.id;
+      } else {
+        // Original parent doesn't exist - restore to root
+        restoreToPath = null;
+        newParentId = null;
+        restoredToRoot = true;
       }
-    }
-    
-    if (!restoreToPath) {
+    } else {
+      // File was originally at root
       restoreToPath = null;
       newParentId = null;
     }
     
+    // Generate unique name using Windows-style (1), (2), etc. for conflicts
     let uniqueName = fileName;
-    let counter = 2;
+    let counter = 1;
     while (true) {
       const checkPath = restoreToPath ? `${restoreToPath}/${uniqueName}` : `/${uniqueName}`;
       const existing = await prisma.file.findFirst({
@@ -289,36 +304,41 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       });
       if (!existing) break;
       
-      const lastDot = fileName.lastIndexOf('.');
-      if (lastDot > 0) {
-        const baseName = fileName.substring(0, lastDot);
-        const extension = fileName.substring(lastDot);
-        uniqueName = `${baseName} #${counter}${extension}`;
-      } else {
-        uniqueName = `${fileName} #${counter}`;
-      }
+      // Use Windows-style numbering: "file (1).txt", "file (2).txt", etc.
+      const { base, ext } = splitName(fileName);
+      uniqueName = `${base} (${counter})${ext}`;
       counter++;
     }
     
     const finalPath = restoreToPath ? `${restoreToPath}/${uniqueName}` : `/${uniqueName}`;
     const wasRenamed = uniqueName !== fileName;
 
+    // Restore all items in a transaction
     await prisma.$transaction(async (tx) => {
       for (const f of itemsToRestore) {
         let restorePath = f.originalPath || f.path;
         let newName = f.name;
+        let parentId: string | null = f.parentId;
         
         if (f.id === file.id) {
+          // This is the main file being restored
           restorePath = finalPath;
           newName = uniqueName;
-        } else if (wasRenamed) {
-          const oldBasePath = targetPath;
-          restorePath = restorePath.replace(oldBasePath, finalPath);
-        }
-        
-        let parentId = f.parentId;
-        if (f.id === file.id && newParentId !== null) {
+          // Update parent ID: if restoring to root, set to null; otherwise use the found parent
           parentId = newParentId;
+        } else {
+          // This is a child file - update its path based on the new parent path
+          const childOriginalPath = f.originalPath || f.path;
+          if (wasRenamed || restoredToRoot) {
+            // Replace the old base path with the new path
+            restorePath = childOriginalPath.replace(targetOriginalPath, finalPath);
+          } else {
+            restorePath = childOriginalPath;
+          }
+          
+          // For children, find their parent in the restored set or use their original parent
+          // But if the parent was deleted, it should also be in itemsToRestore
+          // Leave parentId as-is for children since they maintain their hierarchy
         }
         
         await tx.file.update({
@@ -338,22 +358,28 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
     // Log the restore
     try {
       const { createLog } = require('./logs');
-      await createLog(userId, 'DELETE', `Restored from recycle bin: ${file.name}${wasRenamed ? ` (renamed to ${uniqueName})` : ''}`, true, undefined, { 
+      await createLog(userId, 'RESTORE', `Restored from recycle bin: ${file.name}${wasRenamed ? ` (renamed to ${uniqueName})` : ''}${restoredToRoot ? ' (to root - original folder deleted)' : ''}`, true, undefined, { 
         fileName: file.name, 
         fileType: file.type,
         filesRestored: itemsToRestore.length,
-        restoredToRoot: !originalParentPath || !newParentId,
-        renamedTo: wasRenamed ? uniqueName : undefined
+        restoredToRoot,
+        renamedTo: wasRenamed ? uniqueName : undefined,
+        originalPath: targetOriginalPath
       });
     } catch (logErr) {
       logger.warn('Failed to log restore:', logErr);
     }
 
     res.json({ 
-      message: wasRenamed ? `File restored as "${uniqueName}"` : 'File restored successfully', 
+      message: wasRenamed 
+        ? `File restored as "${uniqueName}"${restoredToRoot ? ' (original folder no longer exists)' : ''}` 
+        : restoredToRoot 
+          ? 'File restored to root (original folder no longer exists)' 
+          : 'File restored successfully', 
       filesRestored: itemsToRestore.length,
-      restoredToRoot: !originalParentPath || !newParentId,
-      renamedTo: wasRenamed ? uniqueName : undefined
+      restoredToRoot,
+      renamedTo: wasRenamed ? uniqueName : undefined,
+      restoredPath: finalPath
     });
   } catch (error) {
     logger.error('Error restoring file:', error);

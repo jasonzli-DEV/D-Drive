@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { prisma } from '../lib/prisma';
 import { runTaskNow, isTaskRunning } from './taskRunner';
 import { logger } from '../utils/logger';
-import { cleanupOrphanedDiscordFiles, cleanupTempFiles } from './cleanup';
+import { cleanupOrphanedDiscordFiles, cleanupTempFiles, cleanupOldRecycleBinFiles } from './cleanup';
 
 
 
@@ -166,6 +166,17 @@ export async function initScheduler() {
         logger.info('Old logs cleaned up', { deletedCount: deleted.count, olderThan: thirtyDaysAgo });
       } catch (err) {
         logger.error('Log cleanup task failed:', err);
+      }
+    });
+    
+    // Schedule daily cleanup of old recycle bin files (runs at 4 AM every day)
+    // Files older than 30 days in the recycle bin will be permanently deleted
+    cron.schedule('0 4 * * *', async () => {
+      logger.info('Running daily recycle bin cleanup task');
+      try {
+        await cleanupOldRecycleBinFiles();
+      } catch (err) {
+        logger.error('Recycle bin cleanup task failed:', err);
       }
     });
     
