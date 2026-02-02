@@ -25,21 +25,20 @@ app.use(helmet());
 // Configure CORS to support multiple origins
 app.use(cors({
   origin: (origin, callback) => {
+    // Read ALLOWED_ORIGINS dynamically from process.env on each request
+    // This ensures changes from setup wizard are immediately effective
+    const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
+    
     // During initial setup (no ALLOWED_ORIGINS configured or empty), allow all origins
-    if (!process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGINS.trim() === '') {
+    if (!allowedOriginsEnv || allowedOriginsEnv.trim() === '') {
       return callback(null, true);
     }
     
     // After setup, enforce configured origins
-    const allowedOrigins = process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim());
+    const allowedOrigins = allowedOriginsEnv.split(',').map(url => url.trim());
     
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
-    
-    // Allow GitHub Codespaces (*.github.dev and *.app.github.dev)
-    if (origin.endsWith('.github.dev') || origin.endsWith('.app.github.dev')) {
-      return callback(null, true);
-    }
     
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
