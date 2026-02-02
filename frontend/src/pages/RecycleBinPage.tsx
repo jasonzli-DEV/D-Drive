@@ -77,7 +77,8 @@ export default function RecycleBinPage() {
     queryKey: ['recycleBin'],
     queryFn: async () => {
       const response = await api.get('/files/recycle-bin');
-      return response.data as DeletedFile[];
+      const data = Array.isArray(response.data) ? response.data : response.data.files || [];
+      return data as DeletedFile[];
     },
   });
 
