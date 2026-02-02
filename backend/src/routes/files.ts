@@ -222,24 +222,21 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
     const topLevelDeleted = allDeleted.filter(file => {
       const originalPath = file.originalPath || file.path;
       
-      // Extract parent path from original path
-      const pathParts = originalPath.split('/').filter(Boolean);
-      if (pathParts.length === 0) return true; // Root level, always show
-      
-      pathParts.pop(); // Remove filename/foldername
-      const parentPath = pathParts.length > 0 ? '/' + pathParts.join('/') : null;
-      
-      if (!parentPath) return true; // No parent (root level item), always show
-      
       // Check if ANY ancestor exists in deleted files with the SAME deletion timestamp
       const hasAncestorDeletedSimultaneously = allDeleted.some(f => {
         if (f.id === file.id) return false;
         
         const fOriginalPath = f.originalPath || f.path;
         
-        // Check if file's originalPath is nested inside f's originalPath
-        if (originalPath.startsWith(fOriginalPath + '/')) {
-          return f.deletedAt!.getTime() === file.deletedAt!.getTime();
+        // Check if this file's path is nested inside f's path
+        // Must match exactly with / separator to avoid false matches
+        const isNestedInside = originalPath.startsWith(fOriginalPath + '/') || 
+                               (originalPath.startsWith(fOriginalPath) && fOriginalPath.endsWith('/'));
+        
+        if (isNestedInside) {
+          // Compare timestamps with 1 second tolerance to handle timing variations
+          const timeDiff = Math.abs(f.deletedAt!.getTime() - file.deletedAt!.getTime());
+          return timeDiff < 1000;
         }
         
         return false;
