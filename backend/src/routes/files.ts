@@ -214,90 +214,66 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       orderBy: { deletedAt: 'desc' },
     });
 
-    // Show only items that should appear as separate entries in the recycle bin
-    // An item appears in the bin if its parent was NOT deleted at the same time
-    // This handles both scenarios:
-    // 1. Delete folder1, then delete folder -> both show separately
-    // 2. Delete folder containing folder1 -> only folder shows
-    const topLevelDeleted = allDeleted.filter(file => {
-      const originalPath = file.originalPath || file.path;
-      
-      // Check if ANY parent directory exists in deleted files with the SAME deletion timestamp
-      // We need to check the actual path hierarchy, not just string matching
-      const pathParts = originalPath.split('/').filter(p => p.length > 0);
-      
-      for (let i = pathParts.length - 1; i > 0; i--) {
-        const parentPath = '/' + pathParts.slice(0, i).join('/');
-        
-        const parentDeletedSimultaneously = allDeleted.some(f => {
-          if (f.id === file.id) return false;
-          
-          const fOriginalPath = f.originalPath || f.path;
-          
-          // Check if this is the parent directory
-          if (fOriginalPath !== parentPath) return false;
-          
-          // Compare timestamps - must be within 100ms (same transaction)
-          // Check BOTH directions since items may be deleted in any order during transaction
-          if (!f.deletedAt || !file.deletedAt) return false;
-          const timeDiff = Math.abs(f.deletedAt.getTime() - file.deletedAt.getTime());
-          return timeDiff < 100;
-        });
-        
-        if (parentDeletedSimultaneously) {
-          return false; // Hide this item, parent is shown instead
-        }
+    // Group by deletion timestamp to identify items deleted together
+    const deletionGroups = new Map<string, typeof allDeleted>();
+    allDeleted.forEach(file => {
+      if (!file.deletedAt) return;
+      const key = file.deletedAt.toISOString();
+      if (!deletionGroups.has(key)) {
+        deletionGroups.set(key, []);
       }
-      
-      return true; // No parent deleted simultaneously, show this item
+      deletionGroups.get(key)!.push(file);
     });
 
-    const deletedFiles = topLevelDeleted;
+    // For each deletion group, show only top-level items (items whose parent is NOT in same group)
+    const topLevelItems: any[] = [];
+    
+    for (const [timestamp, group] of deletionGroups) {
+      // Find items in this group that don't have a parent in the same group
+      const topLevel = group.filter(file => {
+        const originalPath = file.originalPath || file.path;
+        const pathParts = originalPath.split('/').filter(Boolean);
+        
+        // Check if any parent path exists in this group
+        for (let i = pathParts.length - 1; i > 0; i--) {
+          const parentPath = '/' + pathParts.slice(0, i).join('/');
+          const hasParentInGroup = group.some(f => {
+            const fPath = f.originalPath || f.path;
+            return f.id !== file.id && fPath === parentPath;
+          });
+          if (hasParentInGroup) return false;
+        }
+        return true;
+      });
+      
+      // For each top-level item, attach its children
+      topLevel.forEach(item => {
+        const itemPath = item.originalPath || item.path;
+        const children = group.filter(f => {
+          if (f.id === item.id) return false;
+          const fPath = f.originalPath || f.path;
+          return fPath.startsWith(itemPath + '/');
+        });
+        
+        topLevelItems.push({
+          ...item,
+          size: item.size.toString(),
+          children: children.map(c => ({
+            ...c,
+            size: c.size.toString(),
+          })),
+        });
+      });
+    }
 
-    res.json(deletedFiles.map(f => ({
-      ...f,
-      size: f.size.toString(),
-    })));
+    res.json(topLevelItems);
   } catch (error) {
     logger.error('Error listing recycle bin:', error);
     res.status(500).json({ error: 'Failed to list recycle bin' });
   }
 });
 
-// Helper to ensure a directory path exists, creating it recursively if needed
-async function ensureDirectoryPath(userId: string, pathParts: string[]): Promise<string | null> {
-  if (pathParts.length === 0) return null;
-  
-  let currentParentId: string | null = null;
-  let currentPath = '';
-  
-  for (const part of pathParts) {
-    currentPath = currentPath ? `${currentPath}/${part}` : `/${part}`;
-    
-    // Check if this folder already exists (and is not deleted)
-    let folder = await prisma.file.findFirst({
-      where: { userId, path: currentPath, type: 'DIRECTORY', deletedAt: null }
-    });
-    
-    if (!folder) {
-      // Create the folder
-      folder = await prisma.file.create({
-        data: {
-          name: part,
-          path: currentPath,
-          type: 'DIRECTORY',
-          userId,
-          parentId: currentParentId,
-        },
-      });
-      logger.info('Auto-created directory for restore', { path: currentPath, folderId: folder.id });
-    }
-    
-    currentParentId = folder.id;
-  }
-  
-  return currentParentId;
-}
+
 
 // Restore file from recycle bin
 router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: Response) => {
@@ -334,35 +310,53 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
     const targetPath = file.originalPath || file.path;
     const targetPathParts = targetPath.split('/').filter(Boolean);
     const fileName = targetPathParts.pop() || file.name;
-    const parentPath = targetPathParts.length > 0 ? '/' + targetPathParts.join('/') : null;
+    const originalParentPath = targetPathParts.length > 0 ? '/' + targetPathParts.join('/') : null;
     
-    // Get unique name if a file already exists at the original location
-    const uniqueName = await getUniqueName(userId, parentPath, fileName);
-    const finalPath = parentPath ? `${parentPath}/${uniqueName}` : `/${uniqueName}`;
-    const wasRenamed = uniqueName !== fileName;
-
-    // Ensure parent directories exist (recreate if they were deleted or never existed)
-    const pathParts = finalPath.split('/').filter(Boolean);
-    pathParts.pop(); // Remove the file/folder name itself, keep only parent path
-    
+    // Check if original parent path exists
+    let restoreToPath: string | null = null;
     let newParentId: string | null = null;
-    let foldersCreated = 0;
-    if (pathParts.length > 0) {
-      // Check if parent path exists
-      const parentPathCheck = '/' + pathParts.join('/');
+    
+    if (originalParentPath) {
       const existingParent = await prisma.file.findFirst({
-        where: { userId, path: parentPathCheck, type: 'DIRECTORY', deletedAt: null }
+        where: { userId, path: originalParentPath, type: 'DIRECTORY', deletedAt: null }
       });
       
-      if (!existingParent) {
-        // Recreate the parent path
-        logger.info('Recreating parent path for restore', { targetPath: finalPath, parentPath: parentPathCheck });
-        newParentId = await ensureDirectoryPath(userId, pathParts);
-        foldersCreated = pathParts.length; // approximate
-      } else {
+      if (existingParent) {
+        restoreToPath = originalParentPath;
         newParentId = existingParent.id;
       }
     }
+    
+    // If original parent doesn't exist, restore to root
+    if (!restoreToPath) {
+      restoreToPath = null; // Root
+      newParentId = null;
+    }
+    
+    // Get unique name using # scheme (file #2, file #3, etc.)
+    let uniqueName = fileName;
+    let counter = 2;
+    while (true) {
+      const checkPath = restoreToPath ? `${restoreToPath}/${uniqueName}` : `/${uniqueName}`;
+      const existing = await prisma.file.findFirst({
+        where: { userId, path: checkPath, deletedAt: null }
+      });
+      if (!existing) break;
+      
+      // Extract base name and extension
+      const lastDot = fileName.lastIndexOf('.');
+      if (lastDot > 0) {
+        const baseName = fileName.substring(0, lastDot);
+        const extension = fileName.substring(lastDot);
+        uniqueName = `${baseName} #${counter}${extension}`;
+      } else {
+        uniqueName = `${fileName} #${counter}`;
+      }
+      counter++;
+    }
+    
+    const finalPath = restoreToPath ? `${restoreToPath}/${uniqueName}` : `/${uniqueName}`;
+    const wasRenamed = uniqueName !== fileName;
 
     // Restore all files, updating paths if the root item was renamed
     await prisma.$transaction(async (tx) => {
@@ -406,8 +400,8 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       await createLog(userId, 'DELETE', `Restored from recycle bin: ${file.name}${wasRenamed ? ` (renamed to ${uniqueName})` : ''}`, true, undefined, { 
         fileName: file.name, 
         fileType: file.type,
-        filesRestored: filesToRestore.length,
-        foldersCreated,
+        filesRestored: itemsToRestore.length,
+        restoredToRoot: !originalParentPath || !newParentId,
         renamedTo: wasRenamed ? uniqueName : undefined
       });
     } catch (logErr) {
@@ -416,8 +410,8 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
 
     res.json({ 
       message: wasRenamed ? `File restored as "${uniqueName}"` : 'File restored successfully', 
-      filesRestored: filesToRestore.length,
-      foldersCreated,
+      filesRestored: itemsToRestore.length,
+      restoredToRoot: !originalParentPath || !newParentId,
       renamedTo: wasRenamed ? uniqueName : undefined
     });
   } catch (error) {
