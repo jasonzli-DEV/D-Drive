@@ -5,8 +5,8 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 
-// Path to the .env file (in production, this is the mounted volume)
-const ENV_FILE_PATH = process.env.ENV_FILE_PATH || path.join(process.cwd(), '..', '.env');
+// Path to the .env file - always write to project root
+const ENV_FILE_PATH = process.env.ENV_FILE_PATH || '/workspaces/D-Drive/.env';
 const CONFIG_LOCK_FILE = path.join(process.cwd(), 'data', '.setup-complete');
 
 // Check if setup has been completed
@@ -151,7 +151,7 @@ router.post('/configure', async (req, res) => {
     
     // Write updated .env file
     fs.writeFileSync(ENV_FILE_PATH, updatedLines.join('\n'));
-    logger.info('Discord configuration saved to .env file');
+    logger.info(`Discord configuration saved to .env file at ${ENV_FILE_PATH}`);
     
     // CRITICAL: Update process.env immediately so isSetupComplete() returns true
     Object.entries(envUpdates).forEach(([key, value]) => {
