@@ -82,21 +82,32 @@ check_docker_compose() {
 
 check_docker_running() {
     log_info "Checking if Docker daemon is running..."
+    # Ensure OSTYPE is set (for non-interactive shells)
+    if [ -z "$OSTYPE" ]; then
+        case "$(uname -s)" in
+            Darwin*) OSTYPE="darwin" ;;
+            Linux*) OSTYPE="linux" ;;
+            *) OSTYPE="unknown" ;;
+        esac
+    fi
     if ! docker info &> /dev/null; then
         log_warn "Docker daemon is not running. Attempting to start Docker..."
-        # Try to start Docker Desktop (macOS/Windows)
+        # Try to start Docker Desktop (macOS)
         if [[ "$OSTYPE" == "darwin"* ]]; then
             if command -v open &>/dev/null && [ -d "/Applications/Docker.app" ]; then
                 log_info "Trying to launch Docker Desktop (macOS)..."
-                open -a Docker
-                # Wait for Docker to start (max 60s)
-                for i in {1..60}; do
+                open -a Docker || open /Applications/Docker.app
+                # Wait for Docker to start (max 90s)
+                for i in {1..90}; do
                     if docker info &>/dev/null; then
                         log_info "Docker daemon started successfully."
                         break
                     fi
+                    # Print a dot every 5 seconds
+                    if (( i % 5 == 0 )); then echo -n "."; fi
                     sleep 1
                 done
+                echo ""
             fi
         elif [[ "$OSTYPE" == "linux"* ]]; then
             if command -v systemctl &>/dev/null; then
