@@ -1119,7 +1119,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
                 messageId: uploaded.messageId,
                 channelId: uploaded.channelId,
                 attachmentUrl: uploaded.attachmentUrl,
-                size: toUpload.length,
+                size: plaintext.length,  // Store DECRYPTED size, not encrypted
               },
             });
             newChunkIndex += 1;
@@ -1127,11 +1127,17 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
           }
 
           // Otherwise split into multiple parts and upload each part
-          const parts = splitBuffer(toUpload, DISCORD_MAX);
-          for (let i = 0; i < parts.length; i++) {
-            const part = parts[i];
+          // NOTE: When splitting encrypted data, we split the plaintext first, 
+          // then encrypt each part separately to maintain proper decryption
+          const plaintextParts = splitBuffer(plaintext, CHUNK_SIZE);
+          for (let i = 0; i < plaintextParts.length; i++) {
+            const plaintextPart = plaintextParts[i];
+            let partToUpload = plaintextPart;
+            if (destEncrypt && userEncryptionKey) {
+              partToUpload = encryptBuffer(plaintextPart, userEncryptionKey);
+            }
             const partName = `${src.name}.part${i}`;
-            const uploaded = await uploadChunkToDiscord(partName, part);
+            const uploaded = await uploadChunkToDiscord(partName, partToUpload);
             await tx.fileChunk.create({
               data: {
                 fileId: newFile.id,
@@ -1139,7 +1145,7 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
                 messageId: uploaded.messageId,
                 channelId: uploaded.channelId,
                 attachmentUrl: uploaded.attachmentUrl,
-                size: part.length,
+                size: plaintextPart.length,  // Store DECRYPTED size
               },
             });
             newChunkIndex += 1;
