@@ -303,10 +303,17 @@ export default function SetupPage() {
                   <input
                     type="text"
                     value={config.discordClientId}
-                    onChange={(e) => setConfig({ ...config, discordClientId: e.target.value })}
-                    placeholder="Enter your Discord Client ID"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(e) => {
+                      // Only allow numeric input for Discord snowflake IDs
+                      const value = e.target.value.replace(/\D/g, '');
+                      setConfig({ ...config, discordClientId: value });
+                    }}
+                    placeholder="Enter your Discord Client ID (17-19 digits)"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                   />
+                  {config.discordClientId && (config.discordClientId.length < 17 || config.discordClientId.length > 19) && (
+                    <p className="text-red-400 text-xs mt-1">Discord IDs must be 17-19 digits</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Client Secret</label>
@@ -339,7 +346,7 @@ export default function SetupPage() {
                 </button>
                 <button
                   onClick={() => setStep(3)}
-                  disabled={!config.discordClientId || !config.discordClientSecret || !config.discordBotToken}
+                  disabled={!config.discordClientId || !config.discordClientSecret || !config.discordBotToken || config.discordClientId.length < 17 || config.discordClientId.length > 19}
                   className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors"
                 >
                   Next
@@ -371,20 +378,34 @@ export default function SetupPage() {
                   <input
                     type="text"
                     value={config.discordGuildId}
-                    onChange={(e) => setConfig({ ...config, discordGuildId: e.target.value })}
-                    placeholder="Enter your Discord Server ID"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(e) => {
+                      // Only allow numeric input for Discord snowflake IDs
+                      const value = e.target.value.replace(/\D/g, '');
+                      setConfig({ ...config, discordGuildId: value });
+                    }}
+                    placeholder="Enter your Discord Server ID (17-19 digits)"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                   />
+                  {config.discordGuildId && (config.discordGuildId.length < 17 || config.discordGuildId.length > 19) && (
+                    <p className="text-red-400 text-xs mt-1">Discord IDs must be 17-19 digits</p>
+                  )}
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-300 mb-1">Storage Channel ID</label>
                   <input
                     type="text"
                     value={config.discordChannelId}
-                    onChange={(e) => setConfig({ ...config, discordChannelId: e.target.value })}
-                    placeholder="Enter the channel ID for file storage"
-                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    onChange={(e) => {
+                      // Only allow numeric input for Discord snowflake IDs
+                      const value = e.target.value.replace(/\D/g, '');
+                      setConfig({ ...config, discordChannelId: value });
+                    }}
+                    placeholder="Enter the channel ID for file storage (17-19 digits)"
+                    className="w-full bg-gray-700 border border-gray-600 rounded-lg px-4 py-2 text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                   />
+                  {config.discordChannelId && (config.discordChannelId.length < 17 || config.discordChannelId.length > 19) && (
+                    <p className="text-red-400 text-xs mt-1">Discord IDs must be 17-19 digits</p>
+                  )}
                 </div>
               </div>
 
@@ -403,7 +424,7 @@ export default function SetupPage() {
                 </button>
                 <button
                   onClick={validateDiscord}
-                  disabled={!config.discordGuildId || !config.discordChannelId || validating}
+                  disabled={!config.discordGuildId || !config.discordChannelId || validating || config.discordGuildId.length < 17 || config.discordGuildId.length > 19 || config.discordChannelId.length < 17 || config.discordChannelId.length > 19}
                   className="bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-600 disabled:cursor-not-allowed text-white font-medium py-2 px-6 rounded-lg transition-colors flex items-center gap-2"
                 >
                   {validating && (
