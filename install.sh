@@ -138,14 +138,10 @@ clone_or_update_repo() {
     if [ -d "$INSTALL_DIR" ]; then
         log_info "D-Drive directory exists, updating..."
         cd "$INSTALL_DIR"
-        # Always set pull.rebase true locally to avoid divergent branch errors
-        git config pull.rebase true
-        if ! git pull origin main; then
-            log_warn "git pull failed, attempting rebase..."
-            git pull --rebase origin main || {
-                log_error "Failed to update repository. Please resolve git issues manually in $INSTALL_DIR."
-                exit 1
-            }
+        # Always use rebase to avoid divergent branch errors
+        if ! git pull --rebase origin main; then
+            log_error "git pull --rebase failed. Please resolve git issues manually in $INSTALL_DIR."
+            exit 1
         fi
     else
         log_info "Cloning D-Drive to $INSTALL_DIR..."
