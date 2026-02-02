@@ -11,10 +11,8 @@ const CONFIG_LOCK_FILE = path.join(process.cwd(), 'data', '.setup-complete');
 
 // Check if setup has been completed
 function isSetupComplete(): boolean {
-  // Check if lock file exists
-  if (fs.existsSync(CONFIG_LOCK_FILE)) {
-    return true;
-  }
+  // NEVER use lock file - always check environment variables
+  // This ensures setup status is always accurate even after container restart
   
   // Check if Discord credentials are configured
   const hasDiscordConfig = !!(
@@ -51,7 +49,7 @@ router.get('/status', (req, res) => {
       discordGuild: !!process.env.DISCORD_GUILD_ID,
       discordChannel: !!process.env.DISCORD_CHANNEL_ID,
     },
-    clientId: process.env.DISCORD_CLIENT_ID || '', // Include client ID for frontend OAuth
+    clientId: process.env.DISCORD_CLIENT_ID || null, // Return null instead of empty string so frontend can detect missing config
   });
 });
 

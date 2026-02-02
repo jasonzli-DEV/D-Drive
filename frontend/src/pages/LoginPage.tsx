@@ -17,11 +17,14 @@ export default function LoginPage() {
     // Check if setup is required and get Discord client ID
     const checkSetup = async () => {
       try {
-        const response = await api.get<{ setupRequired: boolean; clientId?: string }>('/setup/status');
+        const response = await api.get<{ setupRequired: boolean; clientId?: string | null }>('/setup/status');
         if (response.data.setupRequired) {
           navigate('/setup', { replace: true });
+        } else if (!response.data.clientId) {
+          // Setup is marked complete but no client ID - redirect to setup
+          navigate('/setup', { replace: true });
         } else {
-          setDiscordClientId(response.data.clientId || '');
+          setDiscordClientId(response.data.clientId);
         }
       } catch (err) {
         // If setup endpoint fails, assume setup is complete
