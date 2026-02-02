@@ -138,7 +138,14 @@ clone_or_update_repo() {
     if [ -d "$INSTALL_DIR" ]; then
         log_info "D-Drive directory exists, updating..."
         cd "$INSTALL_DIR"
-        git pull origin main
+        # Try to pull with rebase to resolve divergent branches automatically
+        if ! git pull --rebase origin main; then
+            log_warn "git pull --rebase failed, attempting normal merge pull..."
+            git pull origin main || {
+                log_error "Failed to update repository. Please resolve git issues manually in $INSTALL_DIR."
+                exit 1
+            }
+        fi
     else
         log_info "Cloning D-Drive to $INSTALL_DIR..."
         git clone "$REPO_URL" "$INSTALL_DIR"
