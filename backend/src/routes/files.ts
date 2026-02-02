@@ -214,11 +214,14 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       orderBy: { deletedAt: 'desc' },
     });
 
-    // Group by deletion timestamp to identify items deleted together
+    // Group by deletion timestamp (within 100ms window) to identify items deleted together
     const deletionGroups = new Map<string, typeof allDeleted>();
     allDeleted.forEach(file => {
       if (!file.deletedAt) return;
-      const key = file.deletedAt.toISOString();
+      // Round timestamp to 100ms to group simultaneous deletions
+      const timestampMs = file.deletedAt.getTime();
+      const roundedMs = Math.floor(timestampMs / 100) * 100;
+      const key = new Date(roundedMs).toISOString();
       if (!deletionGroups.has(key)) {
         deletionGroups.set(key, []);
       }
@@ -278,14 +281,21 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get ONLY files that were deleted at the same time as this file (same deletion event)
-    // This ensures we restore items as a unit, not pulling in items deleted at other times
-    const filesToRestore = await prisma.file.findMany({
+    // Get all files deleted within 100ms of this file (same deletion event)
+    const fileDeletedMs = file.deletedAt!.getTime();
+    const allDeleted = await prisma.file.findMany({
       where: {
         userId,
-        deletedAt: file.deletedAt, // Same timestamp = deleted together
+        deletedAt: { not: null },
       },
-      select: { id: true, originalPath: true, path: true, parentId: true, name: true }
+      select: { id: true, originalPath: true, path: true, parentId: true, name: true, deletedAt: true }
+    });
+    
+    // Filter to files deleted within 100ms
+    const filesToRestore = allDeleted.filter(f => {
+      if (!f.deletedAt) return false;
+      const deletedMs = f.deletedAt.getTime();
+      return Math.abs(deletedMs - fileDeletedMs) <= 100;
     });
 
     // Filter to only the target item and its children (based on original path hierarchy)
