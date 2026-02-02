@@ -32,6 +32,18 @@ app.use(cors({
     // Log CORS check for debugging
     logger.info(`CORS check - origin: ${origin}, ALLOWED_ORIGINS: ${allowedOriginsEnv}`);
     
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) {
+      logger.info('CORS: No origin header, allowing');
+      return callback(null, true);
+    }
+    
+    // Always allow localhost for local development
+    if (origin.match(/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/)) {
+      logger.info(`CORS: Localhost origin ${origin} is always allowed`);
+      return callback(null, true);
+    }
+    
     // During initial setup (no ALLOWED_ORIGINS configured or empty), allow all origins
     if (!allowedOriginsEnv || allowedOriginsEnv.trim() === '') {
       logger.info('CORS: No origins configured, allowing all');
@@ -41,12 +53,6 @@ app.use(cors({
     // After setup, enforce configured origins
     const allowedOrigins = allowedOriginsEnv.split(',').map(url => url.trim());
     logger.info(`CORS: Allowed origins: ${JSON.stringify(allowedOrigins)}`);
-    
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) {
-      logger.info('CORS: No origin header, allowing');
-      return callback(null, true);
-    }
     
     if (allowedOrigins.includes(origin)) {
       logger.info(`CORS: Origin ${origin} is allowed`);
