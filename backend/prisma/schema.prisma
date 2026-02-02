@@ -92,6 +92,7 @@ model File {
   @@index([path])
   @@index([deletedAt])
   @@index([starred])
+  @@index([deletedWithParentId])
 }
 
 model FileChunk {

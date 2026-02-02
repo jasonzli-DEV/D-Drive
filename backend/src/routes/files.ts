@@ -198,6 +198,7 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       where: { 
         userId, 
         deletedAt: { not: null },
+        deletedWithParentId: null,
       },
       select: {
         id: true,
@@ -327,6 +328,7 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
             name: f.id === file.id ? newName : f.name,
             path: restorePath,
             originalPath: null,
+            deletedWithParentId: null,
             parentId: parentId,
           },
         });
@@ -1212,8 +1214,6 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
     }
 
     if (useRecycleBin) {
-      // Soft delete: move to recycle bin
-      // Change path to include trash ID to allow new files with same name
       const now = new Date();
       const trashId = crypto.randomUUID().slice(0, 8);
       await prisma.$transaction(async (tx) => {
@@ -1227,6 +1227,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
               deletedAt: now,
               originalPath: originalPath,
               path: trashedPath,
+              deletedWithParentId: fileId === file.id ? null : file.id,
             },
           });
         }
