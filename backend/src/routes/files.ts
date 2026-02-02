@@ -194,16 +194,11 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
   try {
     const userId = (req as any).user.userId;
 
-    const deletedFiles = await prisma.file.findMany({
+    // Find all deleted files
+    const allDeleted = await prisma.file.findMany({
       where: { 
         userId, 
-        deletedAt: { not: null },
-        // Only show top-level deleted items (parents that were directly deleted)
-        // Children of deleted folders are also marked but we don't show them separately
-        OR: [
-          { parentId: null },
-          { parent: { deletedAt: null } }
-        ]
+        deletedAt: { not: null }
       },
       select: {
         id: true,
@@ -214,9 +209,45 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
         deletedAt: true,
         originalPath: true,
         createdAt: true,
+        path: true,
       },
       orderBy: { deletedAt: 'desc' },
     });
+
+    // Group files by deletedAt timestamp to identify deletion groups
+    const deletionGroups = new Map<number, typeof allDeleted>();
+    for (const file of allDeleted) {
+      const timestamp = file.deletedAt!.getTime();
+      if (!deletionGroups.has(timestamp)) {
+        deletionGroups.set(timestamp, []);
+      }
+      deletionGroups.get(timestamp)!.push(file);
+    }
+
+    // For each deletion group, find the root item(s) - items that don't have a parent in the same deletion group
+    const topLevelDeleted: typeof allDeleted = [];
+    for (const [, group] of deletionGroups) {
+      // Build a set of paths in this deletion group
+      const pathsInGroup = new Set(group.map(f => f.path));
+      
+      for (const file of group) {
+        // Check if this file's parent path is also in the deletion group
+        const originalPath = file.originalPath || file.path;
+        const parentPath = originalPath.split('/').slice(0, -1).join('/') || '/';
+        
+        // If parent path is not in this deletion group, this is a top-level deleted item
+        const hasParentInGroup = group.some(f => {
+          const fOriginalPath = f.originalPath || f.path;
+          return fOriginalPath === parentPath && f.id !== file.id;
+        });
+        
+        if (!hasParentInGroup) {
+          topLevelDeleted.push(file);
+        }
+      }
+    }
+
+    const deletedFiles = topLevelDeleted;
 
     res.json(deletedFiles.map(f => ({
       ...f,
@@ -399,27 +430,24 @@ router.delete('/recycle-bin/:id', authenticate, async (req: Request, res: Respon
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get all files that were deleted together (including all nested children)
-    // Use recursive path matching to find all descendants
+    // Get all files that were deleted at the same time (use deletion timestamp)
+    // This ensures we get all children that were deleted together, even if parent paths changed
     const filesToDelete = await prisma.file.findMany({
       where: {
         userId,
-        deletedAt: { not: null },
-        OR: [
-          { id: file.id },
-          { path: { startsWith: `${file.path}/` } },
-          // Also match if this file's path starts with another deleted parent
-          // This handles cases where nested folders are deleted
-          { AND: [
-            { deletedAt: file.deletedAt },
-            { path: { contains: file.path } }
-          ]}
-        ]
+        deletedAt: file.deletedAt,
       },
-      select: { id: true }
+      select: { id: true, originalPath: true, path: true }
     });
 
-    const fileIds = filesToDelete.map(f => f.id);
+    // Filter to only include the target file and its descendants based on original path
+    const targetOriginalPath = file.originalPath || file.path;
+    const relevantFiles = filesToDelete.filter(f => {
+      const fOriginalPath = f.originalPath || f.path;
+      return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
+    });
+
+    const fileIds = relevantFiles.map(f => f.id);
 
     // Permanently delete
     await prisma.$transaction(async (tx) => {
