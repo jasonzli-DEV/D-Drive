@@ -214,49 +214,26 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       orderBy: { deletedAt: 'desc' },
     });
 
-    // Group by deletion timestamp (within 100ms window) to identify items deleted together
-    const deletionGroups = new Map<string, typeof allDeleted>();
-    allDeleted.forEach(file => {
-      if (!file.deletedAt) return;
-      // Round timestamp to 100ms to group simultaneous deletions
-      const timestampMs = file.deletedAt.getTime();
-      const roundedMs = Math.floor(timestampMs / 100) * 100;
-      const key = new Date(roundedMs).toISOString();
-      if (!deletionGroups.has(key)) {
-        deletionGroups.set(key, []);
-      }
-      deletionGroups.get(key)!.push(file);
-    });
-
-    // For each deletion group, show only top-level items (items whose parent is NOT in same group)
-    const topLevelItems: any[] = [];
-    
-    for (const [timestamp, group] of deletionGroups) {
-      // Find items in this group that don't have a parent in the same group
-      const topLevel = group.filter(file => {
-        const originalPath = file.originalPath || file.path;
-        const pathParts = originalPath.split('/').filter(Boolean);
-        
-        // Check if any parent path exists in this group
-        for (let i = pathParts.length - 1; i > 0; i--) {
-          const parentPath = '/' + pathParts.slice(0, i).join('/');
-          const hasParentInGroup = group.some(f => {
-            const fPath = f.originalPath || f.path;
-            return f.id !== file.id && fPath === parentPath;
-          });
-          if (hasParentInGroup) return false;
-        }
-        return true;
-      });
+    // Show only items whose parent path is NOT also in the recycle bin
+    // This ensures nested items are hidden when their parent is deleted
+    const topLevelItems = allDeleted.filter(file => {
+      const originalPath = file.originalPath || file.path;
+      const pathParts = originalPath.split('/').filter(Boolean);
       
-      // For each top-level item, DO NOT attach children - they're hidden
-      topLevel.forEach(item => {
-        topLevelItems.push({
-          ...item,
-          size: item.size.toString(),
+      // Check if any parent path exists in recycle bin
+      for (let i = pathParts.length - 1; i > 0; i--) {
+        const parentPath = '/' + pathParts.slice(0, i).join('/');
+        const hasParentInBin = allDeleted.some(f => {
+          const fPath = f.originalPath || f.path;
+          return f.id !== file.id && fPath === parentPath;
         });
-      });
-    }
+        if (hasParentInBin) return false;
+      }
+      return true;
+    }).map(item => ({
+      ...item,
+      size: item.size.toString(),
+    }));
 
     res.json({ files: topLevelItems });
   } catch (error) {
@@ -281,26 +258,18 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get all files deleted within 100ms of this file (same deletion event)
-    const fileDeletedMs = file.deletedAt!.getTime();
+    // Get all deleted files to find this item's children
     const allDeleted = await prisma.file.findMany({
       where: {
         userId,
         deletedAt: { not: null },
       },
-      select: { id: true, originalPath: true, path: true, parentId: true, name: true, deletedAt: true }
-    });
-    
-    // Filter to files deleted within 100ms
-    const filesToRestore = allDeleted.filter(f => {
-      if (!f.deletedAt) return false;
-      const deletedMs = f.deletedAt.getTime();
-      return Math.abs(deletedMs - fileDeletedMs) <= 100;
+      select: { id: true, originalPath: true, path: true, parentId: true, name: true }
     });
 
-    // Filter to only the target item and its children (based on original path hierarchy)
+    // Restore the target item and ALL its children (based on path hierarchy)
     const targetOriginalPath = file.originalPath || file.path;
-    const itemsToRestore = filesToRestore.filter(f => {
+    const itemsToRestore = allDeleted.filter(f => {
       const fOriginalPath = f.originalPath || f.path;
       // Include the target file itself OR any file that was a child of it
       return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
