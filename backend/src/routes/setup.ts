@@ -51,7 +51,7 @@ router.get('/status', (req, res) => {
       discordGuild: !!process.env.DISCORD_GUILD_ID,
       discordChannel: !!process.env.DISCORD_CHANNEL_ID,
     },
-    clientId: process.env.DISCORD_CLIENT_ID || null, // Include client ID for frontend OAuth
+    clientId: process.env.DISCORD_CLIENT_ID || '', // Include client ID for frontend OAuth
   });
 });
 

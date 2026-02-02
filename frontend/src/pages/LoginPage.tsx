@@ -11,7 +11,7 @@ export default function LoginPage() {
   const { isAuthenticated, loading } = useAuth();
   const navigate = useNavigate();
   const [checkingSetup, setCheckingSetup] = useState(true);
-  const [discordClientId, setDiscordClientId] = useState<string | null>(null);
+  const [discordClientId, setDiscordClientId] = useState<string>('');
 
   useEffect(() => {
     // Check if setup is required and get Discord client ID
@@ -20,8 +20,8 @@ export default function LoginPage() {
         const response = await api.get<{ setupRequired: boolean; clientId?: string }>('/setup/status');
         if (response.data.setupRequired) {
           navigate('/setup', { replace: true });
-        } else if (response.data.clientId) {
-          setDiscordClientId(response.data.clientId);
+        } else {
+          setDiscordClientId(response.data.clientId || '');
         }
       } catch (err) {
         // If setup endpoint fails, assume setup is complete
