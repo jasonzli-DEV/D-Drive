@@ -124,7 +124,9 @@ model Task {
   timestampNames Boolean  @default(true)
   maxFiles       Int      @default(0) // 0 = unlimited
   encrypt        Boolean  @default(false) // whether to encrypt per user's settings
-  lastRun        DateTime?
+  lastRun        DateTime? // when task last completed
+  lastStarted    DateTime? // when task last started running
+  lastRuntime    Int?      // runtime in seconds of last run
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 

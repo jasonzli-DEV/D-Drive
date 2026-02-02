@@ -79,6 +79,8 @@ export default function TasksPage() {
       const resp = await api.get('/tasks');
       return resp.data as any[];
     },
+    staleTime: 30000, // Tasks data fresh for 30s
+    gcTime: 5 * 60 * 1000,
   });
 
   const { data: allFolders } = useQuery<any[]>({
@@ -87,6 +89,8 @@ export default function TasksPage() {
       const resp = await api.get('/files/folders/all');
       return resp.data as any[];
     },
+    staleTime: 60000,
+    gcTime: 10 * 60 * 1000,
   });
 
   const createMutation = useMutation({
@@ -206,39 +210,127 @@ export default function TasksPage() {
     return Object.values(e).every((v) => v === null);
   }
 
+  // Helper to format runtime in minutes/hours
+  function formatRuntime(seconds: number | null | undefined): string {
+    if (!seconds || seconds < 0) return '-';
+    if (seconds < 60) return `${seconds}s`;
+    const mins = Math.round(seconds / 60);
+    if (mins < 60) return `${mins}m`;
+    const hours = Math.floor(mins / 60);
+    const remainingMins = mins % 60;
+    return `${hours}h ${remainingMins}m`;
+  }
+
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-        <Typography variant="h5">Tasks</Typography>
-        <Button startIcon={<Plus size={16} />} onClick={() => setOpen(true)}>New Task</Button>
+      <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 3 }}>
+        <Typography variant="h4" fontWeight={600}>Backup Tasks</Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<Plus size={18} />} 
+          onClick={() => setOpen(true)}
+          sx={{ 
+            px: 3, 
+            py: 1,
+            borderRadius: 2,
+            textTransform: 'none',
+            fontWeight: 500
+          }}
+        >
+          New Task
+        </Button>
       </Box>
 
       {isLoading ? <CircularProgress /> : (
-        <Table>
+        <Table sx={{ '& .MuiTableCell-root': { py: 1.5 } }}>
               <TableHead>
-                <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Enabled</TableCell>
-                  <TableCell>Destination</TableCell>
-                  <TableCell>Last Run</TableCell>
-                  <TableCell>Compress</TableCell>
-                  <TableCell>Max Files</TableCell>
-                  <TableCell>Actions</TableCell>
+                <TableRow sx={{ bgcolor: '#f5f7fa' }}>
+                  <TableCell sx={{ fontWeight: 600 }}>Name</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Status</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Destination</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Last Started</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Runtime</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Compress</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }}>Max Files</TableCell>
+                  <TableCell sx={{ fontWeight: 600 }} align="right">Actions</TableCell>
                 </TableRow>
               </TableHead>
           <TableBody>
             {tasks && tasks.map((t: any) => (
-              <TableRow key={t.id}>
-                <TableCell>{t.name}</TableCell>
-                <TableCell>{t.enabled ? 'Yes' : 'No'}</TableCell>
-                <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '/'}</TableCell>
-                <TableCell>{t.lastRun ? new Date(t.lastRun).toLocaleString() : '-'}</TableCell>
-                <TableCell>{t.compress}</TableCell>
-                <TableCell>{t.maxFiles || 0}</TableCell>
+              <TableRow key={t.id} hover>
                 <TableCell>
-                  <IconButton onClick={async () => { try { await runNowMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to run task'); } }} title="Run now"><Play size={16} /></IconButton>
-                  <IconButton onClick={() => openForEdit(t)} title="Edit"><Edit size={16} /></IconButton>
-                  <IconButton onClick={async () => { try { await deleteMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to delete task'); } }} title="Delete"><Trash size={16} /></IconButton>
+                  <Typography fontWeight={500}>{t.name}</Typography>
+                </TableCell>
+                <TableCell>
+                  <Box 
+                    sx={{ 
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      px: 1.5,
+                      py: 0.5,
+                      borderRadius: 1,
+                      bgcolor: t.enabled ? '#e8f5e9' : '#ffebee',
+                      color: t.enabled ? '#2e7d32' : '#c62828'
+                    }}
+                  >
+                    <Box 
+                      sx={{ 
+                        width: 8, 
+                        height: 8, 
+                        borderRadius: '50%', 
+                        bgcolor: t.enabled ? '#4caf50' : '#ef5350',
+                        mr: 1
+                      }} 
+                    />
+                    {t.enabled ? 'Active' : 'Disabled'}
+                  </Box>
+                </TableCell>
+                <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '/'}</TableCell>
+                <TableCell>
+                  {t.lastStarted ? new Date(t.lastStarted).toLocaleString() : (t.lastRun ? new Date(t.lastRun).toLocaleString() : '-')}
+                </TableCell>
+                <TableCell>{formatRuntime(t.lastRuntime)}</TableCell>
+                <TableCell>
+                  <Box 
+                    sx={{ 
+                      display: 'inline-block',
+                      px: 1,
+                      py: 0.25,
+                      borderRadius: 0.5,
+                      bgcolor: t.compress === 'NONE' ? '#f5f5f5' : '#e3f2fd',
+                      color: t.compress === 'NONE' ? '#757575' : '#1976d2',
+                      fontSize: '0.75rem',
+                      fontWeight: 500
+                    }}
+                  >
+                    {t.compress}
+                  </Box>
+                </TableCell>
+                <TableCell>{t.maxFiles || '∞'}</TableCell>
+                <TableCell align="right">
+                  <IconButton 
+                    onClick={async () => { try { await runNowMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to run task'); } }} 
+                    title="Run now"
+                    color="primary"
+                    size="small"
+                    sx={{ mr: 0.5 }}
+                  >
+                    <Play size={18} />
+                  </IconButton>
+                  <IconButton onClick={() => openForEdit(t)} title="Edit" size="small" sx={{ mr: 0.5 }}>
+                    <Edit size={18} />
+                  </IconButton>
+                  <IconButton 
+                    onClick={async () => { 
+                      if (!window.confirm(`Delete task "${t.name}"?`)) return;
+                      try { await deleteMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to delete task'); } 
+                    }} 
+                    title="Delete"
+                    color="error"
+                    size="small"
+                  >
+                    <Trash size={18} />
+                  </IconButton>
                 </TableCell>
               </TableRow>
             ))}
