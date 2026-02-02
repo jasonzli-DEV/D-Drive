@@ -256,34 +256,68 @@ export default function TasksPage() {
                 </TableRow>
               </TableHead>
           <TableBody>
-            {tasks && tasks.map((t: any) => (
+            {tasks && tasks.map((t: any) => {
+              // Task is running if lastStarted is more recent than lastRun
+              const isRunning = t.lastStarted && (!t.lastRun || new Date(t.lastStarted) > new Date(t.lastRun));
+              
+              return (
               <TableRow key={t.id} hover>
                 <TableCell>
                   <Typography fontWeight={500}>{t.name}</Typography>
                 </TableCell>
                 <TableCell>
-                  <Box 
-                    sx={{ 
-                      display: 'inline-flex',
-                      alignItems: 'center',
-                      px: 1.5,
-                      py: 0.5,
-                      borderRadius: 1,
-                      bgcolor: t.enabled ? '#e8f5e9' : '#ffebee',
-                      color: t.enabled ? '#2e7d32' : '#c62828'
-                    }}
-                  >
+                  {isRunning ? (
                     <Box 
                       sx={{ 
-                        width: 8, 
-                        height: 8, 
-                        borderRadius: '50%', 
-                        bgcolor: t.enabled ? '#4caf50' : '#ef5350',
-                        mr: 1
-                      }} 
-                    />
-                    {t.enabled ? 'Active' : 'Disabled'}
-                  </Box>
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        px: 1.5,
+                        py: 0.5,
+                        borderRadius: 1,
+                        bgcolor: '#e3f2fd',
+                        color: '#1565c0'
+                      }}
+                    >
+                      <Box 
+                        sx={{ 
+                          width: 8, 
+                          height: 8, 
+                          borderRadius: '50%', 
+                          bgcolor: '#2196f3',
+                          mr: 1,
+                          animation: 'pulse 2s ease-in-out infinite',
+                          '@keyframes pulse': {
+                            '0%, 100%': { opacity: 1 },
+                            '50%': { opacity: 0.3 },
+                          }
+                        }} 
+                      />
+                      Running
+                    </Box>
+                  ) : (
+                    <Box 
+                      sx={{ 
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        px: 1.5,
+                        py: 0.5,
+                        borderRadius: 1,
+                        bgcolor: t.enabled ? '#e8f5e9' : '#ffebee',
+                        color: t.enabled ? '#2e7d32' : '#c62828'
+                      }}
+                    >
+                      <Box 
+                        sx={{ 
+                          width: 8, 
+                          height: 8, 
+                          borderRadius: '50%', 
+                          bgcolor: t.enabled ? '#4caf50' : '#ef5350',
+                          mr: 1
+                        }} 
+                      />
+                      {t.enabled ? 'Active' : 'Disabled'}
+                    </Box>
+                  )}
                 </TableCell>
                 <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '/'}</TableCell>
                 <TableCell>
@@ -333,7 +367,8 @@ export default function TasksPage() {
                   </IconButton>
                 </TableCell>
               </TableRow>
-            ))}
+              );
+            })}
           </TableBody>
         </Table>
       )}
