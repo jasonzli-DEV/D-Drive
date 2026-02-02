@@ -216,12 +216,18 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
 
     const topLevelItems = allDeleted.filter(file => {
       const originalPath = file.originalPath || file.path;
+      const pathParts = originalPath.split('/').filter(Boolean);
       
-      return !allDeleted.some(f => {
-        if (f.id === file.id) return false;
-        const fOriginalPath = f.originalPath || f.path;
-        return originalPath.startsWith(fOriginalPath + '/');
-      });
+      for (let i = pathParts.length - 1; i > 0; i--) {
+        const parentPath = '/' + pathParts.slice(0, i).join('/');
+        const hasDeletedParent = allDeleted.some(f => {
+          if (f.id === file.id) return false;
+          const fOriginalPath = f.originalPath || f.path;
+          return fOriginalPath === parentPath;
+        });
+        if (hasDeletedParent) return false;
+      }
+      return true;
     }).map(item => ({
       ...item,
       size: item.size.toString(),
