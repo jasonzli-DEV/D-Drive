@@ -190,10 +190,13 @@ router.get('/starred', authenticate, async (req: Request, res: Response) => {
 // NOTE: These routes MUST come before /:id to avoid "recycle-bin" being matched as an ID
 
 // List files in recycle bin
+// Shows only top-level deleted items (folders contain their children like macOS Trash)
 router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
 
+    // Get only top-level deleted items (items where deletedWithParentId is null)
+    // This follows macOS Trash behavior where folders are shown as single items
     const topLevelDeleted = await prisma.file.findMany({
       where: { 
         userId, 
@@ -214,9 +217,30 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       orderBy: { deletedAt: 'desc' },
     });
 
-    const result = topLevelDeleted.map(item => ({
-      ...item,
-      size: item.size.toString(),
+    // For directories, count how many items are inside (macOS shows item count)
+    const result = await Promise.all(topLevelDeleted.map(async (item) => {
+      let itemCount = 0;
+      let totalSize = item.size;
+      
+      if (item.type === 'DIRECTORY') {
+        // Count all children deleted with this folder
+        const children = await prisma.file.findMany({
+          where: {
+            userId,
+            deletedWithParentId: item.id,
+          },
+          select: { size: true },
+        });
+        itemCount = children.length;
+        // Calculate total size of all children
+        totalSize = children.reduce((sum, child) => sum + child.size, item.size);
+      }
+      
+      return {
+        ...item,
+        size: totalSize.toString(),
+        itemCount, // Number of items inside (for directories)
+      };
     }));
 
     res.json(result);

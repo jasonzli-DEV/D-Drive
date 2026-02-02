@@ -38,6 +38,7 @@ interface DeletedFile {
   deletedAt: string;
   originalPath: string | null;
   createdAt: string;
+  itemCount?: number; // Number of items inside (for directories)
 }
 
 function formatBytes(bytes: number): string {
@@ -187,12 +188,22 @@ export default function RecycleBinPage() {
                         ) : (
                           <File size={20} style={{ color: theme.palette.primary.main }} />
                         )}
-                        {file.name}
+                        <Box>
+                          {file.name}
+                          {file.type === 'DIRECTORY' && file.itemCount !== undefined && file.itemCount > 0 && (
+                            <Typography variant="caption" color="text.secondary" display="block">
+                              {file.itemCount} item{file.itemCount !== 1 ? 's' : ''} inside
+                            </Typography>
+                          )}
+                        </Box>
                       </Box>
                     </TableCell>
                     <TableCell>
                       <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {file.originalPath || '/'}
+                        {/* Show parent folder path, not full path (macOS-style) */}
+                        {file.originalPath 
+                          ? file.originalPath.substring(0, file.originalPath.lastIndexOf('/')) || '/' 
+                          : '/'}
                       </Typography>
                     </TableCell>
                     <TableCell>
