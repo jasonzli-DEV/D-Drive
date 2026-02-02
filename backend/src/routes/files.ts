@@ -227,7 +227,7 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       size: item.size.toString(),
     }));
 
-    res.json({ files: topLevelItems });
+    res.json(topLevelItems);
   } catch (error) {
     logger.error('Error listing recycle bin:', error);
     res.status(500).json({ error: 'Failed to list recycle bin' });
