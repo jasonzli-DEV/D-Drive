@@ -22,17 +22,7 @@ if (!process.env.JWT_SECRET) {
   console.error('WARNING: JWT_SECRET environment variable is not set. Auth will fail until setup is complete.');
 }
 
-const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
-const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
-const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost';
-const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
-  ? process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim())
-  : [FRONTEND_URL];
 const AVATAR_DIR = process.env.AVATAR_DIR || path.join(process.cwd(), 'data', 'avatars');
-
-if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
-  logger.warn('DISCORD_CLIENT_ID or DISCORD_CLIENT_SECRET not set - running in setup mode');
-}
 
 // Ensure avatar directory exists
 try {
@@ -49,6 +39,21 @@ router.get('/discord/callback', async (req, res) => {
     return res.status(400).json({ error: 'No code provided' });
   }
 
+  // Read Discord credentials dynamically from process.env
+  const DISCORD_CLIENT_ID = process.env.DISCORD_CLIENT_ID;
+  const DISCORD_CLIENT_SECRET = process.env.DISCORD_CLIENT_SECRET;
+  const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost';
+  const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS 
+    ? process.env.ALLOWED_ORIGINS.split(',').map(url => url.trim())
+    : [FRONTEND_URL];
+
+  if (!DISCORD_CLIENT_ID || !DISCORD_CLIENT_SECRET) {
+    logger.error('Discord OAuth attempted but credentials not configured');
+    return res.status(500).json({ 
+      error: 'Discord OAuth not configured. Complete setup at /setup',
+    });
+  }
+
   // Determine which origin to use for redirect_uri
   // Check the Origin or Referer header to match the frontend's origin
   const requestOrigin = req.headers.origin || req.headers.referer?.split('/').slice(0, 3).join('/');
@@ -61,8 +66,8 @@ router.get('/discord/callback', async (req, res) => {
     const tokenResponse = await axios.post(
       'https://discord.com/api/oauth2/token',
       new URLSearchParams({
-        client_id: DISCORD_CLIENT_ID!,
-        client_secret: DISCORD_CLIENT_SECRET!,
+        client_id: DISCORD_CLIENT_ID,
+        client_secret: DISCORD_CLIENT_SECRET,
         grant_type: 'authorization_code',
         code: code as string,
         redirect_uri: `${redirectOrigin}/auth/callback`,
