@@ -227,7 +227,8 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
         });
         
         if (parent && parent.deletedAt && file.deletedAt) {
-          if (parent.deletedAt <= file.deletedAt) {
+          const timeDiff = Math.abs(parent.deletedAt.getTime() - file.deletedAt.getTime());
+          if (timeDiff < 1000) {
             return false;
           }
         }
