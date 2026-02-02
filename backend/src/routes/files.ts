@@ -231,16 +231,22 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       
       if (!parentPath) return true; // No parent (root level item), always show
       
-      // Check if parent exists in deleted files with the SAME deletion timestamp
-      const hasParentDeletedSimultaneously = allDeleted.some(f => {
+      // Check if ANY ancestor exists in deleted files with the SAME deletion timestamp
+      const hasAncestorDeletedSimultaneously = allDeleted.some(f => {
+        if (f.id === file.id) return false;
+        
         const fOriginalPath = f.originalPath || f.path;
-        return fOriginalPath === parentPath && 
-               f.deletedAt!.getTime() === file.deletedAt!.getTime() &&
-               f.id !== file.id;
+        
+        // Check if file's originalPath is nested inside f's originalPath
+        if (originalPath.startsWith(fOriginalPath + '/')) {
+          return f.deletedAt!.getTime() === file.deletedAt!.getTime();
+        }
+        
+        return false;
       });
       
-      // Show this item if parent was NOT deleted at the same time
-      return !hasParentDeletedSimultaneously;
+      // Show this item if no ancestor was deleted at the same time
+      return !hasAncestorDeletedSimultaneously;
     });
 
     const deletedFiles = topLevelDeleted;
