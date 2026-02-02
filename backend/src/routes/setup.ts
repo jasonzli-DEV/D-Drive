@@ -5,8 +5,8 @@ import { logger } from '../utils/logger';
 
 const router = Router();
 
-// Path to the .env file - always write to project root
-const ENV_FILE_PATH = process.env.ENV_FILE_PATH || '/workspaces/D-Drive/.env';
+// Path to the .env file - detect project root dynamically
+const ENV_FILE_PATH = process.env.ENV_FILE_PATH || path.join(process.cwd(), '..', '.env');
 const CONFIG_LOCK_FILE = path.join(process.cwd(), 'data', '.setup-complete');
 
 // Check if setup has been completed
@@ -107,6 +107,12 @@ router.post('/configure', async (req, res) => {
   }
   
   try {
+    // Ensure parent directory exists and is writable
+    const envDir = path.dirname(ENV_FILE_PATH);
+    if (!fs.existsSync(envDir)) {
+      fs.mkdirSync(envDir, { recursive: true });
+    }
+    
     // Read existing .env file
     let envContent = '';
     if (fs.existsSync(ENV_FILE_PATH)) {
@@ -149,9 +155,17 @@ router.post('/configure', async (req, res) => {
       }
     }
     
-    // Write updated .env file
-    fs.writeFileSync(ENV_FILE_PATH, updatedLines.join('\n'));
-    logger.info(`Discord configuration saved to .env file at ${ENV_FILE_PATH}`);
+    // Write updated .env file with error handling
+    try {
+      fs.writeFileSync(ENV_FILE_PATH, updatedLines.join('\n'));
+      logger.info(`Discord configuration saved to .env file at ${ENV_FILE_PATH}`);
+    } catch (writeError) {
+      logger.error(`Failed to write .env file to ${ENV_FILE_PATH}:`, writeError);
+      // Try fallback location
+      const fallbackPath = path.join('/tmp', '.env');
+      fs.writeFileSync(fallbackPath, updatedLines.join('\n'));
+      logger.warn(`Wrote .env to fallback location: ${fallbackPath}`);
+    }
     
     // CRITICAL: Update process.env immediately so isSetupComplete() returns true
     Object.entries(envUpdates).forEach(([key, value]) => {
