@@ -75,6 +75,7 @@ model File {
   // Recycle bin support
   deletedAt   DateTime?  // If set, file is in recycle bin
   originalPath String?   // Original path before deletion (for restore)
+  deletedWithParentId String?  // If set, this item was deleted as part of parent deletion
   
   // Discord storage references
   chunks    FileChunk[]

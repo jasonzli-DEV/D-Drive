@@ -194,11 +194,12 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
   try {
     const userId = (req as any).user.userId;
 
-    // Find all deleted files
-    const allDeleted = await prisma.file.findMany({
+    // Find top-level deleted items (not deleted as part of a parent)
+    const topLevelDeleted = await prisma.file.findMany({
       where: { 
         userId, 
-        deletedAt: { not: null }
+        deletedAt: { not: null },
+        deletedWithParentId: null,
       },
       select: {
         id: true,
@@ -214,32 +215,12 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       orderBy: { deletedAt: 'desc' },
     });
 
-    const topLevelItems = allDeleted.filter(file => {
-      const originalPath = file.originalPath || file.path;
-      const pathParts = originalPath.split('/').filter(Boolean);
-      
-      for (let i = pathParts.length - 1; i > 0; i--) {
-        const parentPath = '/' + pathParts.slice(0, i).join('/');
-        const parent = allDeleted.find(f => {
-          if (f.id === file.id) return false;
-          const fOriginalPath = f.originalPath || f.path;
-          return fOriginalPath === parentPath;
-        });
-        
-        if (parent && parent.deletedAt && file.deletedAt) {
-          const timeDiff = Math.abs(parent.deletedAt.getTime() - file.deletedAt.getTime());
-          if (timeDiff < 1000) {
-            return false;
-          }
-        }
-      }
-      return true;
-    }).map(item => ({
+    const result = topLevelDeleted.map(item => ({
       ...item,
       size: item.size.toString(),
     }));
 
-    res.json(topLevelItems);
+    res.json(result);
   } catch (error) {
     logger.error('Error listing recycle bin:', error);
     res.status(500).json({ error: 'Failed to list recycle bin' });
@@ -262,22 +243,20 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get all deleted files to find this item's children
-    const allDeleted = await prisma.file.findMany({
+    // Find all items that were deleted with this item (children)
+    const childItems = await prisma.file.findMany({
       where: {
         userId,
-        deletedAt: { not: null },
+        deletedWithParentId: id,
       },
       select: { id: true, originalPath: true, path: true, parentId: true, name: true }
     });
 
-    // Restore the target item and ALL its children (based on path hierarchy)
-    const targetOriginalPath = file.originalPath || file.path;
-    const itemsToRestore = allDeleted.filter(f => {
-      const fOriginalPath = f.originalPath || f.path;
-      // Include the target file itself OR any file that was a child of it
-      return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
-    });
+    // Include the target item and all its children
+    const itemsToRestore = [
+      { id: file.id, originalPath: file.originalPath, path: file.path, parentId: file.parentId, name: file.name },
+      ...childItems
+    ];
 
     const targetPath = file.originalPath || file.path;
     const targetPathParts = targetPath.split('/').filter(Boolean);
@@ -357,6 +336,7 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
           where: { id: f.id },
           data: {
             deletedAt: null,
+            deletedWithParentId: null,
             name: f.id === file.id ? newName : f.name,
             path: restorePath,
             originalPath: null,
@@ -407,23 +387,19 @@ router.delete('/recycle-bin/:id', authenticate, async (req: Request, res: Respon
     }
 
     // Get all files that were deleted at the same time (use deletion timestamp)
-    // This ensures we get all children that were deleted together, even if parent paths changed
+    // Find all items that were deleted together (same deletedWithParentId or children)
     const filesToDelete = await prisma.file.findMany({
       where: {
         userId,
-        deletedAt: file.deletedAt,
+        OR: [
+          { id: id },
+          { deletedWithParentId: id },
+        ]
       },
       select: { id: true, originalPath: true, path: true }
     });
 
-    // Filter to only include the target file and its descendants based on original path
-    const targetOriginalPath = file.originalPath || file.path;
-    const relevantFiles = filesToDelete.filter(f => {
-      const fOriginalPath = f.originalPath || f.path;
-      return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
-    });
-
-    const fileIds = relevantFiles.map(f => f.id);
+    const fileIds = filesToDelete.map(f => f.id);
 
     // Permanently delete
     await prisma.$transaction(async (tx) => {
@@ -1259,12 +1235,15 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
           const originalPath = f?.path || '';
           // Prefix path with /.trash/{trashId} to make it unique and hidden from normal queries
           const trashedPath = `/.trash/${trashId}${originalPath}`;
+          // Mark children with parent ID so they don't show separately in recycle bin
+          const isTopLevelItem = fileId === file.id;
           await tx.file.update({
             where: { id: fileId },
             data: {
               deletedAt: now,
               originalPath: originalPath,
               path: trashedPath,
+              deletedWithParentId: isTopLevelItem ? null : file.id,
             },
           });
         }
