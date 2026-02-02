@@ -95,15 +95,12 @@ export default function SetupPage() {
           </div>
           <h2 className="text-2xl font-bold text-white mb-2">Setup Complete!</h2>
           <p className="text-gray-400 mb-6">
-            D-Drive has been configured successfully. The server is restarting automatically...
+            D-Drive has been configured successfully.
           </p>
-          <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4 mb-6">
-            <p className="text-yellow-400 text-sm">
-              <strong>Please wait:</strong> The server is restarting to load your configuration. This takes 5-10 seconds.
+          <div className="bg-green-500/10 border border-green-500/20 rounded-lg p-4 mb-6">
+            <p className="text-green-400 text-sm">
+              <strong>Ready to use!</strong> Your configuration has been saved and is active immediately.
             </p>
-            <code className="block mt-2 text-xs text-gray-400 bg-gray-900 rounded p-2">
-              Thanks for using D-Drive!
-            </code>
           </div>
           <button
             onClick={() => window.location.href = '/login'}

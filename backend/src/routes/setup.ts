@@ -153,21 +153,21 @@ router.post('/configure', async (req, res) => {
     fs.writeFileSync(ENV_FILE_PATH, updatedLines.join('\n'));
     logger.info('Discord configuration saved to .env file');
     
-    // Mark setup as complete
+    // CRITICAL: Update process.env immediately so isSetupComplete() returns true
+    Object.entries(envUpdates).forEach(([key, value]) => {
+      process.env[key] = value;
+    });
+    logger.info('Environment variables updated in current process');
+    
+    // Mark setup as complete (create lock file)
     markSetupComplete();
     logger.info('Setup marked as complete');
     
     res.json({
       success: true,
-      message: 'Configuration saved. Server will restart automatically.',
-      restartRequired: true,
+      message: 'Configuration saved successfully.',
+      restartRequired: false, // No restart needed since we updated process.env
     });
-    
-    // Trigger automatic restart after response is sent
-    setTimeout(() => {
-      logger.info('Triggering automatic restart to load new configuration...');
-      process.exit(0); // Docker will restart the container
-    }, 1000);
   } catch (error) {
     logger.error('Failed to save configuration:', error);
     res.status(500).json({
