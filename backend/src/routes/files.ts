@@ -222,28 +222,32 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
     const topLevelDeleted = allDeleted.filter(file => {
       const originalPath = file.originalPath || file.path;
       
-      // Check if ANY ancestor exists in deleted files with the SAME deletion timestamp
-      const hasAncestorDeletedSimultaneously = allDeleted.some(f => {
-        if (f.id === file.id) return false;
-        
-        const fOriginalPath = f.originalPath || f.path;
-        
-        // Check if this file's path is nested inside f's path
-        // Must match exactly with / separator to avoid false matches
-        const isNestedInside = originalPath.startsWith(fOriginalPath + '/') || 
-                               (originalPath.startsWith(fOriginalPath) && fOriginalPath.endsWith('/'));
-        
-        if (isNestedInside) {
-          // Compare timestamps with 1 second tolerance to handle timing variations
-          const timeDiff = Math.abs(f.deletedAt!.getTime() - file.deletedAt!.getTime());
-          return timeDiff < 1000;
-        }
-        
-        return false;
-      });
+      // Check if ANY parent directory exists in deleted files with the SAME deletion timestamp
+      // We need to check the actual path hierarchy, not just string matching
+      const pathParts = originalPath.split('/').filter(p => p.length > 0);
       
-      // Show this item if no ancestor was deleted at the same time
-      return !hasAncestorDeletedSimultaneously;
+      for (let i = pathParts.length - 1; i > 0; i--) {
+        const parentPath = '/' + pathParts.slice(0, i).join('/');
+        
+        const parentDeletedSimultaneously = allDeleted.some(f => {
+          if (f.id === file.id) return false;
+          
+          const fOriginalPath = f.originalPath || f.path;
+          
+          // Check if this is the parent directory
+          if (fOriginalPath !== parentPath) return false;
+          
+          // Compare timestamps - must be within 100ms (same transaction)
+          const timeDiff = Math.abs(f.deletedAt!.getTime() - file.deletedAt!.getTime());
+          return timeDiff < 100;
+        });
+        
+        if (parentDeletedSimultaneously) {
+          return false; // Hide this item, parent is shown instead
+        }
+      }
+      
+      return true; // No parent deleted simultaneously, show this item
     });
 
     const deletedFiles = topLevelDeleted;
