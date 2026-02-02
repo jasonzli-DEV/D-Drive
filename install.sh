@@ -82,14 +82,44 @@ check_docker_compose() {
 
 check_docker_running() {
     log_info "Checking if Docker daemon is running..."
-    
     if ! docker info &> /dev/null; then
-        log_error "Docker daemon is not running."
-        echo ""
-        echo "Please start Docker Desktop or the Docker service."
-        exit 1
+        log_warn "Docker daemon is not running. Attempting to start Docker..."
+        # Try to start Docker Desktop (macOS/Windows)
+        if [[ "$OSTYPE" == "darwin"* ]]; then
+            if command -v open &>/dev/null && [ -d "/Applications/Docker.app" ]; then
+                log_info "Trying to launch Docker Desktop (macOS)..."
+                open -a Docker
+                # Wait for Docker to start (max 60s)
+                for i in {1..60}; do
+                    if docker info &>/dev/null; then
+                        log_info "Docker daemon started successfully."
+                        break
+                    fi
+                    sleep 1
+                done
+            fi
+        elif [[ "$OSTYPE" == "linux"* ]]; then
+            if command -v systemctl &>/dev/null; then
+                log_info "Trying to start Docker service (Linux)..."
+                sudo systemctl start docker
+                # Wait for Docker to start (max 30s)
+                for i in {1..30}; do
+                    if docker info &>/dev/null; then
+                        log_info "Docker daemon started successfully."
+                        break
+                    fi
+                    sleep 1
+                done
+            fi
+        fi
+        # Final check
+        if ! docker info &> /dev/null; then
+            log_error "Docker daemon is still not running."
+            echo ""
+            echo "Please start Docker Desktop or the Docker service manually."
+            exit 1
+        fi
     fi
-    
     log_info "Docker daemon is running"
 }
 
