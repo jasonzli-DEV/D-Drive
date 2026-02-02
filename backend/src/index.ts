@@ -29,20 +29,30 @@ app.use(cors({
     // This ensures changes from setup wizard are immediately effective
     const allowedOriginsEnv = process.env.ALLOWED_ORIGINS;
     
+    // Log CORS check for debugging
+    logger.info(`CORS check - origin: ${origin}, ALLOWED_ORIGINS: ${allowedOriginsEnv}`);
+    
     // During initial setup (no ALLOWED_ORIGINS configured or empty), allow all origins
     if (!allowedOriginsEnv || allowedOriginsEnv.trim() === '') {
+      logger.info('CORS: No origins configured, allowing all');
       return callback(null, true);
     }
     
     // After setup, enforce configured origins
     const allowedOrigins = allowedOriginsEnv.split(',').map(url => url.trim());
+    logger.info(`CORS: Allowed origins: ${JSON.stringify(allowedOrigins)}`);
     
     // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
+    if (!origin) {
+      logger.info('CORS: No origin header, allowing');
+      return callback(null, true);
+    }
     
     if (allowedOrigins.includes(origin)) {
+      logger.info(`CORS: Origin ${origin} is allowed`);
       callback(null, true);
     } else {
+      logger.error(`CORS: Origin ${origin} is NOT allowed`);
       callback(new Error('Not allowed by CORS'));
     }
   },
