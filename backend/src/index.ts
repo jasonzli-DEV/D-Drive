@@ -25,8 +25,8 @@ app.use(helmet());
 // Configure CORS to support multiple origins
 app.use(cors({
   origin: (origin, callback) => {
-    // During initial setup (no ALLOWED_ORIGINS configured), allow all origins
-    if (!process.env.ALLOWED_ORIGINS) {
+    // During initial setup (no ALLOWED_ORIGINS configured or empty), allow all origins
+    if (!process.env.ALLOWED_ORIGINS || process.env.ALLOWED_ORIGINS.trim() === '') {
       return callback(null, true);
     }
     
