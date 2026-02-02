@@ -173,6 +173,16 @@ router.post('/configure', async (req, res) => {
     });
     logger.info('Environment variables updated in current process');
     
+    // Initialize Discord bot now that credentials are configured
+    try {
+      const { initDiscordBot } = await import('../services/discord');
+      await initDiscordBot();
+      logger.info('Discord bot initialized after setup');
+    } catch (discordError) {
+      logger.error('Failed to initialize Discord bot after setup:', discordError);
+      // Don't fail the setup - bot can be initialized on next request
+    }
+    
     // Mark setup as complete (create lock file)
     markSetupComplete();
     logger.info('Setup marked as complete');

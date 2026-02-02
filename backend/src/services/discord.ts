@@ -21,6 +21,13 @@ export async function initDiscordBot(): Promise<Client | null> {
     return null;
   }
 
+  // If client already exists, destroy it first (for re-initialization after setup)
+  if (discordClient) {
+    logger.info('Destroying existing Discord client for re-initialization');
+    discordClient.destroy();
+    discordClient = null;
+  }
+
   // Configure REST with longer timeout for slow connections (5 minutes instead of default 60s)
   // This prevents AbortError on Pi's slow 20 Mbps upload when uploading 8MB chunks
   const rest = new REST({ timeout: 300_000 }); // 5 minutes timeout
