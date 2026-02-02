@@ -493,7 +493,7 @@ export default function DrivePage() {
         fileLoadedRef.current[fileIdentifier] = 0;
       }
 
-      // Try streaming endpoint first; fallback to legacy endpoint on error
+      // Always use streaming endpoint to avoid GitHub Codespaces proxy upload limits
       let response;
       try {
         response = await api.post('/files/upload/stream', formData, {
@@ -531,44 +531,9 @@ export default function DrivePage() {
           },
         });
       } catch (err) {
-        // Fallback: older endpoint that buffers to disk/server-side
-        try {
-          response = await api.post('/files/upload', formData, {
-            onUploadProgress: (progressEvent) => {
-                const percentCompleted = Math.round(
-                  (progressEvent.loaded * 100) / (progressEvent.total || 1)
-                );
-                setUploadProgress(prev =>
-                  prev.map(p =>
-                    p.fileName === file.name ? { ...p, progress: percentCompleted } : p
-                  )
-                );
-
-                if (folderKey) {
-                  const fileKeyLocal = fileIdentifier;
-                  const prevLoaded = fileLoadedRef.current[fileKeyLocal] || 0;
-                  const delta = progressEvent.loaded - prevLoaded;
-                  fileLoadedRef.current[fileKeyLocal] = progressEvent.loaded;
-                  if (delta > 0) {
-                    let newProgressValue = 0;
-                    setUploadFolders(prev => prev.map(f => {
-                      if (f.folderKey !== folderKey) return f;
-                      const uploadedBytes = Math.min(f.uploadedBytes + delta, f.totalBytes || Number.MAX_SAFE_INTEGER);
-                      const progress = f.totalBytes ? Math.round((uploadedBytes * 100) / f.totalBytes) : 0;
-                      newProgressValue = progress;
-                      return { ...f, uploadedBytes, progress };
-                    }));
-
-                    // Update previous progress; final completion will be decided
-                    // when all file uploads for this folder have settled (onSuccess/onError).
-                    folderPrevProgressRef.current[folderKey] = newProgressValue;
-                  }
-                }
-              },
-          });
-        } catch (err2) {
-          throw err2;
-        }
+        // Streaming failed - this is critical in GitHub Codespaces
+        console.error('Streaming upload failed:', err);
+        throw new Error(`Upload failed: ${err instanceof Error ? err.message : 'Unknown error'}`);
       }
       return { data: response.data, fileName: file.name };
     },
