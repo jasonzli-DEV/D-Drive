@@ -126,7 +126,6 @@ JWT_SECRET=${JWT_SECRET}
 
 # URLs (adjust if running on different host/port)
 FRONTEND_URL=http://localhost
-ALLOWED_ORIGINS=http://localhost
 # Use /api for Docker deployment (nginx proxies to backend)
 VITE_API_URL=/api
 
@@ -136,6 +135,9 @@ VITE_API_URL=/api
 # DISCORD_BOT_TOKEN=
 # DISCORD_GUILD_ID=
 # DISCORD_CHANNEL_ID=
+
+# CORS (will be set during setup)
+# ALLOWED_ORIGINS=
 EOF
         log_info "Created .env file with generated secrets"
         log_info "Discord configuration will be set via the web setup wizard"
