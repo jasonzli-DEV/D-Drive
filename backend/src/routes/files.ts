@@ -246,27 +246,16 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
         return true;
       });
       
-      // For each top-level item, attach its children
+      // For each top-level item, DO NOT attach children - they're hidden
       topLevel.forEach(item => {
-        const itemPath = item.originalPath || item.path;
-        const children = group.filter(f => {
-          if (f.id === item.id) return false;
-          const fPath = f.originalPath || f.path;
-          return fPath.startsWith(itemPath + '/');
-        });
-        
         topLevelItems.push({
           ...item,
           size: item.size.toString(),
-          children: children.map(c => ({
-            ...c,
-            size: c.size.toString(),
-          })),
         });
       });
     }
 
-    res.json(topLevelItems);
+    res.json({ files: topLevelItems });
   } catch (error) {
     logger.error('Error listing recycle bin:', error);
     res.status(500).json({ error: 'Failed to list recycle bin' });
