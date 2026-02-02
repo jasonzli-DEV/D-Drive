@@ -36,6 +36,11 @@ app.use(cors({
     // Allow requests with no origin (like mobile apps or curl requests)
     if (!origin) return callback(null, true);
     
+    // Allow GitHub Codespaces (*.github.dev and *.app.github.dev)
+    if (origin.endsWith('.github.dev') || origin.endsWith('.app.github.dev')) {
+      return callback(null, true);
+    }
+    
     if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
