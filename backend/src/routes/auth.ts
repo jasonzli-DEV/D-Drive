@@ -157,9 +157,17 @@ router.get('/discord/callback', async (req, res) => {
         avatarUrl: `/api/avatars/${user.id}`,
       },
     });
-  } catch (error) {
+  } catch (error: any) {
     logger.error('OAuth error:', error);
-    res.status(500).json({ error: 'Authentication failed' });
+    logger.error('OAuth error details:', {
+      message: error.message,
+      response: error.response?.data,
+      stack: error.stack,
+    });
+    res.status(500).json({ 
+      error: 'Authentication failed',
+      details: error.response?.data || error.message,
+    });
   }
 });
 
