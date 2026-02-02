@@ -220,12 +220,17 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       
       for (let i = pathParts.length - 1; i > 0; i--) {
         const parentPath = '/' + pathParts.slice(0, i).join('/');
-        const hasDeletedParent = allDeleted.some(f => {
+        const parent = allDeleted.find(f => {
           if (f.id === file.id) return false;
           const fOriginalPath = f.originalPath || f.path;
           return fOriginalPath === parentPath;
         });
-        if (hasDeletedParent) return false;
+        
+        if (parent && parent.deletedAt && file.deletedAt) {
+          if (parent.deletedAt <= file.deletedAt) {
+            return false;
+          }
+        }
       }
       return true;
     }).map(item => ({
