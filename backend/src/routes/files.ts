@@ -279,7 +279,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         await fd.read(buffer, 0, readSize, offset);
 
         // Encrypt per-chunk if encryption is enabled
-        let toUpload = buffer;
+        let toUpload: Buffer = buffer;
         if (shouldEncrypt && encryptionKey) {
           toUpload = encryptBuffer(buffer, encryptionKey);
         }
@@ -357,16 +357,13 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         logger.warn('Failed to delete file record after upload error:', cleanupErr);
       }
 
-      // Remove any temp files
+      // Remove temp file
       try {
-        if (processingPath && processingPath !== tmpPath) {
-          await fs.promises.unlink(processingPath).catch(() => null);
-        }
         if (tmpPath) {
           await fs.promises.unlink(tmpPath).catch(() => null);
         }
       } catch (rmErr) {
-        logger.warn('Failed to remove temp files during rollback:', rmErr);
+        logger.warn('Failed to remove temp file during rollback:', rmErr);
       }
 
       return res.status(500).json({ error: `Failed to upload file: ${uploadError?.message || uploadError}` });
