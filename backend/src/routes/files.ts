@@ -214,38 +214,34 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       orderBy: { deletedAt: 'desc' },
     });
 
-    // Group files by deletedAt timestamp to identify deletion groups
-    const deletionGroups = new Map<number, typeof allDeleted>();
-    for (const file of allDeleted) {
-      const timestamp = file.deletedAt!.getTime();
-      if (!deletionGroups.has(timestamp)) {
-        deletionGroups.set(timestamp, []);
-      }
-      deletionGroups.get(timestamp)!.push(file);
-    }
-
-    // For each deletion group, find the root item(s) - items that don't have a parent in the same deletion group
-    const topLevelDeleted: typeof allDeleted = [];
-    for (const [, group] of deletionGroups) {
-      // Build a set of paths in this deletion group
-      const pathsInGroup = new Set(group.map(f => f.path));
+    // Show only items that should appear as separate entries in the recycle bin
+    // An item appears in the bin if its parent was NOT deleted at the same time
+    // This handles both scenarios:
+    // 1. Delete folder1, then delete folder -> both show separately
+    // 2. Delete folder containing folder1 -> only folder shows
+    const topLevelDeleted = allDeleted.filter(file => {
+      const originalPath = file.originalPath || file.path;
       
-      for (const file of group) {
-        // Check if this file's parent path is also in the deletion group
-        const originalPath = file.originalPath || file.path;
-        const parentPath = originalPath.split('/').slice(0, -1).join('/') || '/';
-        
-        // If parent path is not in this deletion group, this is a top-level deleted item
-        const hasParentInGroup = group.some(f => {
-          const fOriginalPath = f.originalPath || f.path;
-          return fOriginalPath === parentPath && f.id !== file.id;
-        });
-        
-        if (!hasParentInGroup) {
-          topLevelDeleted.push(file);
-        }
-      }
-    }
+      // Extract parent path from original path
+      const pathParts = originalPath.split('/').filter(Boolean);
+      if (pathParts.length === 0) return true; // Root level, always show
+      
+      pathParts.pop(); // Remove filename/foldername
+      const parentPath = pathParts.length > 0 ? '/' + pathParts.join('/') : null;
+      
+      if (!parentPath) return true; // No parent (root level item), always show
+      
+      // Check if parent exists in deleted files with the SAME deletion timestamp
+      const hasParentDeletedSimultaneously = allDeleted.some(f => {
+        const fOriginalPath = f.originalPath || f.path;
+        return fOriginalPath === parentPath && 
+               f.deletedAt!.getTime() === file.deletedAt!.getTime() &&
+               f.id !== file.id;
+      });
+      
+      // Show this item if parent was NOT deleted at the same time
+      return !hasParentDeletedSimultaneously;
+    });
 
     const deletedFiles = topLevelDeleted;
 
@@ -308,17 +304,22 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get all files that were deleted at the same time (including children)
+    // Get ONLY files that were deleted at the same time as this file (same deletion event)
+    // This ensures we restore items as a unit, not pulling in items deleted at other times
     const filesToRestore = await prisma.file.findMany({
       where: {
         userId,
-        deletedAt: file.deletedAt,
-        OR: [
-          { id: file.id },
-          { path: { startsWith: `${file.path}/` } }
-        ]
+        deletedAt: file.deletedAt, // Same timestamp = deleted together
       },
       select: { id: true, originalPath: true, path: true, parentId: true, name: true }
+    });
+
+    // Filter to only the target item and its children (based on original path hierarchy)
+    const targetOriginalPath = file.originalPath || file.path;
+    const itemsToRestore = filesToRestore.filter(f => {
+      const fOriginalPath = f.originalPath || f.path;
+      // Include the target file itself OR any file that was a child of it
+      return f.id === file.id || fOriginalPath.startsWith(`${targetOriginalPath}/`);
     });
 
     const targetPath = file.originalPath || file.path;
@@ -356,7 +357,7 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
 
     // Restore all files, updating paths if the root item was renamed
     await prisma.$transaction(async (tx) => {
-      for (const f of filesToRestore) {
+      for (const f of itemsToRestore) {
         let restorePath = f.originalPath || f.path;
         let newName = f.name;
         
