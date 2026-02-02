@@ -94,17 +94,17 @@ router.post('/configure', async (req, res) => {
     }
   }
   
-  // Validate Discord credentials format
-  if (!/^\d+$/.test(discordClientId)) {
-    return res.status(400).json({ error: 'Invalid Discord Client ID format' });
+  // Validate Discord credentials format (snowflake IDs are 17-19 digits)
+  if (!/^\d{17,19}$/.test(discordClientId)) {
+    return res.status(400).json({ error: 'Invalid Discord Client ID format (must be 17-19 digits)' });
   }
   
-  if (!/^\d+$/.test(discordGuildId)) {
-    return res.status(400).json({ error: 'Invalid Discord Guild ID format' });
+  if (!/^\d{17,19}$/.test(discordGuildId)) {
+    return res.status(400).json({ error: 'Invalid Discord Guild ID format (must be 17-19 digits)' });
   }
   
-  if (!/^\d+$/.test(discordChannelId)) {
-    return res.status(400).json({ error: 'Invalid Discord Channel ID format' });
+  if (!/^\d{17,19}$/.test(discordChannelId)) {
+    return res.status(400).json({ error: 'Invalid Discord Channel ID format (must be 17-19 digits)' });
   }
   
   try {
