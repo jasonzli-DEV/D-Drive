@@ -319,7 +319,7 @@ export default function TasksPage() {
                     </Box>
                   )}
                 </TableCell>
-                <TableCell>{allFolders?.find((f: any) => f.id === t.destinationId)?.path || '/'}</TableCell>
+                <TableCell>{(t as any).destinationPath || '/'}</TableCell>
                 <TableCell>
                   {t.lastStarted ? new Date(t.lastStarted).toLocaleString() : (t.lastRun ? new Date(t.lastRun).toLocaleString() : '-')}
                 </TableCell>
@@ -416,7 +416,7 @@ export default function TasksPage() {
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
             <Button variant="outlined" onClick={() => setDestDialogOpen(true)} sx={{ mb: 1 }}>
-              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || 'Selected folder') : '/'}
+              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || (editing && (tasks as any[])?.find((t:any)=>t.id===form.id)?.destinationPath) || 'Selected folder') : '/'}
             </Button>
           </Box>
 
