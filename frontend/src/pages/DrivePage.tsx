@@ -641,91 +641,21 @@ export default function DrivePage() {
     },
   });
 
-  // Helper: collect all files and directories under a directory (BFS)
-  const collectFilesAndDirs = async (rootId: string) => {
-    const files: FileItem[] = [];
-    const dirs: FileItem[] = [];
-    const queue: string[] = [rootId];
-
-    while (queue.length > 0) {
-      const current = queue.shift()!;
-      try {
-        const resp = await api.get(`/files?parentId=${current}`);
-        const children = resp.data as FileItem[];
-        for (const c of children) {
-          if (c.type === 'FILE') files.push(c);
-          else if (c.type === 'DIRECTORY') {
-            dirs.push(c);
-            queue.push(c.id);
-          }
-        }
-      } catch (err) {
-        // ignore and continue; caller will surface error
-      }
-    }
-
-    return { files, dirs };
-  };
-
-  // Perform recursive delete by deleting files then directories sequentially,
-  // updating a progress entry so the user sees progress.
   const performRecursiveDelete = async (root: FileItem) => {
-    // create progress entry (use id so updates are deterministic)
     setDeleteProgress(prev => [...prev, { id: root.id, fileName: root.name, progress: 0, status: 'uploading' }]);
-    const entryId = root.id;
-
+    
     try {
-      const { files, dirs } = await collectFilesAndDirs(root.id);
-      // Try to get per-file chunk counts so progress can be shown at chunk granularity.
-      const fileChunkCounts: Record<string, number> = {};
-      try {
-        await Promise.all(files.map(async (f) => {
-          try {
-            const meta = await api.get(`/files/${f.id}`);
-            const data = meta.data || {};
-            const cnt = Array.isArray(data.chunks) ? data.chunks.length : (data.chunkCount || data.chunksCount || 1);
-            fileChunkCounts[f.id] = Math.max(1, Number(cnt) || 1);
-          } catch (err) {
-            fileChunkCounts[f.id] = 1;
-          }
-        }));
-      } catch (err) {
-        // ignore - fallback to 1 per file
-      }
-
-      const total = (dirs.length) + 1 + files.reduce((s, f) => s + (fileChunkCounts[f.id] || 1), 0);
-      let completed = 0;
-
-      // delete files sequentially, accounting for chunk counts
-      for (const f of files) {
-        const chunkCount = fileChunkCounts[f.id] || 1;
-        await api.delete(`/files/${f.id}`, { data: { recursive: false } });
-        completed += chunkCount;
-        const pct = Math.round((completed / total) * 100);
-        setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: pct } : p));
-      }
-
-      // delete directories from leaves up (reverse collected order)
-      for (const d of dirs.slice().reverse()) {
-        await api.delete(`/files/${d.id}`, { data: { recursive: false } });
-        completed++;
-        const pct = Math.round((completed / total) * 100);
-        setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: pct } : p));
-      }
-
-      // delete the root directory itself
-      await api.delete(`/files/${root.id}`, { data: { recursive: false } });
-      completed++;
-      setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, progress: 100, status: 'success' } : p));
-
+      setDeleteProgress(prev => prev.map(p => p.id === root.id ? { ...p, progress: 50 } : p));
+      await api.delete(`/files/${root.id}`, { data: { recursive: true } });
+      setDeleteProgress(prev => prev.map(p => p.id === root.id ? { ...p, progress: 100, status: 'success' } : p));
+      
       queryClient.invalidateQueries({ queryKey: ['files'] });
     } catch (err) {
-      setDeleteProgress(prev => prev.map(p => p.id === entryId ? { ...p, status: 'error' } : p));
+      setDeleteProgress(prev => prev.map(p => p.id === root.id ? { ...p, status: 'error' } : p));
       toast.error('Delete failed');
     } finally {
-      // remove the progress entry after a short delay so user can see result
       setTimeout(() => {
-        setDeleteProgress(prev => prev.filter(p => p.id !== entryId));
+        setDeleteProgress(prev => prev.filter(p => p.id !== root.id));
       }, 1500);
     }
   };
