@@ -1274,18 +1274,17 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
       await prisma.$transaction(async (tx) => {
         for (const fileId of filesToDelete) {
           const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true, deletedAt: true, deletedWithParentId: true } });
+          
+          if (f?.deletedAt && !f.deletedWithParentId) {
+            continue;
+          }
+          
           const originalPath = f?.path || '';
           const trashedPath = `/.trash/${trashId}${originalPath}`;
           
           let deletedWithParentValue = null;
           if (fileId !== file.id && !f?.deletedAt) {
             deletedWithParentValue = file.id;
-          }
-          
-          if (f?.deletedAt) {
-            if (!f.deletedWithParentId) {
-              continue;
-            }
           }
           
           await tx.file.update({
