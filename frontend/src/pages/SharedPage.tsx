@@ -925,6 +925,45 @@ export default function SharedPage() {
         </Table>
       )}
 
+      {/* Context Menu */}
+      <Menu
+        open={contextMenu !== null}
+        onClose={closeContextMenu}
+        anchorReference="anchorPosition"
+        anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
+      >
+        {tab === 0 && contextMenu?.item?.type === 'DIRECTORY' && (
+          <MenuItem onClick={() => { const item = contextMenu.item; if (item) { const share = (tab === 0 ? sharedWithMe : sharedByMe)?.find(s => s.file.id === item.id); if (share) openFolder(share); } closeContextMenu(); }}>
+            <ListItemIcon><ChevronRight size={18} /></ListItemIcon>
+            <ListItemText>Open</ListItemText>
+          </MenuItem>
+        )}
+        {tab === 0 && contextMenu?.item?.type === 'FILE' && (
+          <MenuItem onClick={() => { const item = contextMenu.item; if (item) handleDownload(item.id, item.name); closeContextMenu(); }}>
+            <ListItemIcon><Download size={18} /></ListItemIcon>
+            <ListItemText>Download</ListItemText>
+          </MenuItem>
+        )}
+        {tab === 0 && contextMenu?.item?.type === 'FILE' && contextMenu.item && canPreview(contextMenu.item) && (
+          <MenuItem onClick={() => { const item = contextMenu.item; if (item) openPreview(item, [item]); closeContextMenu(); }}>
+            <ListItemIcon><Eye size={18} /></ListItemIcon>
+            <ListItemText>Preview</ListItemText>
+          </MenuItem>
+        )}
+        {tab === 1 && contextMenu?.item && (
+          <>
+            <MenuItem onClick={() => { setRenameDialog(contextMenu?.item || null); setNewName(contextMenu?.item?.name || ''); closeContextMenu(); }}>
+              <ListItemIcon><Pencil size={18} /></ListItemIcon>
+              <ListItemText>Rename</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => { setDeleteDialog(contextMenu?.item || null); closeContextMenu(); }}>
+              <ListItemIcon><Trash size={18} /></ListItemIcon>
+              <ListItemText>Delete</ListItemText>
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+
       {/* Remove Share Dialog */}
       <Dialog open={!!removeDialog} onClose={() => setRemoveDialog(null)}>
         <DialogTitle>
