@@ -215,11 +215,3 @@ export default function MetricsPage() {
     </Box>
   );
 }
-              </Box>
-            </CardContent>
-          </Card>
-        </Box>
-      </Paper>
-    </Box>
-  );
-}
