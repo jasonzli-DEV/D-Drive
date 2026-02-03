@@ -123,18 +123,40 @@ async function ensureTaskDestination(task: any): Promise<string | null> {
   if (dest) return dest.id;
   
   // Destination was deleted/moved, try to recreate it from the stored path
-  // We need to find the original path from task history or use a default
   logger.warn('Task destination folder missing, attempting to recreate', { taskId: task.id, destId: task.destinationId });
   
-  // For now, create a folder with the task name at root level
-  const folderName = `backups-${task.name || 'task'}`;
+  // First, ensure a "Backups" folder exists at root level
+  let backupsFolder = await prisma.file.findFirst({
+    where: {
+      userId: task.userId,
+      name: 'Backups',
+      parentId: null,
+      type: 'DIRECTORY',
+    },
+  });
+  
+  if (!backupsFolder) {
+    backupsFolder = await prisma.file.create({
+      data: {
+        name: 'Backups',
+        path: '/Backups',
+        type: 'DIRECTORY',
+        userId: task.userId,
+        parentId: null,
+      },
+    });
+    logger.info('Created Backups folder', { folderId: backupsFolder.id });
+  }
+  
+  // Now create the task-specific folder inside the Backups folder
+  const taskFolderName = task.name || 'task';
   const newFolder = await prisma.file.create({
     data: {
-      name: folderName,
-      path: `/${folderName}`,
+      name: taskFolderName,
+      path: `/Backups/${taskFolderName}`,
       type: 'DIRECTORY',
       userId: task.userId,
-      parentId: null,
+      parentId: backupsFolder.id,
     },
   });
   

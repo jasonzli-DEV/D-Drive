@@ -100,7 +100,7 @@ export default function Layout({ children }: LayoutProps) {
           >
             <MenuItem disabled>
               <Typography variant="body2">
-                {user?.username}#{user?.discriminator}
+                {user?.username}
               </Typography>
             </MenuItem>
             <MenuItem onClick={handleLogs}>
