@@ -656,7 +656,7 @@ export default function TasksPage() {
                         // Build phase text with chunk info for uploading
                         let phaseText = progress.phase === 'connecting' ? (
                           <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
-                            Connect
+                            Connecting
                             <Box component="span" sx={{ 
                               '@keyframes dotPulse': {
                                 '0%, 20%': { content: '""' },
@@ -691,7 +691,25 @@ export default function TasksPage() {
                             }} />
                           </Box>
                         ) 
-                          : progress.phase === 'downloading' ? 'Downloading' 
+                          : progress.phase === 'downloading' ? (
+                          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                            Downloading
+                            <Box component="span" sx={{ 
+                              '@keyframes dotPulse': {
+                                '0%, 20%': { content: '""' },
+                                '40%': { content: '"."' },
+                                '60%': { content: '".."' },
+                                '80%, 100%': { content: '"..."' },
+                              },
+                              '&::after': {
+                                content: '""',
+                                animation: 'dotPulse 1.5s infinite',
+                                display: 'inline-block',
+                                width: '1.5em',
+                              }
+                            }} />
+                          </Box>
+                        ) 
                           : progress.phase === 'archiving' ? 'Creating archive' 
                           : progress.phase === 'uploading' ? 'Uploading to Discord' 
                           : progress.phase === 'complete' ? 'Complete'
