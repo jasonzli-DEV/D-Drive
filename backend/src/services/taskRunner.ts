@@ -13,6 +13,11 @@ const prisma = new PrismaClient();
 // Track running tasks and their cancellation flags
 const runningTasks = new Map<string, { cancelled: boolean; tmpDir: string | null }>();
 
+// Check if a task is currently running
+export function isTaskRunning(taskId: string): boolean {
+  return runningTasks.has(taskId);
+}
+
 // Stop a running task
 export async function stopTask(taskId: string) {
   const runInfo = runningTasks.get(taskId);
@@ -291,6 +296,11 @@ function looksLikeTimestampPrefix(name: string) {
 // Run task now: connect to SFTP, download entries, optionally compress, encrypt, and store
 // Uses STREAMING to handle large servers (60GB+) without running out of memory
 export async function runTaskNow(taskId: string) {
+  // Check if already running
+  if (runningTasks.has(taskId)) {
+    throw new Error('Task is already running');
+  }
+  
   const startTime = new Date();
   let tmpDir: string | null = null;
   

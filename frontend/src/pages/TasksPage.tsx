@@ -110,7 +110,14 @@ export default function TasksPage() {
 
   const runNowMutation = useMutation({
     mutationFn: (id: string) => api.post(`/tasks/${id}/run`),
-    onSuccess: () => toast.success('Task run started'),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      toast.success('Task run started');
+    },
+    onError: (err: any) => {
+      const message = err?.response?.data?.error || 'Failed to run task';
+      toast.error(message);
+    },
   });
 
   const [open, setOpen] = useState(false);
