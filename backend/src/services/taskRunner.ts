@@ -34,10 +34,12 @@ export async function stopTask(taskId: string) {
     }
     
     // If DB shows task as running (lastStarted > lastRun), update it
+    // Don't update lastRuntime since the task was stopped, not completed
     if (task.lastStarted && task.lastRun && task.lastStarted > task.lastRun) {
       await prisma.task.update({
         where: { id: taskId },
         data: { lastRun: new Date() }
+        // Intentionally NOT updating lastRuntime - task was stopped, not completed
       });
       logger.info('Fixed stale task state in DB', { taskId });
       
@@ -67,6 +69,14 @@ export async function stopTask(taskId: string) {
   }
   
   runningTasks.delete(taskId);
+  
+  // Update lastRun to mark task as stopped, but DON'T update lastRuntime
+  // because the task was manually stopped, not completed
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { lastRun: new Date() }
+    // Intentionally NOT updating lastRuntime - task was stopped, not completed
+  });
   
   // Log the stop
   try {
