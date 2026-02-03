@@ -194,7 +194,7 @@ export default function RecycleBinPage() {
               </TableHead>
               <TableBody>
                 {files.map((file) => {
-                  const renderFileRow = (f: DeletedFile, depth: number = 0) => (
+                  const renderFileRow = (f: DeletedFile, depth: number = 0): JSX.Element => (
                     <>
                       <TableRow key={f.id} hover onContextMenu={(e) => handleContextMenu(e, f)}>
                         <TableCell>

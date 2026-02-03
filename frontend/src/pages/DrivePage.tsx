@@ -1937,12 +1937,11 @@ export default function DrivePage() {
                 My Drive
               </Link>
               {(() => {
-                // Build breadcrumb path for current target folder
                 const buildPath = (folderId: string | null): any[] => {
                   if (!folderId) return [];
                   const folder = allFolders?.find((f: any) => f.id === folderId);
                   if (!folder) return [];
-                  return [...buildPath(folder.parentId), folder];
+                  return [...buildPath(folder.parentId || null), folder];
                 };
                 const breadcrumbs = buildPath(targetFolderId || null);
                 return breadcrumbs.map((folder: any) => (
@@ -2027,7 +2026,7 @@ export default function DrivePage() {
                 if (!folderId) return [];
                 const folder = allFolders?.find((f: any) => f.id === folderId);
                 if (!folder) return [];
-                return [...buildPath(folder.parentId), folder];
+                return [...buildPath(folder.parentId || null), folder];
               };
               const breadcrumbs = buildPath(targetFolderId || null);
               return `Move to: ${breadcrumbs.length > 0 ? breadcrumbs.map((f: any) => f.name).join(' / ') : 'My Drive'}`;
