@@ -1311,7 +1311,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
         for (const fileId of filesToDelete) {
           const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true, deletedAt: true, deletedWithParentId: true } });
           
-          if (f?.deletedAt && !f.deletedWithParentId) {
+          if (f?.deletedAt) {
             continue;
           }
           
@@ -1319,16 +1319,16 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
           const trashedPath = `/.trash/${trashId}${originalPath}`;
           
           let deletedWithParentValue = null;
-          if (fileId !== file.id && !f?.deletedAt) {
+          if (fileId !== file.id) {
             deletedWithParentValue = file.id;
           }
           
           await tx.file.update({
             where: { id: fileId },
             data: {
-              deletedAt: f?.deletedAt || now,
-              originalPath: f?.deletedAt ? undefined : originalPath,
-              path: f?.deletedAt ? undefined : trashedPath,
+              deletedAt: now,
+              originalPath: originalPath,
+              path: trashedPath,
               deletedWithParentId: deletedWithParentValue,
             },
           });
