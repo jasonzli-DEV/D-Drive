@@ -1276,7 +1276,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
       const trashId = crypto.randomUUID().slice(0, 8);
       await prisma.$transaction(async (tx) => {
         for (const fileId of filesToDelete) {
-          const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true } });
+          const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true, deletedAt: true } });
           const originalPath = f?.path || '';
           const trashedPath = `/.trash/${trashId}${originalPath}`;
           await tx.file.update({
@@ -1285,7 +1285,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
               deletedAt: now,
               originalPath: originalPath,
               path: trashedPath,
-              deletedWithParentId: fileId === file.id ? null : file.id,
+              deletedWithParentId: fileId === file.id ? null : (f?.deletedAt ? null : file.id),
             },
           });
         }
