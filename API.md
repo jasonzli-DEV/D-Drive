@@ -316,6 +316,176 @@ Authorization: Bearer <token>
 
 ---
 
+### Tasks
+
+Tasks are automated SFTP backup jobs that run on a schedule (cron expression).
+
+#### List Tasks
+Get all tasks for the authenticated user.
+
+```http
+GET /tasks
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "task-id",
+    "name": "Daily Server Backup",
+    "enabled": true,
+    "cron": "0 2 * * *",
+    "sftpHost": "backup.example.com",
+    "sftpPort": 22,
+    "sftpUser": "backupuser",
+    "sftpPath": "/backups",
+    "destinationId": "folder-id",
+    "destinationPath": "/backups/server",
+    "compress": "TAR_GZ",
+    "maxFiles": 7,
+    "lastRun": "2026-01-10T02:00:00.000Z",
+    "lastStarted": "2026-01-10T02:00:00.000Z",
+    "lastRuntime": 125,
+    "createdAt": "2026-01-01T00:00:00.000Z"
+  }
+]
+```
+
+#### Create Task
+Create a new backup task.
+
+```http
+POST /tasks
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "name": "Daily Server Backup",
+  "enabled": true,
+  "cron": "0 2 * * *",
+  "sftpHost": "backup.example.com",
+  "sftpPort": 22,
+  "sftpUser": "backupuser",
+  "sftpPath": "/backups",
+  "authPassword": true,
+  "authPrivateKey": false,
+  "sftpPassword": "secure_password",
+  "destinationId": "folder-id",
+  "compress": "TAR_GZ",
+  "maxFiles": 7
+}
+```
+
+**Response:**
+```json
+{
+  "id": "task-id",
+  "name": "Daily Server Backup",
+  "enabled": true,
+  "cron": "0 2 * * *",
+  "destinationPath": "/backups/server",
+  "createdAt": "2026-01-10T12:00:00.000Z"
+}
+```
+
+#### Update Task
+Update an existing task.
+
+```http
+PATCH /tasks/:id
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:** Same as create, all fields optional.
+
+**Response:**
+```json
+{
+  "id": "task-id",
+  "name": "Updated Task Name",
+  "enabled": false,
+  "updatedAt": "2026-01-10T12:00:00.000Z"
+}
+```
+
+#### Delete Task
+Delete a task.
+
+```http
+DELETE /tasks/:id
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "message": "Task deleted successfully"
+}
+```
+
+#### Run Task Now
+Manually trigger a task to run immediately.
+
+```http
+POST /tasks/:id/run
+Authorization: Bearer <token>
+```
+
+**Response (Success):**
+```json
+{
+  "ok": true,
+  "task": {
+    "id": "task-id",
+    "lastRun": "2026-01-10T12:00:00.000Z"
+  }
+}
+```
+
+**Response (409 - Already Running):**
+```json
+{
+  "error": "This task is already running. Please wait for it to complete or stop it first."
+}
+```
+
+#### Stop Running Task
+Stop a currently running task.
+
+```http
+POST /tasks/:id/stop
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "ok": true
+}
+```
+
+**Error Response:**
+```json
+{
+  "error": "Task is not currently running"
+}
+```
+
+**Task Fields:**
+- `cron`: Cron expression (e.g., "0 2 * * *" = daily at 2 AM)
+- `compress`: Compression format - "NONE", "ZIP", or "TAR_GZ"
+- `maxFiles`: Max backup files to keep (0 = unlimited)
+- `lastRuntime`: Runtime in seconds of last completed task
+- `authPassword`: Enable password authentication
+- `authPrivateKey`: Enable SSH key authentication
+
+---
+
 ### API Keys
 
 #### List API Keys
@@ -402,6 +572,7 @@ All errors follow this format:
 - `401 Unauthorized`: Invalid or missing authentication
 - `403 Forbidden`: Not authorized to access resource
 - `404 Not Found`: Resource not found
+- `409 Conflict`: Resource conflict (e.g., task already running)
 - `429 Too Many Requests`: Rate limit exceeded
 - `500 Internal Server Error`: Server error
 
@@ -516,7 +687,52 @@ async function downloadFile(fileId, outputPath) {
   });
   response.data.pipe(fs.createWriteStream(outputPath));
 }
+
+// List tasks
+async function listTasks() {
+  const response = await client.get('/tasks');
+  console.log(response.data);
+}
+
+// Run task
+async function runTask(taskId) {
+  const response = await client.post(`/tasks/${taskId}/run`);
+  console.log(response.data);
+}
+
+// Stop task
+async function stopTask(taskId) {
+  const response = await client.post(`/tasks/${taskId}/stop`);
+  console.log(response.data);
+}
 ```
+
+---
+
+## CLI Examples
+
+The D-Drive CLI (v2.0.0 LTS) provides easy command-line access:
+
+```bash
+# Configure
+d-drive config --key YOUR_API_KEY
+
+# File operations
+d-drive upload ./file.txt /backups/
+d-drive download /backups/file.txt ./restored.txt
+d-drive list /backups
+d-drive delete /backups/old-file.txt
+
+# Task management
+d-drive tasks list              # List all backup tasks
+d-drive tasks run <taskId>      # Run task immediately
+d-drive tasks stop <taskId>     # Stop running task
+d-drive tasks enable <taskId>   # Enable a task
+d-drive tasks disable <taskId>  # Disable a task
+d-drive tasks delete <taskId>   # Delete a task
+```
+
+Install CLI: `npm install -g d-drive-cli`
 
 ---
 

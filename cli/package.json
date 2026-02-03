@@ -1,7 +1,7 @@
 {
   "name": "d-drive-cli",
-  "version": "1.3.2",
-  "description": "D-Drive CLI tool for developers",
+  "version": "2.0.0",
+  "description": "D-Drive CLI tool for developers (LTS)",
   "main": "dist/index.js",
   "bin": {
     "d-drive": "./dist/index.js"
