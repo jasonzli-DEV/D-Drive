@@ -1311,9 +1311,10 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
 
     if (useRecycleBin) {
       const now = new Date();
-      const trashId = crypto.randomUUID().slice(0, 8);
       
       await prisma.$transaction(async (tx) => {
+        const trashId = crypto.randomUUID().slice(0, 8);
+        
         for (const fileId of filesToDelete) {
           const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true, deletedAt: true, deletedWithParentId: true } });
           
