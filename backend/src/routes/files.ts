@@ -279,18 +279,15 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
       return res.status(404).json({ error: 'File not found in recycle bin' });
     }
 
-    // Get only children that were deleted WITH this item (not separately)
-    // This ensures we only restore items that were part of the parent deletion
     const childrenDeletedWithParent = await prisma.file.findMany({
       where: {
         userId,
         deletedAt: { not: null },
-        deletedWithParentId: file.id, // Only restore children deleted WITH this parent
+        deletedWithParentId: file.id,
       },
       select: { id: true, originalPath: true, path: true, parentId: true, name: true, type: true }
     });
 
-    // Items to restore: the file itself + children deleted WITH it (not independently deleted items)
     const itemsToRestore = [file, ...childrenDeletedWithParent];
 
     // Parse original path to determine restore location
