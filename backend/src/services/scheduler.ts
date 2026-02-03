@@ -2,7 +2,7 @@ import cron from 'node-cron';
 import { PrismaClient } from '@prisma/client';
 import { runTaskNow } from './taskRunner';
 import { logger } from '../utils/logger';
-import { cleanupOrphanedDiscordFiles } from './cleanup';
+import { cleanupOrphanedDiscordFiles, cleanupTempFiles } from './cleanup';
 
 const prisma = new PrismaClient();
 
@@ -17,17 +17,39 @@ export async function initScheduler() {
       scheduleTask(t.id, t.cron);
     }
     
-    // Schedule hourly cleanup task for orphaned Discord files
+    // Schedule hourly cleanup task for orphaned Discord files and temp files
     cron.schedule('0 * * * *', async () => {
-      logger.info('Running hourly Discord cleanup task');
+      logger.info('Running hourly cleanup tasks');
       try {
         await cleanupOrphanedDiscordFiles();
+        await cleanupTempFiles();
       } catch (err) {
-        logger.error('Discord cleanup task failed:', err);
+        logger.error('Cleanup tasks failed:', err);
       }
     });
     
-    logger.info('Scheduler initialized', { count: tasks.length, cleanupScheduled: true });
+    // Schedule daily cleanup of old logs (runs at 3 AM every day)
+    cron.schedule('0 3 * * *', async () => {
+      logger.info('Running daily log cleanup task');
+      try {
+        const thirtyDaysAgo = new Date();
+        thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+        
+        const deleted = await prisma.log.deleteMany({
+          where: {
+            createdAt: {
+              lt: thirtyDaysAgo
+            }
+          }
+        });
+        
+        logger.info('Old logs cleaned up', { deletedCount: deleted.count, olderThan: thirtyDaysAgo });
+      } catch (err) {
+        logger.error('Log cleanup task failed:', err);
+      }
+    });
+    
+    logger.info('Scheduler initialized', { count: tasks.length, cleanupScheduled: true, logCleanupScheduled: true });
   } catch (err) {
     logger.error('Failed to initialize scheduler', err);
   }
