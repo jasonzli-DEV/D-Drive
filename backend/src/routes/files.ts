@@ -759,8 +759,7 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Directory is not empty' });
     }
 
-    // If recursive deletion requested for directories, collect all descendant files
-    // and delete their chunks/messages first, then delete DB rows.
+    // Soft delete: only remove from database, leave Discord files for cleanup task
     const filesToDelete: string[] = [];
 
     if (file.type === 'DIRECTORY' && recursive) {
@@ -773,33 +772,28 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
       filesToDelete.push(file.id);
     }
 
-    // Gather chunks for all files to delete
-    const chunks = await prisma.fileChunk.findMany({ where: { fileId: { in: filesToDelete } } });
-
-    // Attempt to delete all corresponding Discord messages first. If any
-    // non-404 deletion error occurs, abort and return an error so DB rows
-    // are not removed while messages remain on Discord (avoid orphaned messages).
-    for (const chunk of chunks) {
-      try {
-        await deleteChunkFromDiscord(chunk.messageId, chunk.channelId);
-      } catch (discordError) {
-        logger.error(`Failed to delete chunk ${chunk.id} from Discord; aborting delete:`, discordError);
-        return res.status(500).json({ error: 'Failed to delete file contents from storage (Discord). Try again.' });
-      }
-    }
-
-    // All Discord deletions succeeded (or were already absent). Now delete
-    // DB rows in a transaction to keep DB consistent.
+    // Soft delete: Remove DB rows only. Discord messages will be cleaned up by scheduled task.
     try {
       await prisma.$transaction(async (tx) => {
         await tx.fileChunk.deleteMany({ where: { fileId: { in: filesToDelete } } });
         await tx.file.deleteMany({ where: { id: { in: filesToDelete } } });
       });
+      
+      // Log the deletion
+      try {
+        const { createLog } = require('./logs');
+        await createLog(userId, 'DELETE', `Deleted ${file.type === 'DIRECTORY' ? 'folder' : 'file'}`, true, undefined, { 
+          fileName: file.name, 
+          fileType: file.type,
+          filesDeleted: filesToDelete.length 
+        });
+      } catch (logErr) {
+        // Don't fail the request if logging fails
+        logger.warn('Failed to log deletion:', logErr);
+      }
     } catch (dbErr) {
-      logger.error('Failed to delete file rows from DB after removing Discord messages:', dbErr);
-      // At this point messages were removed but DB deletion failed. This
-      // is a serious issue; surface to client so operator can retry/fix.
-      return res.status(500).json({ error: 'Failed to remove file records from database after storage deletion' });
+      logger.error('Failed to delete file rows from DB:', dbErr);
+      return res.status(500).json({ error: 'Failed to remove file records from database' });
     }
 
     res.json({ message: 'File deleted successfully' });
