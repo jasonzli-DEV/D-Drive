@@ -915,23 +915,8 @@ export default function DrivePage() {
         workFiles.push({ id, name: f.name, chunks: cnt });
         seen.add(id);
       } else {
-        // assume directory: collect nested files and dirs
-        try {
-          const { files: nestedFiles, dirs: nestedDirs } = await collectFilesAndDirs(id);
-          for (const nf of nestedFiles) {
-            if (seen.has(nf.id)) continue;
-            const cnt = await fetchChunkCount(nf.id);
-            workFiles.push({ id: nf.id, name: nf.name, chunks: cnt });
-            seen.add(nf.id);
-          }
-          // push directories to delete after files
-          // include nested dirs then the root dir
-          for (const d of nestedDirs) workDirs.push(d.id);
-          workDirs.push(id);
-        } catch (err: any) {
-          // fallback: attempt to delete directly
-          workDirs.push(id);
-        }
+        workDirs.push(id);
+        seen.add(id);
       }
     }
 
