@@ -223,7 +223,10 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       let totalSize = item.size;
       let children: any[] = [];
       
+      logger.info(`Processing item: ${item.name}, type: ${item.type}`);
+      
       if (item.type === 'DIRECTORY') {
+        logger.info(`Item ${item.name} is a directory, fetching children...`);
         // Get all children deleted with this folder, recursively
         const getAllDeletedChildren = async (parentId: string): Promise<any[]> => {
           const directChildren = await prisma.file.findMany({
@@ -259,6 +262,8 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
         };
 
         children = await getAllDeletedChildren(item.id);
+        
+        logger.info(`Children for ${item.name}:`, { children });
         
         // Count all descendants recursively
         const countAllDescendants = (items: any[]): number => {
@@ -1295,11 +1300,11 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
 
     // For directories, always include descendants when using recycle bin or explicit recursive flag
     if (file.type === 'DIRECTORY' && (recursive || useRecycleBin)) {
+      // include the directory itself first
+      filesToDelete.push(file.id);
       // include all descendants (files and directories) whose path starts with file.path/
       const descendants = await prisma.file.findMany({ where: { userId, path: { startsWith: `${file.path}/` } }, select: { id: true } });
       for (const d of descendants) filesToDelete.push(d.id);
-      // include the directory itself after children
-      filesToDelete.push(file.id);
     } else {
       filesToDelete.push(file.id);
     }
