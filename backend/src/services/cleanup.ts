@@ -239,6 +239,7 @@ export async function cleanupOldRecycleBinFiles() {
             fileType: file.type,
             deletedAt: file.deletedAt,
             retentionDays: RECYCLE_BIN_RETENTION_DAYS,
+            autoDelete: true,
           });
         } catch (logErr) {
           // Ignore logging errors
