@@ -251,10 +251,14 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
                 const nestedChildren = await getAllDeletedChildren(child.id);
                 return {
                   ...child,
+                  size: Number(child.size),
                   children: nestedChildren,
                 };
               }
-              return child;
+              return {
+                ...child,
+                size: Number(child.size),
+              };
             })
           );
 
