@@ -933,11 +933,11 @@ export default function DrivePage() {
       }
     }
 
-    // delete directories (leaves first if provided in nested order)
+    // delete directories with recursive flag to handle any remaining children
     for (const dirId of workDirs) {
       setBulkProgress(prev => prev ? { ...prev, currentName: dirId } : prev);
       try {
-        await api.delete(`/files/${dirId}`, { data: { recursive: false } });
+        await api.delete(`/files/${dirId}`, { data: { recursive: true } });
         completed += 1;
         setBulkProgress(prev => prev ? { ...prev, completed: Math.min(completed, total) } : prev);
       } catch (err: any) {
