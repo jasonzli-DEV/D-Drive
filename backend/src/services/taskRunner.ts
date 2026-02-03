@@ -419,6 +419,7 @@ export async function runTaskNow(taskId: string) {
             
             if (it.type === 'd') {
               // Create directory in D-Drive
+              if (!task) throw new Error('Task not found');
               let child = await prisma.file.findFirst({ 
                 where: { userId: task.userId, parentId: currentParentId, name: it.name, type: 'DIRECTORY' } 
               });
@@ -438,6 +439,7 @@ export async function runTaskNow(taskId: string) {
               await walk(remoteFull, rel, child.id, child.path);
             } else if (it.type === '-') {
               // Download file to temp, then upload
+              if (!task) throw new Error('Task not found');
               try {
                 const tempFilePath = path.join(tmpDir!, `temp_${Date.now()}_${Math.random().toString(36).slice(2)}`);
                 await sftp.fastGet(remoteFull, tempFilePath);
