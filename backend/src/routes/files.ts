@@ -1279,13 +1279,26 @@ router.delete('/:id', authenticate, async (req: Request, res: Response) => {
           const f = await tx.file.findUnique({ where: { id: fileId }, select: { path: true, deletedAt: true } });
           const originalPath = f?.path || '';
           const trashedPath = `/.trash/${trashId}${originalPath}`;
+          
+          // Only set deletedWithParentId if this is a child AND it wasn't already deleted
+          // If child was already deleted (f.deletedAt is not null), keep it as a top-level item
+          let deletedWithParentValue = null;
+          if (fileId !== file.id) {
+            // This is a child of the parent being deleted
+            if (!f?.deletedAt) {
+              // Child was NOT already deleted, so mark it as deleted WITH parent
+              deletedWithParentValue = file.id;
+            }
+            // else: child was already deleted separately, keep deletedWithParentId as null
+          }
+          
           await tx.file.update({
             where: { id: fileId },
             data: {
               deletedAt: now,
               originalPath: originalPath,
               path: trashedPath,
-              deletedWithParentId: fileId === file.id ? null : (f?.deletedAt ? null : file.id),
+              deletedWithParentId: deletedWithParentValue,
             },
           });
         }
