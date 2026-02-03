@@ -452,12 +452,12 @@ export async function runTaskNow(taskId: string) {
       });
 
       // Now stream upload the archive to Discord (using file path, not loading into memory)
-      // DON'T encrypt archives - they're already compressed and encryption defeats compression
       const finalName = task.timestampNames && !looksLikeTimestampPrefix(archiveName) 
         ? `${formatTimestamp(new Date())}.${archiveName}` 
         : archiveName;
       
-      await storeFileFromPath(task.userId, destinationId, finalName, archivePath, undefined, false);
+      logger.info('Uploading archive', { finalName, shouldEncrypt, hasEncryptionKey: !!task.user?.encryptionKey });
+      await storeFileFromPath(task.userId, destinationId, finalName, archivePath, undefined, shouldEncrypt);
       
       logger.info('Archive uploaded to Discord', { taskId, finalName });
 
@@ -541,8 +541,7 @@ export async function runTaskNow(taskId: string) {
                 totalBytes += stat.size;
                 
                 // Upload to Discord using file path (streaming)
-                // Don't encrypt backup files to preserve original data integrity  
-                await storeFileFromPath(task.userId, currentParentId, it.name, tempFilePath, undefined, false);
+                await storeFileFromPath(task.userId, currentParentId, it.name, tempFilePath, undefined, shouldEncrypt);
                 
                 filesUploaded++;
                 

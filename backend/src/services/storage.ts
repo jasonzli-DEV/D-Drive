@@ -207,6 +207,17 @@ export async function storeFileFromPath(
         let toUpload = plaintextPart;
         if (shouldEncrypt && encryptionKey) {
           toUpload = encryptBuffer(plaintextPart, encryptionKey);
+          logger.info('Chunk encrypted', { 
+            chunkIndex, 
+            plaintextSize: plaintextPart.length, 
+            encryptedSize: toUpload.length 
+          });
+        } else if (shouldEncrypt && !encryptionKey) {
+          logger.error('ENCRYPTION BUG: shouldEncrypt=true but encryptionKey is null!', { 
+            chunkIndex, 
+            shouldEncrypt, 
+            encryptionKey 
+          });
         }
         
         const filename = `${fileRecord.id}_chunk_${chunkIndex}_${uniqueName}`;
