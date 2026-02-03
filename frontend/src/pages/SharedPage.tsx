@@ -789,11 +789,11 @@ export default function SharedPage() {
   const files = tab === 0 ? sharedWithMe : sharedByMe;
 
   return (
-    <Box>
-      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
+    <Box sx={{ width: '100%', height: '100%' }}>
+      <Paper sx={{ p: { xs: 2, sm: 3 }, minHeight: 'calc(100vh - 140px)' }}>
       <Typography variant="h4" gutterBottom>Shared</Typography>
 
-      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3 }}>
+      <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 3, borderBottom: 1, borderColor: 'divider' }}>
         <Tab label="Shared with me" />
         <Tab label="Shared by me" />
       </Tabs>
@@ -815,14 +815,15 @@ export default function SharedPage() {
           </Typography>
         </Box>
       ) : (
-        <Table>
+        <Box sx={{ overflowX: 'auto', width: '100%' }}>
+          <Table sx={{ minWidth: 650 }}>
           <TableHead>
             <TableRow>
               <TableCell>Name</TableCell>
-              <TableCell>{tab === 0 ? 'Shared by' : 'Shared with'}</TableCell>
-              <TableCell>Permission</TableCell>
-              <TableCell>Size</TableCell>
-              <TableCell>Shared</TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>{tab === 0 ? 'Shared by' : 'Shared with'}</TableCell>
+              <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Permission</TableCell>
+              <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Size</TableCell>
+              <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Shared</TableCell>
               <TableCell align="right">Actions</TableCell>
             </TableRow>
           </TableHead>
@@ -856,10 +857,17 @@ export default function SharedPage() {
                       ) : (
                         <File size={20} style={{ color: theme.palette.primary.main }} />
                       )}
-                      {share.file.name}
+                      <Box sx={{ 
+                        overflow: 'hidden', 
+                        textOverflow: 'ellipsis', 
+                        whiteSpace: 'nowrap',
+                        maxWidth: { xs: '150px', sm: '300px' }
+                      }}>
+                        {share.file.name}
+                      </Box>
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                       <Avatar 
                         sx={{ width: 24, height: 24 }}
@@ -870,7 +878,7 @@ export default function SharedPage() {
                       {user?.username}
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                     <Chip
                       size="small"
                       icon={permissionIcons[share.permission]}
@@ -878,10 +886,10 @@ export default function SharedPage() {
                       color={permissionColors[share.permission]}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     {share.file.type === 'DIRECTORY' ? '-' : formatBytes(parseInt(share.file.size))}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                     <Tooltip title={new Date(share.createdAt).toLocaleString()}>
                       <span>
                         {formatDistance(new Date(share.createdAt), new Date(), { addSuffix: true })}
@@ -889,59 +897,107 @@ export default function SharedPage() {
                     </Tooltip>
                   </TableCell>
                   <TableCell align="right">
+                    <Box sx={{ display: 'flex', gap: 0.5, justifyContent: 'flex-end' }}>
                     {share.file.type === 'DIRECTORY' && tab === 0 && (
-                      <Tooltip title="Open folder">
-                        <IconButton size="small" onClick={() => openFolder(share)}>
+                      <>
+                        <Tooltip title="Open folder">
+                          <IconButton size="small" onClick={() => openFolder(share)} sx={{ display: { xs: 'none', sm: 'inline-flex' } }}>
+                            <ChevronRight size={18} />
+                          </IconButton>
+                        </Tooltip>
+                        <IconButton size="small" onClick={() => openFolder(share)} sx={{ display: { xs: 'inline-flex', sm: 'none' } }}>
                           <ChevronRight size={18} />
                         </IconButton>
-                      </Tooltip>
+                      </>
                     )}
                     {share.file.type === 'FILE' && tab === 0 && canPreview(share.file) && (
-                      <Tooltip title="Preview">
+                      <>
+                        <Tooltip title="Preview">
+                          <IconButton
+                            size="small"
+                            onClick={() => openPreview(share.file as FolderFile, [share.file as FolderFile])}
+                            sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                          >
+                            <Eye size={18} />
+                          </IconButton>
+                        </Tooltip>
                         <IconButton
                           size="small"
                           onClick={() => openPreview(share.file as FolderFile, [share.file as FolderFile])}
+                          sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
                         >
                           <Eye size={18} />
                         </IconButton>
-                      </Tooltip>
+                      </>
                     )}
                     {share.file.type === 'FILE' && tab === 0 && (
-                      <Tooltip title="Download">
+                      <>
+                        <Tooltip title="Download">
+                          <IconButton
+                            size="small"
+                            onClick={() => handleDownload(share.file.id, share.file.name)}
+                            color="primary"
+                            sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                          >
+                            <Download size={18} />
+                          </IconButton>
+                        </Tooltip>
                         <IconButton
                           size="small"
                           onClick={() => handleDownload(share.file.id, share.file.name)}
                           color="primary"
+                          sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
                         >
                           <Download size={18} />
                         </IconButton>
-                      </Tooltip>
+                      </>
                     )}
                     {tab === 1 && (
-                      <Tooltip title="Edit sharing">
+                      <>
+                        <Tooltip title="Edit sharing">
+                          <IconButton
+                            size="small"
+                            onClick={() => {/* TODO: Open edit share dialog */}}
+                            sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
+                          >
+                            <Edit size={18} />
+                          </IconButton>
+                        </Tooltip>
                         <IconButton
                           size="small"
                           onClick={() => {/* TODO: Open edit share dialog */}}
+                          sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
                         >
                           <Edit size={18} />
                         </IconButton>
-                      </Tooltip>
+                      </>
                     )}
                     <Tooltip title={tab === 0 ? 'Remove from my shared' : 'Stop sharing'}>
                       <IconButton
                         size="small"
                         onClick={() => setRemoveDialog(share)}
                         color="error"
+                        sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                       >
                         <X size={18} />
                       </IconButton>
                     </Tooltip>
+                    <IconButton
+                      size="small"
+                      onClick={() => setRemoveDialog(share)}
+                      color="error"
+                      sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
+                    >
+                      <X size={18} />
+                    </IconButton>
+                    </Box>
                   </TableCell>
                 </TableRow>
               );
             })}
           </TableBody>
         </Table>
+        </Box>
       )}
 
       {/* Context Menu */}
