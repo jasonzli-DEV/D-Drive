@@ -416,12 +416,12 @@ export default function TasksPage() {
           <Box sx={{ mt: 2 }}>
             <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
             <Button variant="outlined" onClick={() => setDestDialogOpen(true)} sx={{ mb: 1 }}>
-              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || (editing && (tasks as any[])?.find((t:any)=>t.id===form.id)?.destinationPath) || 'Selected folder') : '/'}
+              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || (form.id && (tasks as any[])?.find((t:any)=>t.id===form.id)?.destinationPath) || 'Selected folder') : '/'}
             </Button>
           </Box>
 
           {/* Destination folder selector dialog (reuses Move dialog style) */}
-          <FolderSelectDialog open={destDialogOpen} value={form.destinationId || null} onClose={() => setDestDialogOpen(false)} onSelect={(id) => setForm({ ...form, destinationId: id })} title="Select destination folder" />
+          <FolderSelectDialog open={destDialogOpen} onClose={() => setDestDialogOpen(false)} onSelect={(id) => setForm({ ...form, destinationId: id })} title="Select destination folder" />
 
           <FormControl fullWidth margin="normal">
             <InputLabel id="compress-label">Compress</InputLabel>

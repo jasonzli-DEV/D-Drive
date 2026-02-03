@@ -7,13 +7,12 @@ import toast from 'react-hot-toast';
 
 interface Props {
   open: boolean;
-  value?: string | null;
   onClose: () => void;
   onSelect: (id: string | null) => void;
   title?: string;
 }
 
-export default function FolderSelectDialog({ open, value, onClose, onSelect, title }: Props) {
+export default function FolderSelectDialog({ open, onClose, onSelect, title }: Props) {
   const queryClient = useQueryClient();
   const { data: allFolders } = useQuery<any[]>({ 
     queryKey: ['allFoldersForPicker'], 
