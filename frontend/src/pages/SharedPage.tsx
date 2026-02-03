@@ -409,9 +409,9 @@ export default function SharedPage() {
     const files = folderContents?.files || [];
     
     return (
-      <Box sx={{ p: 3 }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 2 }}>
-          <Breadcrumbs separator={<ChevronRight size={16} />}>
+      <Box sx={{ p: { xs: 2, sm: 3 } }}>
+        <Box sx={{ display: 'flex', flexDirection: { xs: 'column', sm: 'row' }, alignItems: { xs: 'flex-start', sm: 'center' }, justifyContent: 'space-between', mb: 2, gap: 1 }}>
+          <Breadcrumbs separator={<ChevronRight size={16} />} sx={{ mb: { xs: 1, sm: 0 } }}>
             <Link
               component="button"
               underline="hover"
@@ -434,7 +434,7 @@ export default function SharedPage() {
             ))}
           </Breadcrumbs>
           
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
+          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center', flexWrap: 'wrap' }}>
             <Chip
               size="small"
               icon={permissionIcons[permission || 'VIEW']}
@@ -447,18 +447,35 @@ export default function SharedPage() {
                   size="small"
                   startIcon={<FolderPlus size={16} />}
                   onClick={() => setCreateFolderDialog(true)}
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                 >
                   New Folder
                 </Button>
+                <IconButton
+                  size="small"
+                  onClick={() => setCreateFolderDialog(true)}
+                  sx={{ display: { xs: 'inline-flex', sm: 'none' } }}
+                >
+                  <FolderPlus size={20} />
+                </IconButton>
                 <Button
                   size="small"
                   variant="contained"
                   startIcon={<Upload size={16} />}
                   component="label"
+                  sx={{ display: { xs: 'none', sm: 'inline-flex' } }}
                 >
                   Upload
                   <input type="file" hidden onChange={handleFileUpload} />
                 </Button>
+                <IconButton
+                  size="small"
+                  component="label"
+                  sx={{ display: { xs: 'inline-flex', sm: 'none' }, bgcolor: 'primary.main', color: 'white', '&:hover': { bgcolor: 'primary.dark' } }}
+                >
+                  <Upload size={20} />
+                  <input type="file" hidden onChange={handleFileUpload} />
+                </IconButton>
               </>
             )}
           </Box>
@@ -477,16 +494,17 @@ export default function SharedPage() {
             )}
           </Box>
         ) : (
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell>Name</TableCell>
-                <TableCell>Size</TableCell>
-                <TableCell>Modified</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
+          <Box sx={{ overflowX: 'auto' }}>
+            <Table sx={{ minWidth: { xs: '100%', sm: 650 } }}>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>Size</TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>Modified</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
               {files.map((file) => (
                 <TableRow 
                   key={file.id} 
@@ -517,10 +535,10 @@ export default function SharedPage() {
                       {file.name}
                     </Box>
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', sm: 'table-cell' } }}>
                     {file.type === 'DIRECTORY' ? '-' : formatBytes(parseInt(file.size))}
                   </TableCell>
-                  <TableCell>
+                  <TableCell sx={{ display: { xs: 'none', md: 'table-cell' } }}>
                     <Tooltip title={new Date(file.updatedAt).toLocaleString()}>
                       <span>
                         {formatDistance(new Date(file.updatedAt), new Date(), { addSuffix: true })}
@@ -568,6 +586,7 @@ export default function SharedPage() {
               ))}
             </TableBody>
           </Table>
+          </Box>
         )}
 
         {/* Context Menu */}
