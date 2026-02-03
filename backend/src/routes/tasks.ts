@@ -84,6 +84,15 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       return res.status(400).json({ error: `SFTP connection failed: ${err?.message || String(err)}` });
     }
 
+    // Look up destination path if destinationId provided
+    let destinationPath: string | null = null;
+    if (destinationId) {
+      const destFolder = await prisma.file.findUnique({ where: { id: destinationId }, select: { path: true } });
+      if (destFolder) {
+        destinationPath = destFolder.path;
+      }
+    }
+
     const task = await prisma.task.create({
       data: {
         userId,
@@ -98,6 +107,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         authPassword: !!authPassword,
         authPrivateKey: authPrivateKey === undefined ? true : !!authPrivateKey,
         destinationId: destinationId || null,
+        destinationPath,
         compress: (compress as CompressFormat) || 'NONE',
         compressFiles: !!compressFiles,
         timestampNames: timestampNames === undefined ? true : !!timestampNames,
@@ -165,7 +175,18 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
       return res.status(400).json({ error: `SFTP connection failed: ${err?.message || String(err)}` });
     }
 
-    const updated = await prisma.task.update({ where: { id }, data: req.body });
+    // If destinationId is being updated, also update destinationPath
+    const updateData = { ...req.body };
+    if (req.body.destinationId !== undefined) {
+      if (req.body.destinationId) {
+        const destFolder = await prisma.file.findUnique({ where: { id: req.body.destinationId }, select: { path: true } });
+        updateData.destinationPath = destFolder?.path || null;
+      } else {
+        updateData.destinationPath = null;
+      }
+    }
+
+    const updated = await prisma.task.update({ where: { id }, data: updateData });
 
     // Reschedule or unschedule based on enabled flag
     try {
