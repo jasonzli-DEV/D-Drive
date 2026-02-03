@@ -24,7 +24,7 @@ import {
   ListItemIcon,
   ListItemText,
 } from '@mui/material';
-import { Trash2, RotateCcw, Folder, File, AlertTriangle } from 'lucide-react';
+import { Trash2, RotateCcw, Folder, File, AlertTriangle, ChevronRight, ChevronDown } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
@@ -39,6 +39,7 @@ interface DeletedFile {
   originalPath: string | null;
   createdAt: string;
   itemCount?: number; // Number of items inside (for directories)
+  children?: DeletedFile[]; // Nested children deleted with parent
 }
 
 function formatBytes(bytes: number): string {
@@ -64,6 +65,19 @@ export default function RecycleBinPage() {
   const [emptyDialogOpen, setEmptyDialogOpen] = useState(false);
   const [deleteDialogFile, setDeleteDialogFile] = useState<DeletedFile | null>(null);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number; item: DeletedFile } | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
+
+  const toggleFolder = (folderId: string) => {
+    setExpandedFolders(prev => {
+      const next = new Set(prev);
+      if (next.has(folderId)) {
+        next.delete(folderId);
+      } else {
+        next.add(folderId);
+      }
+      return next;
+    });
+  };
 
   const handleContextMenu = (e: React.MouseEvent, file: DeletedFile) => {
     e.preventDefault();
@@ -166,84 +180,108 @@ export default function RecycleBinPage() {
             <Typography variant="h6">Recycle bin is empty</Typography>
             <Typography variant="body2">Deleted files will appear here</Typography>
           </Box>
-        ) : (
-          <TableContainer>
-            <Table>
-              <TableHead>
-                <TableRow>
-                  <TableCell>Name</TableCell>
-                  <TableCell>Original Location</TableCell>
-                  <TableCell>Size</TableCell>
-                  <TableCell>Deleted</TableCell>
-                  <TableCell align="right">Actions</TableCell>
-                </TableRow>
-              </TableHead>
-              <TableBody>
-                {files.map((file) => (
-                  <TableRow key={file.id} hover onContextMenu={(e) => handleContextMenu(e, file)}>
-                    <TableCell>
-                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                        {file.type === 'DIRECTORY' ? (
-                          <Folder size={20} style={{ color: theme.palette.warning.main }} />
-                        ) : (
-                          <File size={20} style={{ color: theme.palette.primary.main }} />
-                        )}
-                        <Box>
-                          {file.name}
-                          {file.type === 'DIRECTORY' && file.itemCount !== undefined && file.itemCount > 0 && (
-                            <Typography variant="caption" color="text.secondary" display="block">
-                              {file.itemCount} item{file.itemCount !== 1 ? 's' : ''} inside
-                            </Typography>
-                          )}
-                        </Box>
-                      </Box>
-                    </TableCell>
-                    <TableCell>
-                      <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                        {/* Show parent folder path, not full path (macOS-style) */}
-                        {file.originalPath 
-                          ? file.originalPath.substring(0, file.originalPath.lastIndexOf('/')) || '/' 
-                          : '/'}
-                      </Typography>
-                    </TableCell>
-                    <TableCell>
-                      {file.type === 'DIRECTORY' ? '-' : formatBytes(parseInt(file.size))}
-                    </TableCell>
-                    <TableCell>
-                      {(() => {
-                        const { days, isUrgent } = getDaysUntilDeletion(file.deletedAt);
-                        return (
-                          <Box>
-                            <Tooltip title={new Date(file.deletedAt).toLocaleString()}>
-                              <span>
-                                {formatDistance(new Date(file.deletedAt), new Date(), { addSuffix: true })}
-                              </span>
-                            </Tooltip>
-                            <Typography 
-                              variant="caption" 
-                              display="block" 
-                              sx={{ 
-                                color: isUrgent ? 'error.main' : 'text.secondary',
-                                fontWeight: isUrgent ? 600 : 400,
-                              }}
-                            >
-                              {days === 0 ? 'Deletes today' : `${days} day${days !== 1 ? 's' : ''} until auto-delete`}
-                            </Typography>
+        ) : ({
+                  const renderFileRow = (f: DeletedFile, depth: number = 0) => (
+                    <>
+                      <TableRow key={f.id} hover onContextMenu={(e) => handleContextMenu(e, f)}>
+                        <TableCell>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, pl: depth * 3 }}>
+                            {f.type === 'DIRECTORY' && f.children && f.children.length > 0 && (
+                              <IconButton 
+                                size="small" 
+                                onClick={() => toggleFolder(f.id)}
+                                sx={{ p: 0.5 }}
+                              >
+                                {expandedFolders.has(f.id) ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                              </IconButton>
+                            )}
+                            {f.type === 'DIRECTORY' ? (
+                              <Folder size={20} style={{ color: theme.palette.warning.main }} />
+                            ) : (
+                              <File size={20} style={{ color: theme.palette.primary.main }} />
+                            )}
+                            <Box>
+                              {f.name}
+                              {f.type === 'DIRECTORY' && f.itemCount !== undefined && f.itemCount > 0 && (
+                                <Typography variant="caption" color="text.secondary" display="block">
+                                  {f.itemCount} item{f.itemCount !== 1 ? 's' : ''} inside
+                                </Typography>
+                              )}
+                            </Box>
                           </Box>
-                        );
-                      })()}
-                    </TableCell>
-                    <TableCell align="right">
-                      <Tooltip title="Restore">
-                        <IconButton
-                          size="small"
-                          onClick={() => restoreMutation.mutate(file.id)}
-                          disabled={restoreMutation.isPending}
-                          color="primary"
-                        >
-                          <RotateCcw size={18} />
-                        </IconButton>
-                      </Tooltip>
+                        </TableCell>
+                        <TableCell>
+                          <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                            {depth === 0 ? (
+                              /* Show parent folder path for top-level items */
+                              f.originalPath 
+                                ? f.originalPath.substring(0, f.originalPath.lastIndexOf('/')) || '/' 
+                                : '/'
+                            ) : (
+                              /* For nested items, show they're inside parent */
+                              '(inside parent)'
+                            )}
+                          </Typography>
+                        </TableCell>
+                        <TableCell>
+                          {f.type === 'DIRECTORY' && depth === 0 ? '-' : formatBytes(parseInt(f.size))}
+                        </TableCell>
+                        <TableCell>
+                          {(() => {
+                            const { days, isUrgent } = getDaysUntilDeletion(f.deletedAt);
+                            return (
+                              <Box>
+                                <Tooltip title={new Date(f.deletedAt).toLocaleString()}>
+                                  <span>
+                                    {formatDistance(new Date(f.deletedAt), new Date(), { addSuffix: true })}
+                                  </span>
+                                </Tooltip>
+                                <Typography 
+                                  variant="caption" 
+                                  display="block" 
+                                  sx={{ 
+                                    color: isUrgent ? 'error.main' : 'text.secondary',
+                                    fontWeight: isUrgent ? 600 : 400,
+                                  }}
+                                >
+                                  {days === 0 ? 'Deletes today' : `${days} day${days !== 1 ? 's' : ''} until auto-delete`}
+                                </Typography>
+                              </Box>
+                            );
+                          })()}
+                        </TableCell>
+                        <TableCell align="right">
+                          <Tooltip title="Restore">
+                            <IconButton
+                              size="small"
+                              onClick={() => restoreMutation.mutate(f.id)}
+                              disabled={restoreMutation.isPending}
+                              color="primary"
+                            >
+                              <RotateCcw size={18} />
+                            </IconButton>
+                          </Tooltip>
+                          <Tooltip title="Delete permanently">
+                            <IconButton
+                              size="small"
+                              onClick={() => setDeleteDialogFile(f)}
+                              disabled={deletePermanentlyMutation.isPending}
+                              color="error"
+                            >
+                              <Trash2 size={18} />
+                            </IconButton>
+                          </Tooltip>
+                        </TableCell>
+                      </TableRow>
+                      {/* Render children if folder is expanded */}
+                      {f.type === 'DIRECTORY' && f.children && expandedFolders.has(f.id) && f.children.map((child) => 
+                        renderFileRow(child, depth + 1)
+                      )}
+                    </>
+                  );
+                  
+                  return renderFileRow(file);
+                }     </Tooltip>
                       <Tooltip title="Delete permanently">
                         <IconButton
                           size="small"

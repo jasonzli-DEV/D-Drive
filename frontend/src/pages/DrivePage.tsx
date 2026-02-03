@@ -25,7 +25,9 @@ import {
   MenuItem,
   ListItemIcon,
   ListItemText,
-  
+  List,
+  ListItem,
+  ListItemButton,
   Breadcrumbs,
   Link,
   Chip,
@@ -1910,44 +1912,127 @@ export default function DrivePage() {
 
       {/* old context menu removed (duplicate) */}
 
-      {/* Move Dialog */}
+      {/* Move Dialog - using FolderSelectDialog pattern */}
       <Dialog open={moveDialogOpen} onClose={() => setMoveDialogOpen(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Move "{selectedFile?.name}"</DialogTitle>
         <DialogContent>
-          <Box sx={{ mt: 1 }}>
-            <Typography variant="body2" sx={{ mb: 1 }}>Select destination folder (My Drive):</Typography>
-
-            {/* Root option */}
-            <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-              <Box sx={{ pl: 0, width: '100%' }}>
-                <Button
-                  size="small"
-                  onClick={() => setTargetFolderId('')}
-                  sx={{ textTransform: 'none', justifyContent: 'flex-start', color: targetFolderId === '' ? 'primary.main' : 'text.primary', fontWeight: selectedFile?.parentId ? 400 : 700, width: '100%' }}
-                >
-                  🏠 My Drive (Root)
-                </Button>
-              </Box>
-            </Box>
-
-            {/* Folder tree */}
-            <Box sx={{ maxHeight: 320, overflow: 'auto', border: '1px solid', borderColor: 'divider', borderRadius: 1, p: 1 }}>
-              {(folderChildrenMap[''] || []).map((f) => renderFolderNode(f, 0))}
-              { (folderChildrenMap[''] || []).length === 0 && (
-                <Typography variant="body2" color="text.secondary">No folders</Typography>
-              )}
-            </Box>
-
-            <Box sx={{ mt: 2, display: 'flex', gap: 1, alignItems: 'center' }}>
-              <Button onClick={() => setNewFolderOpen(true)} size="small">New folder</Button>
-              <TextField
-                placeholder="Search folders"
-                size="small"
-                sx={{ flex: 1 }}
-                onChange={() => { /* no-op for now */ }}
-              />
-            </Box>
+          {/* Breadcrumbs */}
+          <Box sx={{ mb: 2, mt: 1 }}>
+            <Breadcrumbs separator={<ChevronRight size={16} />}>
+              <Link
+                component="button"
+                variant="body2"
+                onClick={() => setTargetFolderId('')}
+                sx={{ 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: 0.5,
+                  textDecoration: 'none',
+                  color: targetFolderId === '' ? 'primary.main' : 'text.primary',
+                  fontWeight: targetFolderId === '' ? 600 : 400,
+                  '&:hover': { textDecoration: 'underline' }
+                }}
+              >
+                <Home size={16} />
+                My Drive
+              </Link>
+              {(() => {
+                // Build breadcrumb path for current target folder
+                const buildPath = (folderId: string | null): any[] => {
+                  if (!folderId) return [];
+                  const folder = allFolders?.find((f: any) => f.id === folderId);
+                  if (!folder) return [];
+                  return [...buildPath(folder.parentId), folder];
+                };
+                const breadcrumbs = buildPath(targetFolderId || null);
+                return breadcrumbs.map((folder: any) => (
+                  <Link
+                    key={folder.id}
+                    component="button"
+                    variant="body2"
+                    onClick={() => setTargetFolderId(folder.id)}
+                    sx={{ 
+                      textDecoration: 'none',
+                      color: folder.id === targetFolderId ? 'primary.main' : 'text.primary',
+                      fontWeight: folder.id === targetFolderId ? 600 : 400,
+                      '&:hover': { textDecoration: 'underline' }
+                    }}
+                  >
+                    {folder.name}
+                  </Link>
+                ));
+              })()}
+            </Breadcrumbs>
           </Box>
+
+          {/* New Folder Button */}
+          {!newFolderOpen && (
+            <Button
+              startIcon={<FolderPlus size={18} />}
+              onClick={() => setNewFolderOpen(true)}
+              sx={{ mb: 2 }}
+              size="small"
+            >
+              New Folder
+            </Button>
+          )}
+
+          {/* Folder List */}
+          <Box sx={{ 
+            border: '1px solid', 
+            borderColor: 'divider', 
+            borderRadius: 1, 
+            maxHeight: 320, 
+            overflow: 'auto' 
+          }}>
+            <List disablePadding>
+              {(() => {
+                // Get folders in current target location
+                const currentChildren = (allFolders || []).filter((f: any) => 
+                  (targetFolderId === '' && !f.parentId) || (f.parentId === targetFolderId)
+                ).sort((a: any, b: any) => a.name.localeCompare(b.name));
+                
+                if (currentChildren.length === 0) {
+                  return (
+                    <ListItem>
+                      <Typography variant="body2" color="text.secondary">
+                        No folders here
+                      </Typography>
+                    </ListItem>
+                  );
+                }
+                
+                return currentChildren.map((folder: any) => (
+                  <ListItem key={folder.id} disablePadding>
+                    <ListItemButton 
+                      onClick={() => setTargetFolderId(folder.id)}
+                      disabled={selectedFile?.id === folder.id}
+                    >
+                      <ListItemIcon sx={{ minWidth: 40 }}>
+                        <Folder size={20} />
+                      </ListItemIcon>
+                      <ListItemText primary={folder.name} />
+                      <ChevronRight size={18} color="#999" />
+                    </ListItemButton>
+                  </ListItem>
+                ));
+              })()}
+            </List>
+          </Box>
+
+          {/* Current Location Indicator */}
+          <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+            {(() => {
+              const buildPath = (folderId: string | null): any[] => {
+                if (!folderId) return [];
+                const folder = allFolders?.find((f: any) => f.id === folderId);
+                if (!folder) return [];
+                return [...buildPath(folder.parentId), folder];
+              };
+              const breadcrumbs = buildPath(targetFolderId || null);
+              return `Move to: ${breadcrumbs.length > 0 ? breadcrumbs.map((f: any) => f.name).join(' / ') : 'My Drive'}`;
+            })()}
+          </Typography>
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setMoveDialogOpen(false)}>Cancel</Button>
@@ -1957,8 +2042,9 @@ export default function DrivePage() {
               newParentId: targetFolderId || null 
             })}
             variant="contained"
+            disabled={targetFolderId === selectedFile?.parentId}
           >
-            Move
+            Move Here
           </Button>
         </DialogActions>
       </Dialog>
