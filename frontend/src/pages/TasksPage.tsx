@@ -342,15 +342,36 @@ export default function TasksPage() {
                 </TableCell>
                 <TableCell>{t.maxFiles || '∞'}</TableCell>
                 <TableCell align="right">
-                  <IconButton 
-                    onClick={async () => { try { await runNowMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to run task'); } }} 
-                    title="Run now"
-                    color="primary"
-                    size="small"
-                    sx={{ mr: 0.5 }}
-                  >
-                    <Play size={18} />
-                  </IconButton>
+                  {isRunning ? (
+                    <IconButton 
+                      onClick={async () => { 
+                        if (!window.confirm(`Stop running task "${t.name}"?`)) return;
+                        try { 
+                          await api.post(`/tasks/${t.id}/stop`);
+                          toast.success('Task stopped');
+                          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                        } catch (e:any) { 
+                          toast.error(e?.response?.data?.error || 'Failed to stop task'); 
+                        } 
+                      }} 
+                      title="Stop task"
+                      color="error"
+                      size="small"
+                      sx={{ mr: 0.5 }}
+                    >
+                      <Box component="span" sx={{ fontSize: '1.2rem' }}>⏹</Box>
+                    </IconButton>
+                  ) : (
+                    <IconButton 
+                      onClick={async () => { try { await runNowMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to run task'); } }} 
+                      title="Run now"
+                      color="primary"
+                      size="small"
+                      sx={{ mr: 0.5 }}
+                    >
+                      <Play size={18} />
+                    </IconButton>
+                  )}
                   <IconButton onClick={() => openForEdit(t)} title="Edit" size="small" sx={{ mr: 0.5 }}>
                     <Edit size={18} />
                   </IconButton>

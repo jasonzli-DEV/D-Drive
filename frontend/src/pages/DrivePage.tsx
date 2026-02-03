@@ -95,6 +95,8 @@ export default function DrivePage() {
   const [uploadFolders, setUploadFolders] = useState<FolderUploadProgress[]>([]);
   const [deleteProgress, setDeleteProgress] = useState<UploadProgress[]>([]);
   const [copyProgress, setCopyProgress] = useState<UploadProgress[]>([]);
+  const [videoLoadProgress, setVideoLoadProgress] = useState<number>(0);
+  const [videoLoadError, setVideoLoadError] = useState<string | null>(null);
   const fileLoadedRef = useRef<Record<string, number>>({});
   const folderPrevProgressRef = useRef<Record<string, number>>({});
   const folderErrorShownRef = useRef<Record<string, boolean>>({});
@@ -151,6 +153,9 @@ export default function DrivePage() {
 
   const openImageViewer = (file: FileItem) => {
     console.debug('openImageViewer called for', file?.id, file?.name);
+    // Reset video loading state
+    setVideoLoadProgress(0);
+    setVideoLoadError(null);
     let imgs = (files || []).filter(f => isImageFile(f) || isVideoFile(f) || isTextFile(f) || isPdfFile(f));
     // If the clicked file isn't in the current listing (freshly uploaded), add it so viewer can load it
     if (!imgs.find(i => i.id === file.id)) {
@@ -1713,11 +1718,43 @@ export default function DrivePage() {
                 ) : null
               ) : imageBlobUrl ? (
                 (imageList[imageViewerIndex].mimeType && imageList[imageViewerIndex].mimeType.startsWith('video/')) || isVideoFile(imageList[imageViewerIndex]) ? (
-                  <video
-                    src={imageBlobUrl}
-                    controls
-                    style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
-                  />
+                  <Box sx={{ width: '100%', position: 'relative' }}>
+                    {videoLoadProgress > 0 && videoLoadProgress < 100 && (
+                      <Box sx={{ position: 'absolute', top: 10, left: 10, right: 10, zIndex: 1 }}>
+                        <LinearProgress variant="determinate" value={videoLoadProgress} />
+                        <Typography variant="caption" sx={{ color: 'white', textShadow: '0 0 4px black' }}>
+                          Loading: {Math.round(videoLoadProgress)}%
+                        </Typography>
+                      </Box>
+                    )}
+                    {videoLoadError ? (
+                      <Box sx={{ p: 4, textAlign: 'center' }}>
+                        <Typography color="error" gutterBottom>Failed to load video</Typography>
+                        <Button size="small" onClick={() => navigate('/logs')}>Check Logs</Button>
+                      </Box>
+                    ) : (
+                      <video
+                        src={imageBlobUrl}
+                        controls
+                        style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
+                        onProgress={(e) => {
+                          const video = e.currentTarget;
+                          if (video.buffered.length > 0) {
+                            const bufferedEnd = video.buffered.end(video.buffered.length - 1);
+                            const duration = video.duration;
+                            if (duration > 0) {
+                              setVideoLoadProgress((bufferedEnd / duration) * 100);
+                            }
+                          }
+                        }}
+                        onLoadedData={() => setVideoLoadProgress(100)}
+                        onError={() => {
+                          setVideoLoadError('Video failed to load');
+                          setVideoLoadProgress(0);
+                        }}
+                      />
+                    )}
+                  </Box>
                 ) : (
                   <img
                     src={imageBlobUrl}

@@ -151,7 +151,7 @@ export default function LoginPage() {
                 </Typography>
                 <Grid container spacing={2}>
                   {features.map((feature, idx) => (
-                    <Grid item xs={6} key={idx}>
+                    <Grid item xs={6} key={idx} sx={{ display: 'flex' }}>
                       <Box
                         sx={{
                           p: 2,
@@ -159,6 +159,10 @@ export default function LoginPage() {
                           bgcolor: 'rgba(255,255,255,0.03)',
                           border: '1px solid rgba(255,255,255,0.05)',
                           transition: 'all 0.2s',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          width: '100%',
+                          minHeight: '120px',
                           '&:hover': {
                             bgcolor: 'rgba(255,255,255,0.08)',
                             transform: 'translateY(-2px)',
