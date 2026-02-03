@@ -224,25 +224,59 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
       let children: any[] = [];
       
       if (item.type === 'DIRECTORY') {
-        // Get all children deleted with this folder
-        children = await prisma.file.findMany({
-          where: {
-            userId,
-            deletedWithParentId: item.id,
-          },
-          select: {
-            id: true,
-            name: true,
-            type: true,
-            size: true,
-            mimeType: true,
-            deletedAt: true,
-          },
-          orderBy: { name: 'asc' },
-        });
-        itemCount = children.length;
-        // Calculate total size of all children
-        totalSize = children.reduce((sum, child) => sum + child.size, item.size);
+        // Get all children deleted with this folder, recursively
+        const getAllDeletedChildren = async (parentId: string): Promise<any[]> => {
+          const directChildren = await prisma.file.findMany({
+            where: {
+              userId,
+              deletedWithParentId: parentId,
+            },
+            select: {
+              id: true,
+              name: true,
+              type: true,
+              size: true,
+              mimeType: true,
+              deletedAt: true,
+            },
+            orderBy: { name: 'asc' },
+          });
+
+          const childrenWithNested = await Promise.all(
+            directChildren.map(async (child) => {
+              if (child.type === 'DIRECTORY') {
+                const nestedChildren = await getAllDeletedChildren(child.id);
+                return {
+                  ...child,
+                  children: nestedChildren,
+                };
+              }
+              return child;
+            })
+          );
+
+          return childrenWithNested;
+        };
+
+        children = await getAllDeletedChildren(item.id);
+        
+        // Count all descendants recursively
+        const countAllDescendants = (items: any[]): number => {
+          return items.reduce((sum, child) => {
+            return sum + 1 + (child.children ? countAllDescendants(child.children) : 0);
+          }, 0);
+        };
+        
+        itemCount = countAllDescendants(children);
+        
+        // Calculate total size of all children recursively
+        const sumAllSizes = (items: any[]): bigint => {
+          return items.reduce((sum, child) => {
+            return sum + child.size + (child.children ? sumAllSizes(child.children) : BigInt(0));
+          }, BigInt(0));
+        };
+        
+        totalSize = item.size + sumAllSizes(children);
       }
       
       return {
@@ -295,6 +329,8 @@ router.post('/recycle-bin/:id/restore', authenticate, async (req: Request, res: 
     const targetPathParts = targetPath.split('/').filter(Boolean);
     const fileName = targetPathParts.pop() || file.name;
     const originalParentPath = targetPathParts.length > 0 ? '/' + targetPathParts.join('/') : null;
+    
+    const targetOriginalPath = file.originalPath || file.path;
     
     // Determine where to restore: original parent if exists, otherwise root
     let restoreToPath: string | null = null;
