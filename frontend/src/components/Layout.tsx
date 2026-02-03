@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Settings, LogOut, Menu as MenuIcon, X, FileText } from 'lucide-react';
+import { Settings, LogOut, Menu as MenuIcon, X, FileText, BarChart3, HelpCircle } from 'lucide-react';
 import { Home, Play, Plus, Trash2, Share2, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
@@ -181,6 +181,41 @@ export default function Layout({ children }: LayoutProps) {
           <Trash2 size={18} />
         </ListItemIcon>
         <ListItemText primary={"Recycle Bin"} />
+      </ListItemButton>
+      
+      <Divider sx={{ my: 1 }} />
+      
+      <ListItemButton 
+        onClick={() => handleNavigation('/metrics')} 
+        selected={location.pathname === '/metrics'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
+        <ListItemIcon>
+          <BarChart3 size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Metrics"} />
+      </ListItemButton>
+      <ListItemButton 
+        onClick={() => handleNavigation('/help')} 
+        selected={location.pathname === '/help'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
+        <ListItemIcon>
+          <HelpCircle size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Help"} />
       </ListItemButton>
     </List>
   );

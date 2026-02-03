@@ -8,6 +8,7 @@ import tasksRoutes from './tasks';
 import logsRoutes from './logs';
 import sharesRoutes from './shares';
 import setupRoutes from './setup';
+import metricsRoutes from './metrics';
 
 const router = Router();
 
@@ -22,5 +23,6 @@ router.use('/me', meRoutes);
 router.use('/tasks', tasksRoutes);
 router.use('/logs', logsRoutes);
 router.use('/shares', sharesRoutes);
+router.use('/metrics', metricsRoutes);
 
 export default router;

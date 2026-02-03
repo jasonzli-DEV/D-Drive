@@ -13,6 +13,8 @@ import RecycleBinPage from './pages/RecycleBinPage';
 import SharedPage from './pages/SharedPage';
 import StarredPage from './pages/StarredPage';
 import SetupPage from './pages/SetupPage';
+import MetricsPage from './pages/MetricsPage';
+import HelpPage from './pages/HelpPage';
 import { useState, useEffect } from 'react';
 import api from './lib/api';
 
@@ -164,6 +166,30 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <StarredPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/metrics"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <MetricsPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/help"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <HelpPage />
             </Layout>
           ) : (
             <Navigate to="/login" replace />

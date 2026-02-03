@@ -548,7 +548,14 @@ export async function runTaskNow(taskId: string) {
     // Pre-scan to count files and estimate total size (unless skipPrescan is enabled)
     if (task.skipPrescan) {
       logger.info('Skipping pre-scan (skipPrescan enabled)', { taskId });
-      updateProgress({ phase: 'downloading', totalFiles: 0, estimatedTotalBytes: 0 });
+      
+      // If cacheScanSize is enabled and we have a lastScanSize, use it
+      if ((task as any).cacheScanSize && (task as any).lastScanSize) {
+        scanTotalBytes = Number((task as any).lastScanSize);
+        logger.info('Using cached scan size', { taskId, cachedSize: formatBytes(scanTotalBytes) });
+      }
+      
+      updateProgress({ phase: 'downloading', totalFiles: 0, estimatedTotalBytes: scanTotalBytes });
     } else {
       updateProgress({ phase: 'scanning' });
       logger.info('Pre-scanning remote directory for file count...', { taskId, remotePath: task.sftpPath });
@@ -661,6 +668,19 @@ export async function runTaskNow(taskId: string) {
     }
     
     logger.info('Pre-scan complete', { taskId, fileCount: scanFileCount, estimatedSize: formatBytes(scanTotalBytes) });
+    
+    // If cacheScanSize is enabled, save the scan size to the database
+    if ((task as any).cacheScanSize && scanTotalBytes > 0) {
+      try {
+        await prisma.task.update({
+          where: { id: taskId },
+          data: { lastScanSize: BigInt(scanTotalBytes) } as any,
+        });
+        logger.info('Cached scan size saved', { taskId, size: formatBytes(scanTotalBytes) });
+      } catch (err) {
+        logger.warn('Failed to save cached scan size', { taskId, error: err });
+      }
+    }
     } // end if (!task.skipPrescan)
     
     // Update progress with totals

@@ -51,6 +51,7 @@ import cronValidate from 'cron-validate';
   compress: 'NONE',
   maxFiles: 0,
   skipPrescan: false,
+  cacheScanSize: false,
   excludePaths: '',
   // encrypt override removed; tasks use user's default encrypt setting
 };
@@ -308,6 +309,7 @@ export default function TasksPage() {
           // timestampNames: !!t.timestampNames,
       maxFiles: t.maxFiles || 0,
       skipPrescan: !!t.skipPrescan,
+      cacheScanSize: !!t.cacheScanSize,
       excludePaths: Array.isArray(t.excludePaths) ? t.excludePaths.join(', ') : '',
       
     });
@@ -905,6 +907,11 @@ export default function TasksPage() {
           <FormControlLabel 
             control={<Checkbox checked={form.skipPrescan} onChange={(e) => setForm({ ...form, skipPrescan: e.target.checked })} />} 
             label="Skip file scan (faster start, no progress percentage)" 
+          />
+          
+          <FormControlLabel 
+            control={<Checkbox checked={form.cacheScanSize} onChange={(e) => setForm({ ...form, cacheScanSize: e.target.checked })} disabled={!form.skipPrescan} />} 
+            label="Cache scan size (saves last known size when scan is disabled)" 
           />
           
           <TextField 
