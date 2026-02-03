@@ -6,6 +6,10 @@ import { encryptBuffer, generateEncryptionKey } from '../utils/crypto';
 
 const prisma = new PrismaClient();
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB
+// Encryption adds 44 bytes overhead (16 salt + 12 IV + 16 auth tag)
+// So we need to leave room when encrypting to stay under Discord's 8MB limit
+const ENCRYPTION_OVERHEAD = 44;
+const CHUNK_SIZE_ENCRYPTED = CHUNK_SIZE - ENCRYPTION_OVERHEAD;
 
 function splitBuffer(buf: Buffer, partSize: number): Buffer[] {
   const parts: Buffer[] = [];
@@ -79,7 +83,9 @@ export async function storeBufferAsFile(userId: string, parentId: string | null,
   });
 
   // Split into chunks FIRST (plaintext), then encrypt each chunk if needed
-  const plaintextParts = splitBuffer(buffer, CHUNK_SIZE);
+  // Use smaller chunk size when encrypting to leave room for encryption overhead
+  const effectiveChunkSize = shouldEncrypt ? CHUNK_SIZE_ENCRYPTED : CHUNK_SIZE;
+  const plaintextParts = splitBuffer(buffer, effectiveChunkSize);
   const chunksCreated: any[] = [];
 
   try {
@@ -175,14 +181,17 @@ export async function storeFileFromPath(
     },
   });
 
+  // Use smaller chunk size when encrypting to leave room for encryption overhead
+  const effectiveChunkSize = shouldEncrypt ? CHUNK_SIZE_ENCRYPTED : CHUNK_SIZE;
   const chunksCreated: any[] = [];
-  const totalChunks = Math.ceil(fileSize / CHUNK_SIZE);
+  const totalChunks = Math.ceil(fileSize / effectiveChunkSize);
   
   logger.info('Starting streaming upload from file', { 
     filePath, 
     fileSize, 
     totalChunks, 
-    encrypted: shouldEncrypt 
+    encrypted: shouldEncrypt,
+    chunkSize: effectiveChunkSize
   });
 
   try {
@@ -194,8 +203,8 @@ export async function storeFileFromPath(
       let bytesRead = 0;
       
       while (bytesRead < fileSize) {
-        // Read one chunk at a time
-        const chunkBuffer = Buffer.alloc(Math.min(CHUNK_SIZE, fileSize - bytesRead));
+        // Read one chunk at a time (smaller when encrypting to leave room for overhead)
+        const chunkBuffer = Buffer.alloc(Math.min(effectiveChunkSize, fileSize - bytesRead));
         const { bytesRead: read } = await fileHandle.read(chunkBuffer, 0, chunkBuffer.length, bytesRead);
         
         if (read === 0) break; // End of file
