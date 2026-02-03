@@ -4,7 +4,6 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-// GET / - Returns storage and usage metrics for the authenticated user
 router.get('/', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user!.id;
