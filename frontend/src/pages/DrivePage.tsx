@@ -732,12 +732,11 @@ export default function DrivePage() {
 
   // Delete single file with progress bar
   const performSingleDelete = async (file: FileItem) => {
-    // Create progress entry
     setDeleteProgress(prev => [...prev, { id: file.id, fileName: file.name, progress: 0, status: 'uploading' }]);
     
     try {
       setDeleteProgress(prev => prev.map(p => p.id === file.id ? { ...p, progress: 50 } : p));
-      await api.delete(`/files/${file.id}`, { data: { recursive: false } });
+      await api.delete(`/files/${file.id}`, { data: { recursive: true } });
       setDeleteProgress(prev => prev.map(p => p.id === file.id ? { ...p, progress: 100, status: 'success' } : p));
       
       queryClient.invalidateQueries({ queryKey: ['files'] });
