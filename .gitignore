@@ -58,3 +58,7 @@ secrets/
 *.key
 config.json
 frontend/.env.production
+
+# Vercel
+frontend/.vercel/
+backend/.vercel/
