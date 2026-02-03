@@ -49,7 +49,6 @@ export default function HelpPage() {
   ];
 
   const shortcuts = [
-    { key: 'N', action: 'Create new file/folder (when sidebar focused)' },
     { key: 'Esc', action: 'Close dialogs/modals' },
     { key: '← →', action: 'Navigate file preview' },
     { key: 'Right-click', action: 'Open context menu' },

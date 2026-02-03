@@ -72,6 +72,23 @@ router.get('/', authenticate, async (req, res) => {
       ? Number(avgSizeResult._avg.size)
       : 0;
 
+    const totalSizeGB = totalSize / (1024 * 1024 * 1024);
+    const costSavingsPerMonth = totalSizeGB * 0.02;
+
+    const [globalUsers, globalFiles, globalTotalSizeResult, globalTasks] = await Promise.all([
+      prisma.user.count(),
+      prisma.file.count({ where: { deletedAt: null } }),
+      prisma.file.aggregate({
+        where: { deletedAt: null },
+        _sum: { size: true },
+      }),
+      prisma.task.count(),
+    ]);
+
+    const globalTotalSize = globalTotalSizeResult._sum.size
+      ? Number(globalTotalSizeResult._sum.size)
+      : 0;
+
     res.json({
       totalFiles,
       totalFolders,
@@ -83,8 +100,12 @@ router.get('/', authenticate, async (req, res) => {
       activeTasks,
       recycleBinItems,
       lastUploadDate: lastUploadLog?.createdAt || null,
-      totalUploads,
+      costSavingsPerMonth,
       averageFileSize,
+      globalUsers,
+      globalFiles,
+      globalTotalSize,
+      globalTasks,
     });
   } catch (error) {
     console.error('Error fetching metrics:', error);

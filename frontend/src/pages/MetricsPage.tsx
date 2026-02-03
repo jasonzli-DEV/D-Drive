@@ -23,8 +23,12 @@ interface MetricsData {
   activeTasks: number;
   recycleBinItems: number;
   lastUploadDate: string | null;
-  totalUploads: number;
+  costSavingsPerMonth: number;
   averageFileSize: number;
+  globalUsers: number;
+  globalFiles: number;
+  globalTotalSize: number;
+  globalTasks: number;
 }
 
 function formatBytes(bytes: number): string {
@@ -105,8 +109,8 @@ export default function MetricsPage() {
 
   const statCards = [
     {
-      label: 'Total Uploads',
-      value: metrics?.totalUploads.toLocaleString() || '0',
+      label: 'Cost Savings/Month',
+      value: `$${metrics?.costSavingsPerMonth.toFixed(2) || '0.00'}`,
     },
     {
       label: 'Average File Size',
@@ -115,7 +119,7 @@ export default function MetricsPage() {
     {
       label: 'Last Upload',
       value: metrics?.lastUploadDate 
-        ? new Date(metrics.lastUploadDate).toLocaleDateString()
+        ? new Date(metrics.lastUploadDate).toLocaleString()
         : 'Never',
     },
   ];
@@ -181,19 +185,28 @@ export default function MetricsPage() {
 
         <Box sx={{ mt: 4 }}>
           <Typography variant="h6" gutterBottom sx={{ mb: 2 }}>
-            System Info
+            System Info (Global)
           </Typography>
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
                 <Chip label={`Version: 2.1.0`} variant="outlined" />
                 <Chip 
-                  label={`Encryption: ${metrics?.encryptedFiles || 0} files`} 
-                  color="success" 
+                  label={`Total Users: ${metrics?.globalUsers.toLocaleString() || 0}`}
                   variant="outlined" 
                 />
                 <Chip 
-                  label={`Tasks: ${metrics?.activeTasks || 0} active`} 
+                  label={`Total Files: ${metrics?.globalFiles.toLocaleString() || 0}`}
+                  variant="outlined" 
+                />
+                <Chip 
+                  label={`Total Storage: ${metrics ? formatBytes(metrics.globalTotalSize) : '0 B'}`}
+                  variant="outlined" 
+                />
+                <Chip 
+                  label={`Total Tasks: ${metrics?.globalTasks.toLocaleString() || 0}`}
+                  variant="outlined" 
+                /> 
                   color="primary" 
                   variant="outlined" 
                 />
