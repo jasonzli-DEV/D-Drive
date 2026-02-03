@@ -125,49 +125,41 @@ async function ensureTaskDestination(task: any): Promise<string | null> {
   // Destination was deleted/moved, try to recreate it from the stored path
   logger.warn('Task destination folder missing, attempting to recreate', { taskId: task.id, destId: task.destinationId });
   
-  // First, ensure a "Backups" folder exists at root level
-  let backupsFolder = await prisma.file.findFirst({
+  // Try to find the original path by looking at recent backup files created by this task
+  const recentFile = await prisma.file.findFirst({
     where: {
       userId: task.userId,
-      name: 'Backups',
-      parentId: null,
-      type: 'DIRECTORY',
+      name: { contains: task.name },
+      type: 'FILE',
     },
+    orderBy: { createdAt: 'desc' },
+    select: { path: true },
   });
   
-  if (!backupsFolder) {
-    backupsFolder = await prisma.file.create({
-      data: {
-        name: 'Backups',
-        path: '/Backups',
-        type: 'DIRECTORY',
-        userId: task.userId,
-        parentId: null,
-      },
-    });
-    logger.info('Created Backups folder', { folderId: backupsFolder.id });
+  let targetPath: string;
+  if (recentFile?.path) {
+    // Extract the parent path from the file path (e.g., "/TinyFun Backups/TinyProxy/file.tar.gz" -> "/TinyFun Backups/TinyProxy")
+    const pathParts = recentFile.path.split('/').filter(Boolean);
+    pathParts.pop(); // Remove filename
+    targetPath = '/' + pathParts.join('/');
+    logger.info('Found original path from recent file', { originalPath: targetPath });
+  } else {
+    // Fallback: create a simple folder with task name at root
+    targetPath = `/${task.name}`;
+    logger.warn('No recent files found, using simple path', { fallbackPath: targetPath });
   }
   
-  // Now create the task-specific folder inside the Backups folder
-  const taskFolderName = task.name || 'task';
-  const newFolder = await prisma.file.create({
-    data: {
-      name: taskFolderName,
-      path: `/Backups/${taskFolderName}`,
-      type: 'DIRECTORY',
-      userId: task.userId,
-      parentId: backupsFolder.id,
-    },
-  });
+  // Recreate the full folder structure
+  const newFolder = await createFolderPath(targetPath, task.userId);
   
   // Update the task to point to new destination
   await prisma.task.update({
     where: { id: task.id },
-    data: { destinationId: newFolder.id }
+    data: { destinationId: newFolder }
   });
   
-  logger.info('Recreated task destination folder', { taskId: task.id, newDestId: newFolder.id, path: newFolder.path });
-  return newFolder.id;
+  logger.info('Recreated task destination folder', { taskId: task.id, newDestId: newFolder, path: targetPath });
+  return newFolder;
 }
 
 // Prune oldest files in a destination folder to enforce maxFiles retention.
