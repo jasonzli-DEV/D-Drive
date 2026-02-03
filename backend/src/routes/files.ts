@@ -220,7 +220,7 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
     // For directories, count how many items are inside (macOS shows item count)
     const result = await Promise.all(topLevelDeleted.map(async (item) => {
       let itemCount = 0;
-      let totalSize = item.size;
+      let totalSize: number = Number(item.size);
       let children: any[] = [];
       
       logger.info(`Processing item: ${item.name}, type: ${item.type}`);
@@ -279,18 +279,19 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
         itemCount = countAllDescendants(children);
         
         // Calculate total size of all children recursively
-        const sumAllSizes = (items: any[]): bigint => {
+        const sumAllSizes = (items: any[]): number => {
           return items.reduce((sum, child) => {
-            return sum + child.size + (child.children ? sumAllSizes(child.children) : BigInt(0));
-          }, BigInt(0));
+            return sum + child.size + (child.children ? sumAllSizes(child.children) : 0);
+          }, 0);
         };
         
-        totalSize = item.size + sumAllSizes(children);
+        totalSize = Number(item.size) + sumAllSizes(children);
       }
       
       return {
         ...item,
-        size: totalSize.toString(),
+        size: Number(item.size),
+        totalSize: totalSize,
         itemCount, // Number of items inside (for directories)
         children, // Nested children for hierarchical display
       };
