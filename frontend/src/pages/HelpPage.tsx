@@ -49,9 +49,9 @@ export default function HelpPage() {
   ];
 
   const shortcuts = [
-    { key: 'Ctrl/Cmd + K', action: 'Quick search' },
+    { key: 'N', action: 'Create new file/folder (when sidebar focused)' },
     { key: 'Esc', action: 'Close dialogs/modals' },
-    { key: 'Arrow Keys', action: 'Navigate file preview' },
+    { key: '← →', action: 'Navigate file preview' },
     { key: 'Right-click', action: 'Open context menu' },
   ];
 

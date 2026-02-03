@@ -4,7 +4,7 @@ import { prisma } from '../lib/prisma';
 
 const router = Router();
 
-router.get('/metrics', authenticate, async (req, res) => {
+router.get('/', authenticate, async (req, res) => {
   try {
     const userId = (req as any).user!.id;
 

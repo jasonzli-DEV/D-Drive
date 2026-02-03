@@ -387,6 +387,12 @@ export async function runTaskNow(taskId: string) {
     }
   });
   
+  // Reset task state if it was previously stopped during connecting phase
+  await prisma.task.update({
+    where: { id: taskId },
+    data: { lastRun: null }
+  }).catch(() => {});
+  
   // Helper to update progress
   const updateProgress = (updates?: Partial<TaskRunInfo['progress']>) => {
     const info = runningTasks.get(taskId);
@@ -523,7 +529,10 @@ export async function runTaskNow(taskId: string) {
 
     // Create temp directory for this task run
     tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'ddrive-task-'));
-    runningTasks.get(taskId)!.tmpDir = tmpDir;
+    const runInfo = runningTasks.get(taskId);
+    if (runInfo) {
+      runInfo.tmpDir = tmpDir;
+    }
     logger.info('Created temp directory for task', { taskId, tmpDir });
     
     // Check for cancellation
