@@ -1,3 +1,0 @@
--- AlterTable
-ALTER TABLE "Task" ADD COLUMN "cacheScanSize" BOOLEAN NOT NULL DEFAULT false;
-ALTER TABLE "Task" ADD COLUMN "lastScanSize" BIGINT;
