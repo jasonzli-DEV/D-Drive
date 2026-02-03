@@ -80,7 +80,7 @@ d-drive download /backups/file.txt ./
 └─────────────┘     └──────┬──────┘     └─────────────┘
                           │
                     ┌─────▼─────┐
-                    │ PostgreSQL │
+                    │ PostgreSQL│
                     └───────────┘
 ```
 

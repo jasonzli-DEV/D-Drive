@@ -234,7 +234,7 @@ export async function cleanupOldRecycleBinFiles() {
         // Log the auto-deletion
         try {
           const { createLog } = await import('../routes/logs');
-          await createLog(file.userId, 'AUTO_DELETE', `Auto-deleted from recycle bin after ${RECYCLE_BIN_RETENTION_DAYS} days: ${file.name}`, true, undefined, {
+          await createLog(file.userId, 'DELETE', `Auto-deleted from recycle bin after ${RECYCLE_BIN_RETENTION_DAYS} days: ${file.name}`, true, undefined, {
             fileName: file.name,
             fileType: file.type,
             deletedAt: file.deletedAt,
