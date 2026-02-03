@@ -238,6 +238,12 @@ export default function TasksPage() {
     return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
   };
 
+  // Helper to truncate file paths
+  const truncatePath = (path: string) => {
+    if (path.length <= 20) return path;
+    return path.substring(0, 17) + '...';
+  };
+
   const { data: allFolders } = useQuery<any[]>({
     queryKey: ['allFoldersForTasks'],
     queryFn: async () => {
@@ -666,7 +672,25 @@ export default function TasksPage() {
                               }
                             }} />
                           </Box>
-                        ) : progress.phase === 'scanning' ? 'Scanning...' 
+                        ) : progress.phase === 'scanning' ? (
+                          <Box component="span" sx={{ display: 'inline-flex', alignItems: 'center' }}>
+                            Scanning
+                            <Box component="span" sx={{ 
+                              '@keyframes dotPulse': {
+                                '0%, 20%': { content: '""' },
+                                '40%': { content: '"."' },
+                                '60%': { content: '".."' },
+                                '80%, 100%': { content: '"..."' },
+                              },
+                              '&::after': {
+                                content: '""',
+                                animation: 'dotPulse 1.5s infinite',
+                                display: 'inline-block',
+                                width: '1.5em',
+                              }
+                            }} />
+                          </Box>
+                        ) 
                           : progress.phase === 'downloading' ? 'Downloading' 
                           : progress.phase === 'archiving' ? 'Creating archive' 
                           : progress.phase === 'uploading' ? 'Uploading to Discord' 
@@ -686,7 +710,7 @@ export default function TasksPage() {
                             ) : progress.filesProcessed > 0 ? (
                               <Box>{progress.filesProcessed?.toLocaleString()} files • {formatBytes(progress.totalBytes || 0)}</Box>
                             ) : null}
-                            {progress.currentDir && <Box sx={{ maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{progress.currentDir}</Box>}
+                            {progress.currentDir && <Box sx={{ maxWidth: '400px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={progress.currentDir}>{truncatePath(progress.currentDir)}</Box>}
                             {progress.reconnects > 0 && <Box sx={{ color: 'warning.main' }}>{progress.reconnects} reconnects</Box>}
                           </Box>
                         );
