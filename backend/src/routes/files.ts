@@ -1111,7 +1111,10 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
 
           // If buffer (post-encryption) fits under DISCORD_MAX, upload as a single attachment.
           if (toUpload.length <= DISCORD_MAX) {
-            const uploaded = await uploadChunkToDiscord(src.name, toUpload);
+            // Use encrypted filename format: fileId_chunk_index_dbName
+            // This keeps Discord filename encrypted while DB stores readable name with " (copy)"
+            const discordFilename = `${newFile.id}_chunk_${newChunkIndex}_${nameToUse}`;
+            const uploaded = await uploadChunkToDiscord(discordFilename, toUpload);
             await tx.fileChunk.create({
               data: {
                 fileId: newFile.id,
@@ -1136,8 +1139,9 @@ router.post('/:id/copy', authenticate, async (req: Request, res: Response) => {
             if (destEncrypt && userEncryptionKey) {
               partToUpload = encryptBuffer(plaintextPart, userEncryptionKey);
             }
-            const partName = `${src.name}.part${i}`;
-            const uploaded = await uploadChunkToDiscord(partName, partToUpload);
+            // Use encrypted filename format for Discord
+            const discordFilename = `${newFile.id}_chunk_${newChunkIndex}_part${i}_${nameToUse}`;
+            const uploaded = await uploadChunkToDiscord(discordFilename, partToUpload);
             await tx.fileChunk.create({
               data: {
                 fileId: newFile.id,

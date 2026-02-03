@@ -5,6 +5,7 @@ import apiKeysRoutes from './apiKeys';
 import avatarsRoutes from './avatars';
 import meRoutes from './me';
 import tasksRoutes from './tasks';
+import logsRoutes from './logs';
 
 const router = Router();
 
@@ -14,5 +15,6 @@ router.use('/api-keys', apiKeysRoutes);
 router.use('/avatars', avatarsRoutes);
 router.use('/me', meRoutes);
 router.use('/tasks', tasksRoutes);
+router.use('/logs', logsRoutes);
 
 export default router;

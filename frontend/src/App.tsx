@@ -8,6 +8,7 @@ import SettingsPage from './pages/SettingsPage';
 import CallbackPage from './pages/CallbackPage';
 import ErrorBoundary from './components/ErrorBoundary';
 import TasksPage from './pages/TasksPage';
+import LogsPage from './pages/LogsPage';
 
 function App() {
   const { isAuthenticated, loading } = useAuth();
@@ -78,6 +79,18 @@ function App() {
           isAuthenticated ? (
             <Layout>
               <TasksPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
+        path="/logs"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <LogsPage />
             </Layout>
           ) : (
             <Navigate to="/login" replace />

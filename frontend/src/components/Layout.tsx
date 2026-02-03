@@ -42,6 +42,11 @@ export default function Layout({ children }: LayoutProps) {
     navigate('/settings');
   };
 
+  const handleLogs = () => {
+    handleMenuClose();
+    navigate('/logs');
+  };
+
   const handleLogout = async () => {
     handleMenuClose();
     await logout();
@@ -72,8 +77,8 @@ export default function Layout({ children }: LayoutProps) {
             </IconButton>
             <Box sx={{ flexGrow: 1 }} />
           
-          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 44, height: 44 }}>
-            <Settings size={22} />
+          <IconButton color="inherit" onClick={handleSettings} sx={{ width: 48, height: 48 }}>
+            <Settings size={28} />
           </IconButton>
 
           <IconButton color="inherit" onClick={handleMenuOpen} sx={{ width: 44, height: 44 }}>
@@ -97,6 +102,12 @@ export default function Layout({ children }: LayoutProps) {
               <Typography variant="body2">
                 {user?.username}#{user?.discriminator}
               </Typography>
+            </MenuItem>
+            <MenuItem onClick={handleLogs}>
+              <ListItemIcon sx={{ minWidth: 36 }}>
+                <Box component="span" sx={{ display: 'flex', alignItems: 'center' }}>📋</Box>
+              </ListItemIcon>
+              <ListItemText primary="Logs" />
             </MenuItem>
             <MenuItem onClick={handleSettings}>
               <Settings style={{ marginRight: 8 }} size={20} />

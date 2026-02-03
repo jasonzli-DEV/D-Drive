@@ -25,6 +25,7 @@ model User {
   apiKeys     ApiKey[]
   sessions    Session[]
   tasks       Task[]
+  logs        Log[]
 }
 
 model ApiKey {
@@ -131,4 +132,27 @@ model Task {
   updatedAt      DateTime @updatedAt
 
   @@index([userId])
+}
+
+model Log {
+  id         String   @id @default(uuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type       LogType  // task, upload, copy, delete
+  action     String   // "Task Started", "Task Completed", "Task Failed", "File Uploaded", "File Copied", "File Deleted"
+  success    Boolean  @default(true)
+  message    String?  // error message or details
+  metadata   String?  // JSON string with additional context (file names, task names, etc.)
+  createdAt  DateTime @default(now())
+
+  @@index([userId])
+  @@index([createdAt])
+  @@index([type])
+}
+
+enum LogType {
+  TASK
+  UPLOAD
+  COPY
+  DELETE
 }
