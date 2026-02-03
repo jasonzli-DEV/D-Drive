@@ -206,10 +206,15 @@ export default function MetricsPage() {
                 <Chip 
                   label={`Total Tasks: ${metrics?.globalTasks.toLocaleString() || 0}`}
                   variant="outlined" 
-                /> 
-                  color="primary" 
-                  variant="outlined" 
                 />
+              </Box>
+            </CardContent>
+          </Card>
+        </Box>
+      </Paper>
+    </Box>
+  );
+}
               </Box>
             </CardContent>
           </Card>
