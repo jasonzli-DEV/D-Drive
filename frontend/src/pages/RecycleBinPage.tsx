@@ -215,7 +215,7 @@ export default function RecycleBinPage() {
                             )}
                             <Box>
                               {f.name}
-                              {f.type === 'DIRECTORY' && f.itemCount !== undefined && f.itemCount > 0 && (
+                              {depth === 0 && f.type === 'DIRECTORY' && f.itemCount !== undefined && f.itemCount > 0 && (
                                 <Typography variant="caption" color="text.secondary" display="block">
                                   {f.itemCount} item{f.itemCount !== 1 ? 's' : ''} inside
                                 </Typography>
@@ -235,10 +235,10 @@ export default function RecycleBinPage() {
                           </Typography>
                         </TableCell>
                         <TableCell>
-                          {f.type === 'DIRECTORY' && depth === 0 ? '-' : formatBytes(parseInt(f.size))}
+                          {f.type === 'DIRECTORY' ? '-' : formatBytes(parseInt(f.size))}
                         </TableCell>
                         <TableCell>
-                          {(() => {
+                          {depth === 0 ? (() => {
                             const { days, isUrgent } = getDaysUntilDeletion(f.deletedAt);
                             return (
                               <Box>
@@ -259,29 +259,37 @@ export default function RecycleBinPage() {
                                 </Typography>
                               </Box>
                             );
-                          })()}
+                          })() : (
+                            <Typography variant="body2" color="text.secondary">
+                              -
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell align="right">
-                          <Tooltip title="Restore">
-                            <IconButton
-                              size="small"
-                              onClick={() => restoreMutation.mutate(f.id)}
-                              disabled={restoreMutation.isPending}
-                              color="primary"
-                            >
-                              <RotateCcw size={18} />
-                            </IconButton>
-                          </Tooltip>
-                          <Tooltip title="Delete permanently">
-                            <IconButton
-                              size="small"
-                              onClick={() => setDeleteDialogFile(f)}
-                              disabled={deletePermanentlyMutation.isPending}
-                              color="error"
-                            >
-                              <Trash2 size={18} />
-                            </IconButton>
-                          </Tooltip>
+                          {depth === 0 && (
+                            <>
+                              <Tooltip title="Restore">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => restoreMutation.mutate(f.id)}
+                                  disabled={restoreMutation.isPending}
+                                  color="primary"
+                                >
+                                  <RotateCcw size={18} />
+                                </IconButton>
+                              </Tooltip>
+                              <Tooltip title="Delete permanently">
+                                <IconButton
+                                  size="small"
+                                  onClick={() => setDeleteDialogFile(f)}
+                                  disabled={deletePermanentlyMutation.isPending}
+                                  color="error"
+                                >
+                                  <Trash2 size={18} />
+                                </IconButton>
+                              </Tooltip>
+                            </>
+                          )}
                         </TableCell>
                       </TableRow>
                       {f.type === 'DIRECTORY' && f.children && expandedFolders.has(f.id) && f.children.map((child) => 
@@ -304,6 +312,12 @@ export default function RecycleBinPage() {
           anchorReference="anchorPosition"
           anchorPosition={contextMenu ? { top: contextMenu.mouseY, left: contextMenu.mouseX } : undefined}
         >
+          {contextMenu?.item?.type === 'DIRECTORY' && contextMenu.item.children && contextMenu.item.children.length > 0 && (
+            <MenuItem onClick={() => { contextMenu && toggleFolder(contextMenu.item.id); closeContextMenu(); }}>
+              <ListItemIcon><Folder size={18} /></ListItemIcon>
+              <ListItemText>{expandedFolders.has(contextMenu.item.id) ? 'Collapse' : 'Open'}</ListItemText>
+            </MenuItem>
+          )}
           <MenuItem onClick={() => { contextMenu && restoreMutation.mutate(contextMenu.item.id); closeContextMenu(); }}>
             <ListItemIcon><RotateCcw size={18} /></ListItemIcon>
             <ListItemText>Restore</ListItemText>
