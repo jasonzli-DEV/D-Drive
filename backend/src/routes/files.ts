@@ -281,7 +281,8 @@ router.get('/recycle-bin', authenticate, async (req: Request, res: Response) => 
         // Calculate total size of all children recursively
         const sumAllSizes = (items: any[]): number => {
           return items.reduce((sum, child) => {
-            return sum + child.size + (child.children ? sumAllSizes(child.children) : 0);
+            const childSize = typeof child.size === 'bigint' ? Number(child.size) : child.size;
+            return sum + childSize + (child.children ? sumAllSizes(child.children) : 0);
           }, 0);
         };
         
