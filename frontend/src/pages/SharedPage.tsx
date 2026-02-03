@@ -814,6 +814,14 @@ export default function SharedPage() {
                 <TableRow 
                   key={share.id} 
                   hover
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setContextMenu({ 
+                      mouseX: e.clientX, 
+                      mouseY: e.clientY, 
+                      item: share.file as FolderFile 
+                    });
+                  }}
                   onClick={() => {
                     if (share.file.type === 'DIRECTORY' && tab === 0) {
                       openFolder(share);
