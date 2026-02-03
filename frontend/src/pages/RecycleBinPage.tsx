@@ -180,7 +180,20 @@ export default function RecycleBinPage() {
             <Typography variant="h6">Recycle bin is empty</Typography>
             <Typography variant="body2">Deleted files will appear here</Typography>
           </Box>
-        ) : ({
+        ) : (
+          <TableContainer>
+            <Table>
+              <TableHead>
+                <TableRow>
+                  <TableCell>Name</TableCell>
+                  <TableCell>Original Location</TableCell>
+                  <TableCell>Size</TableCell>
+                  <TableCell>Deleted</TableCell>
+                  <TableCell align="right">Actions</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {files.map((file) => {
                   const renderFileRow = (f: DeletedFile, depth: number = 0) => (
                     <>
                       <TableRow key={f.id} hover onContextMenu={(e) => handleContextMenu(e, f)}>
@@ -213,12 +226,10 @@ export default function RecycleBinPage() {
                         <TableCell>
                           <Typography variant="body2" color="text.secondary" sx={{ maxWidth: 300, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                             {depth === 0 ? (
-                              /* Show parent folder path for top-level items */
                               f.originalPath 
                                 ? f.originalPath.substring(0, f.originalPath.lastIndexOf('/')) || '/' 
                                 : '/'
                             ) : (
-                              /* For nested items, show they're inside parent */
                               '(inside parent)'
                             )}
                           </Typography>
@@ -273,7 +284,6 @@ export default function RecycleBinPage() {
                           </Tooltip>
                         </TableCell>
                       </TableRow>
-                      {/* Render children if folder is expanded */}
                       {f.type === 'DIRECTORY' && f.children && expandedFolders.has(f.id) && f.children.map((child) => 
                         renderFileRow(child, depth + 1)
                       )}
@@ -281,20 +291,7 @@ export default function RecycleBinPage() {
                   );
                   
                   return renderFileRow(file);
-                }     </Tooltip>
-                      <Tooltip title="Delete permanently">
-                        <IconButton
-                          size="small"
-                          onClick={() => setDeleteDialogFile(file)}
-                          disabled={deletePermanentlyMutation.isPending}
-                          color="error"
-                        >
-                          <Trash2 size={18} />
-                        </IconButton>
-                      </Tooltip>
-                    </TableCell>
-                  </TableRow>
-                ))}
+                })}
               </TableBody>
             </Table>
           </TableContainer>
