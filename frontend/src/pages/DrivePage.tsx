@@ -415,7 +415,7 @@ export default function DrivePage() {
       const resp = await api.post('/public-links', data);
       return { ...resp.data, fileId: vars.fileId };
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       setPublicLinkDialogOpen(false);
       setPublicLinkSlug('');
       setPublicLinkExpiresAt('');
@@ -426,7 +426,7 @@ export default function DrivePage() {
       setExistingPublicLink(null);
       const fullUrl = `${window.location.origin}/link/${data.slug}`;
       try {
-        navigator.clipboard.writeText(fullUrl);
+        await navigator.clipboard.writeText(fullUrl);
       } catch {}
       toast.success('Public link created and copied to clipboard');
     },
