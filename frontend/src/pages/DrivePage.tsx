@@ -139,12 +139,11 @@ export default function DrivePage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareUsername, setShareUsername] = useState('');
   const [sharePermission, setSharePermission] = useState<'VIEW' | 'EDIT'>('VIEW');
-  // Public link dialog state
   const [publicLinkDialogOpen, setPublicLinkDialogOpen] = useState(false);
   const [publicLinkSlug, setPublicLinkSlug] = useState('');
   const [publicLinkExpiresAt, setPublicLinkExpiresAt] = useState('');
   const [existingPublicLink, setExistingPublicLink] = useState<{id: string; slug: string} | null>(null);
-  // Track which file ID we've loaded to prevent redundant fetches
+  const [existingPublicLinks, setExistingPublicLinks] = useState<Set<string>>(new Set());
   const loadedImageIdRef = useRef<string | null>(null);
 
   const isImageFile = (f: FileItem) => {
@@ -221,6 +220,13 @@ export default function DrivePage() {
     loadedImageIdRef.current = null; // Reset to allow loading new image
     setImageViewerIndex(i => Math.min(imageList.length - 1, i + 1));
   };
+
+  useEffect(() => {
+    api.get('/public-links').then(resp => {
+      const linkSet = new Set<string>(resp.data.map((link: any) => link.fileId));
+      setExistingPublicLinks(linkSet);
+    }).catch(() => {});
+  }, []);
 
   useEffect(() => {
     if (!imageViewerOpen) {
@@ -397,18 +403,20 @@ export default function DrivePage() {
       if (vars.slug) data.slug = vars.slug;
       if (vars.expiresAt) data.expiresAt = vars.expiresAt;
       const resp = await api.post('/public-links', data);
-      return resp.data;
+      return { ...resp.data, fileId: vars.fileId };
     },
     onSuccess: (data) => {
       setPublicLinkDialogOpen(false);
       setPublicLinkSlug('');
       setPublicLinkExpiresAt('');
+      if (data.fileId) {
+        setExistingPublicLinks(prev => new Set(prev).add(data.fileId));
+      }
       setSelectedFile(null);
       setExistingPublicLink(null);
       const fullUrl = `${window.location.origin}/link/${data.slug}`;
       navigator.clipboard.writeText(fullUrl).catch(() => {});
       toast.success('Public link created and copied to clipboard');
-      queryClient.invalidateQueries({ queryKey: ['public-links'] });
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to create public link');
@@ -423,6 +431,13 @@ export default function DrivePage() {
     onSuccess: () => {
       toast.success('Public link deactivated successfully');
       setPublicLinkDialogOpen(false);
+      if (selectedFile) {
+        setExistingPublicLinks(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(selectedFile.id);
+          return newSet;
+        });
+      }
       setSelectedFile(null);
       setExistingPublicLink(null);
     },
@@ -1233,13 +1248,20 @@ export default function DrivePage() {
           try {
             const response = await api.get('/public-links');
             const existingLink = response.data.find((link: any) => link.fileId === menuFile.id);
-            setExistingPublicLink(existingLink || null);
-            setSelectedFile(menuFile);
             
-            const slugResponse = await api.post('/public-links/generate-slug');
-            setPublicLinkSlug(slugResponse.data.slug);
-            setPublicLinkExpiresAt('');
-            setPublicLinkDialogOpen(true);
+            if (existingLink) {
+              setExistingPublicLink(existingLink);
+              setSelectedFile(menuFile);
+              setPublicLinkDialogOpen(true);
+            } else {
+              setExistingPublicLink(null);
+              setSelectedFile(menuFile);
+              
+              const slugResponse = await api.post('/public-links/generate-slug');
+              setPublicLinkSlug(slugResponse.data.slug);
+              setPublicLinkExpiresAt('');
+              setPublicLinkDialogOpen(true);
+            }
           } catch (err) {
             toast.error('Failed to check existing link');
           }
@@ -1725,7 +1747,7 @@ export default function DrivePage() {
               <ListItemIcon>
                 <Share2 size={18} />
               </ListItemIcon>
-              <ListItemText>Create public link</ListItemText>
+              <ListItemText>{menuFile?.id && existingPublicLinks.has(menuFile.id) ? 'Delete public link' : 'Create public link'}</ListItemText>
             </MenuItem>
             <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
               <ListItemIcon sx={{ color: 'inherit' }}>
