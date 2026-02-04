@@ -400,7 +400,6 @@ export default function DrivePage() {
       return resp.data;
     },
     onSuccess: (data) => {
-      toast.success('Public link created successfully');
       setPublicLinkDialogOpen(false);
       setPublicLinkSlug('');
       setPublicLinkExpiresAt('');
@@ -594,7 +593,6 @@ export default function DrivePage() {
             p.fileName === fileName ? { ...p, status: 'success', progress: 100 } : p
           )
         );
-        toast.success('File uploaded successfully!');
         // Remove from progress after 3 seconds
         setTimeout(() => {
           setUploadProgress(prev => prev.filter(p => p.fileName !== fileName));
@@ -609,10 +607,6 @@ export default function DrivePage() {
         if (remaining <= 0) {
           folderPrevProgressRef.current[folderKey] = 100;
           setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'success', progress: 100, uploadedBytes: f.totalBytes } : f));
-          if (!folderSuccessShownRef.current[folderKey]) {
-            folderSuccessShownRef.current[folderKey] = true;
-            toast.success(`Folder uploaded successfully: ${folderKey || 'Root'}`);
-          }
           setTimeout(() => setUploadFolders(prev => prev.filter(p => p.folderKey !== folderKey)), 1500);
         }
       }
@@ -1403,7 +1397,6 @@ export default function DrivePage() {
       link.remove();
       
       setDownloadProgress(null);
-      toast.success('Download complete!');
     } catch (error) {
       setDownloadProgress(null);
       toast.error('Download failed');
