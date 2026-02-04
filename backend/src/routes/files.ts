@@ -768,7 +768,7 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
         await createLog(userId, 'UPLOAD', `Uploaded file: ${uploadName}`, true, undefined, {
           fileId: fileRecord.id,
           fileName: uploadName,
-          fileSize: size,
+          fileSize: file.size,
           encrypted: shouldEncrypt,
           chunks: chunks.length,
         });
