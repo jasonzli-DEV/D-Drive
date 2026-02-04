@@ -199,7 +199,7 @@ export default function DrivePage() {
           a.remove();
           URL.revokeObjectURL(url);
         } catch (err) {
-          toast.error('Failed to download file');
+          // Error shown in UI via download progress
         }
       })();
       return;
@@ -407,7 +407,7 @@ export default function DrivePage() {
       setExistingPublicLink(null);
       const fullUrl = `${window.location.origin}/link/${data.slug}`;
       navigator.clipboard.writeText(fullUrl);
-      toast.success('Link copied to clipboard', { duration: 3000 });
+      toast.success('Public link created and copied to clipboard');
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to create public link');
@@ -612,7 +612,7 @@ export default function DrivePage() {
       }
       queryClient.invalidateQueries({ queryKey: ['files'] });
     },
-    onError: (error: any, vars: { file: File; folderKey?: string }) => {
+    onError: (_error: any, vars: { file: File; folderKey?: string }) => {
       const file = vars.file;
       const folderKey = (vars as any).folderKey;
       if (!folderKey) {
@@ -621,14 +621,8 @@ export default function DrivePage() {
             p.fileName === file.name ? { ...p, status: 'error' } : p
           )
         );
-        toast.error(error.response?.data?.error || 'Upload failed');
       } else {
-        // mark folder errored and show only one toast per folder
         setUploadFolders(prev => prev.map(f => f.folderKey === folderKey ? { ...f, status: 'error' } : f));
-        if (!folderErrorShownRef.current[folderKey]) {
-          folderErrorShownRef.current[folderKey] = true;
-          toast.error(error.response?.data?.error || 'Folder upload failed');
-        }
         // decrement remaining counter and finalize (remove progress UI) when all files finished
         const remaining = (folderFilesRemainingRef.current[folderKey] || 1) - 1;
         folderFilesRemainingRef.current[folderKey] = remaining;
@@ -1399,7 +1393,6 @@ export default function DrivePage() {
       setDownloadProgress(null);
     } catch (error) {
       setDownloadProgress(null);
-      toast.error('Download failed');
     }
   };
 

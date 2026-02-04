@@ -288,6 +288,7 @@ export default function SharedPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.success(`Downloaded ${fileName}`);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to download file');
     }
@@ -339,6 +340,7 @@ export default function SharedPage() {
       });
       
       queryClient.invalidateQueries({ queryKey: ['shared-folder'] });
+      toast.success(`Uploaded ${file.name}`);
     } catch (error: any) {
       toast.error(error?.response?.data?.error || 'Failed to upload file');
     }

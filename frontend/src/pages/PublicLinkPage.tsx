@@ -146,6 +146,7 @@ export default function PublicLinkPage() {
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
+      toast.success('Download started');
     } catch (err: any) {
       toast.error(err.response?.data?.error || 'Failed to download file');
     }
