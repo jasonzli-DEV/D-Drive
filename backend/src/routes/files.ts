@@ -762,6 +762,20 @@ router.post('/upload', authenticate, upload.single('file'), async (req: Request,
 
       logger.info(`File uploaded successfully: ${uploadName} (${chunks.length} chunks)`);
 
+      // Create UPLOAD log
+      try {
+        const { createLog } = require('./logs');
+        await createLog(userId, 'UPLOAD', `Uploaded file: ${uploadName}`, true, undefined, {
+          fileId: fileRecord.id,
+          fileName: uploadName,
+          fileSize: size,
+          encrypted: shouldEncrypt,
+          chunks: chunks.length,
+        });
+      } catch (logErr) {
+        logger.warn('Failed to create upload log:', logErr);
+      }
+
       // Return the created file (with stored name) and chunk count
       const storedFile = await prisma.file.findUnique({ where: { id: fileRecord.id } });
 
