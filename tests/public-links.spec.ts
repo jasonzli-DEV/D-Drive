@@ -1,139 +1,153 @@
 import { test, expect } from '@playwright/test';
 
+const BASE_URL = 'http://pi.local';
+
 test.describe('Public Links Feature', () => {
-  test('should create a public link for a file', async ({ page, context }) => {
-    await page.goto('/login');
-    await page.waitForTimeout(2000);
+  test.beforeEach(async ({ page }) => {
+    await page.goto(BASE_URL);
+    await page.waitForSelector('text=Sign in with Discord', { timeout: 10000 });
+    await page.click('text=Sign in with Discord');
     
-    const hasAuth = await page.evaluate(() => {
-      return localStorage.getItem('token') !== null;
-    });
+    await page.waitForURL(/callback/, { timeout: 30000 });
+    await page.waitForURL('/drive', { timeout: 30000 });
     
-    if (!hasAuth) {
-      console.log('No auth token found, skipping test');
-      test.skip();
-    }
+    await expect(page).toHaveURL('/drive');
+  });
 
-    await page.goto('/');
-    await page.waitForTimeout(2000);
+  test('should create a public link for a file', async ({ page }) => {
+    await page.waitForSelector('[role="row"]', { timeout: 10000 });
     
-    const firstFileRow = await page.locator('table tbody tr').first();
-    if (await firstFileRow.count() === 0) {
-      console.log('No files found, skipping test');
-      test.skip();
-    }
+    const fileRow = page.locator('[role="row"]').filter({ hasText: /\.(txt|md|json|png|jpg)$/i }).first();
+    await fileRow.click({ button: 'right' });
+    
+    await page.waitForSelector('text=Create public link', { timeout: 5000 });
+    await page.click('text=Create public link');
+    
+    await page.waitForSelector('text=Create Public Link', { timeout: 5000 });
+    
+    const slugInput = page.locator('input[placeholder*="word-word"]');
+    await expect(slugInput).toBeVisible();
+    
+    const defaultSlug = await slugInput.inputValue();
+    expect(defaultSlug).toMatch(/^[a-z]+-[a-z]+$/);
+    
+    await page.click('button:has-text("Create")');
+    
+    await page.waitForSelector('text=Public link created', { timeout: 5000 });
+  });
 
-    await firstFileRow.click({ button: 'right' });
-    await page.waitForTimeout(500);
+  test('should display Links page in sidebar', async ({ page }) => {
+    await page.waitForSelector('text=Links', { timeout: 5000 });
+    await page.click('text=Links');
     
-    const publicLinkMenuItem = page.locator('text=Create public link');
-    if (await publicLinkMenuItem.count() > 0) {
-      await publicLinkMenuItem.click();
-      await page.waitForTimeout(1000);
-      
-      const createButton = page.locator('button:has-text("Create Link")');
-      if (await createButton.count() > 0) {
-        await createButton.click();
-        await page.waitForTimeout(2000);
-        
-        expect(true).toBe(true);
-      }
-    }
+    await expect(page).toHaveURL('/links');
+    
+    await page.waitForSelector('text=Public Links', { timeout: 5000 });
+    await expect(page.locator('h4:has-text("Public Links")')).toBeVisible();
   });
 
   test('should navigate to Links page', async ({ page }) => {
-    await page.goto('/login');
-    await page.waitForTimeout(2000);
+    await page.waitForSelector('text=Links', { timeout: 5000 });
+    await page.click('text=Links');
     
-    const hasAuth = await page.evaluate(() => {
-      return localStorage.getItem('token') !== null;
-    });
+    await expect(page).toHaveURL('/links');
     
-    if (!hasAuth) {
-      console.log('No auth token found, skipping test');
-      test.skip();
-    }
-
-    await page.goto('/links');
-    await page.waitForTimeout(2000);
-    
-    const pageTitle = await page.locator('h4:has-text("Public Links")');
-    expect(await pageTitle.count()).toBeGreaterThan(0);
+    await page.waitForSelector('text=Public Links', { timeout: 5000 });
+    await expect(page.locator('h4:has-text("Public Links")')).toBeVisible();
   });
 
-  test('should show links management interface', async ({ page }) => {
-    await page.goto('/login');
-    await page.waitForTimeout(2000);
+  test('should list all public links in Links page', async ({ page }) => {
+    await page.goto(`${BASE_URL}/links`);
+    await page.waitForLoadState('networkidle');
     
-    const hasAuth = await page.evaluate(() => {
-      return localStorage.getItem('token') !== null;
-    });
+    const table = page.locator('table');
+    await expect(table).toBeVisible();
     
-    if (!hasAuth) {
-      console.log('No auth token found, skipping test');
-      test.skip();
+    const headers = ['File', 'Slug', 'Created', 'Expires', 'Actions'];
+    for (const header of headers) {
+      await expect(page.locator(`th:has-text("${header}")`)).toBeVisible();
     }
-
-    await page.goto('/links');
-    await page.waitForTimeout(2000);
-    
-    const hasContent = await page.locator('body').evaluate(el => el.textContent?.includes('Public Links'));
-    expect(hasContent).toBe(true);
   });
 
-  test('public link page should be accessible without auth', async ({ page, context }) => {
-    await context.clearCookies();
-    await page.evaluate(() => localStorage.clear());
+  test('should customize slug when creating public link', async ({ page }) => {
+    await page.waitForSelector('[role="row"]', { timeout: 10000 });
     
-    await page.goto('/link/test-link');
-    await page.waitForTimeout(2000);
+    const fileRow = page.locator('[role="row"]').filter({ hasText: /\.(txt|md|json)$/i }).first();
+    await fileRow.click({ button: 'right' });
     
-    const hasError = await page.locator('text=/404|Link|Error/i').count();
-    expect(hasError).toBeGreaterThan(0);
+    await page.click('text=Create public link');
+    await page.waitForSelector('text=Create Public Link', { timeout: 5000 });
+    
+    const customSlug = 'test-file-link';
+    const slugInput = page.locator('input[placeholder*="word-word"]');
+    await slugInput.fill(customSlug);
+    
+    await page.click('button:has-text("Create")');
+    await page.waitForSelector('text=Public link created', { timeout: 5000 });
+    
+    await page.goto(`${BASE_URL}/links`);
+    await page.waitForLoadState('networkidle');
+    
+    await expect(page.locator(`text=${customSlug}`)).toBeVisible();
   });
 
-  test('should handle deactivating a public link', async ({ page }) => {
-    await page.goto('/login');
-    await page.waitForTimeout(2000);
+  test('should copy public link to clipboard', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
     
-    const hasAuth = await page.evaluate(() => {
-      return localStorage.getItem('token') !== null;
-    });
+    await page.goto(`${BASE_URL}/links`);
+    await page.waitForLoadState('networkidle');
     
-    if (!hasAuth) {
-      console.log('No auth token found, skipping test');
-      test.skip();
-    }
-
-    await page.goto('/links');
-    await page.waitForTimeout(2000);
+    const firstRow = page.locator('tbody tr').first();
+    const copyButton = firstRow.locator('button[title="Copy link"]');
     
-    const firstLink = await page.locator('table tbody tr').first();
-    if (await firstLink.count() === 0) {
-      console.log('No links found, test will pass');
-      expect(true).toBe(true);
-      return;
-    }
-
-    const deleteButton = firstLink.locator('button[title="Deactivate link"], button:has-text("Deactivate")').first();
-    if (await deleteButton.count() > 0) {
-      await deleteButton.click();
-      await page.waitForTimeout(500);
+    if (await copyButton.isVisible()) {
+      await copyButton.click();
       
-      const confirmButton = page.locator('button:has-text("Deactivate")').last();
-      if (await confirmButton.count() > 0) {
-        await confirmButton.click();
-        await page.waitForTimeout(2000);
-      }
+      const clipboardText = await page.evaluate(() => navigator.clipboard.readText());
+      expect(clipboardText).toContain('/link/');
+      expect(clipboardText).toMatch(/[a-z]+-[a-z]+$/);
     }
+  });
+
+  test('should access public link without authentication', async ({ browser }) => {
+    const authenticatedPage = await browser.newPage();
+    await authenticatedPage.goto(BASE_URL);
+    await authenticatedPage.waitForSelector('text=Sign in with Discord', { timeout: 10000 });
+    await authenticatedPage.click('text=Sign in with Discord');
+    await authenticatedPage.waitForURL('/drive', { timeout: 30000 });
     
-    expect(true).toBe(true);
+    await authenticatedPage.waitForSelector('[role="row"]', { timeout: 10000 });
+    const fileRow = authenticatedPage.locator('[role="row"]').filter({ hasText: /\.(txt|md)$/i }).first();
+    await fileRow.click({ button: 'right' });
+    
+    await authenticatedPage.click('text=Create public link');
+    await authenticatedPage.waitForSelector('text=Create Public Link', { timeout: 5000 });
+    
+    const slugInput = authenticatedPage.locator('input[placeholder*="word-word"]');
+    const slug = await slugInput.inputValue();
+    
+    await authenticatedPage.click('button:has-text("Create")');
+    await authenticatedPage.waitForSelector('text=Public link created', { timeout: 5000 });
+    
+    await authenticatedPage.close();
+    
+    const unauthenticatedPage = await browser.newPage();
+    await unauthenticatedPage.goto(`${BASE_URL}/link/${slug}`);
+    
+    await unauthenticatedPage.waitForSelector('h4', { timeout: 10000 });
+    const heading = unauthenticatedPage.locator('h4');
+    await expect(heading).toBeVisible();
+    
+    const downloadButton = unauthenticatedPage.locator('button:has-text("Download")');
+    await expect(downloadButton).toBeVisible();
+    
+    await unauthenticatedPage.close();
   });
 
   test('deployment is accessible and public links code loads', async ({ page }) => {
-    const response = await page.goto('/');
+    const response = await page.goto(BASE_URL);
     expect(response?.status()).toBeLessThan(500);
-    await page.waitForTimeout(2000);
+    await page.waitForLoadState('networkidle');
     
     const title = await page.title();
     expect(title.length).toBeGreaterThan(0);
@@ -142,5 +156,7 @@ test.describe('Public Links Feature', () => {
       return document.querySelector('body') !== null;
     });
     expect(hasBody).toBe(true);
+  });
+});
   });
 });
