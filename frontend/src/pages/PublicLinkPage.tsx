@@ -28,7 +28,6 @@ import {
   Play,
   Image as ImageIcon,
   ChevronRight,
-  Home,
   X,
   ChevronLeft,
   Eye,
@@ -65,7 +64,6 @@ function formatBytes(bytes: number): string {
 export default function PublicLinkPage() {
   const theme = useTheme();
   const { slug } = useParams<{ slug: string }>();
-  const navigate = useNavigate();
   
   const [loading, setLoading] = useState(true);
   const [linkData, setLinkData] = useState<PublicLinkData | null>(null);
