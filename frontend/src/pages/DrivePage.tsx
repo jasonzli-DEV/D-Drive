@@ -408,6 +408,7 @@ export default function DrivePage() {
       const fullUrl = `${window.location.origin}/link/${data.slug}`;
       navigator.clipboard.writeText(fullUrl).catch(() => {});
       toast.success('Public link created and copied to clipboard');
+      queryClient.invalidateQueries({ queryKey: ['public-links'] });
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to create public link');
