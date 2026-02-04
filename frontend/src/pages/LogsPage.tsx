@@ -99,7 +99,7 @@ export default function LogsPage() {
   };
 
   return (
-    <Container maxWidth="lg" sx={{ py: 4 }}>
+    <Box sx={{ maxWidth: 1800, mx: 'auto', width: '100%', py: 4 }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom>
           Activity Logs
@@ -203,6 +203,6 @@ export default function LogsPage() {
           </Table>
         </TableContainer>
       )}
-    </Container>
+    </Box>
   );
 }

@@ -125,7 +125,7 @@ export default function MetricsPage() {
   ];
 
   return (
-    <Box>
+    <Box sx={{ maxWidth: 1800, mx: 'auto', width: '100%' }}>
       <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
         <Typography variant="h4" gutterBottom sx={{ mb: 3 }}>
           Metrics
