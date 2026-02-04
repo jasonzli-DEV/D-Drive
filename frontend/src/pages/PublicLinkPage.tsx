@@ -18,7 +18,13 @@ import {
   Dialog,
   DialogContent,
   useTheme,
-  Chip,
+  Chip,  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Download,
@@ -77,6 +83,10 @@ export default function PublicLinkPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [imageList, setImageList] = useState<PublicFile[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
+  const [contextFile, setContextFile] = useState<PublicFile | null>(null);
+  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
+  const [contextFile, setContextFile] = useState<PublicFile | null>(null);
 
   useEffect(() => {
     loadLinkData();
@@ -242,6 +252,78 @@ export default function PublicLinkPage() {
     await openPreview(prevFile, imageList);
   };
 
+  const handleContextMenu = (event: React.MouseEvent, file: PublicFile) => {
+    event.preventDefault();
+    setContextFile(file);
+    setContextMenu(
+      contextMenu === null
+        ? { mouseX: event.clientX - 2, mouseY: event.clientY - 4 }
+        : null
+    );
+  };
+
+  const handleContextClose = () => {
+    setContextMenu(null);
+    setContextFile(null);
+  };
+
+  const handleContextDownload = () => {
+    if (contextFile) {
+      handleDownload(contextFile);
+    }
+    handleContextClose();
+  };
+
+  const handleContextPreview = () => {
+    if (contextFile && canPreview(contextFile)) {
+      openPreview(contextFile, files);
+    }
+    handleContextClose();
+  };
+
+  const handleContextOpen = () => {
+    if (contextFile && contextFile.type === 'DIRECTORY') {
+      navigateToFolder(contextFile);
+    }
+    handleContextClose();
+  };
+
+  const handleContextMenu = (event: React.MouseEvent, file: PublicFile) => {
+    event.preventDefault();
+    setContextFile(file);
+    setContextMenu(
+      contextMenu === null
+        ? { mouseX: event.clientX - 2, mouseY: event.clientY - 4 }
+        : null
+    );
+  };
+
+  const handleContextClose = () => {
+    setContextMenu(null);
+    setContextFile(null);
+  };
+
+  const handleContextDownload = () => {
+    if (contextFile) {
+      handleDownload(contextFile);
+    }
+    handleContextClose();
+  };
+
+  const handleContextPreview = () => {
+    if (contextFile && canPreview(contextFile)) {
+      openPreview(contextFile, files);
+    }
+    handleContextClose();
+  };
+
+  const handleContextOpen = () => {
+    if (contextFile && contextFile.type === 'DIRECTORY') {
+      navigateToFolder(contextFile);
+    }
+    handleContextClose();
+  };
+
   if (loading) {
     return (
       <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '100vh' }}>
@@ -365,6 +447,7 @@ export default function PublicLinkPage() {
                             openPreview(file, files);
                           }
                         }}
+                        onContextMenu={(e) => handleContextMenu(e, file)}
                       >
                         <TableCell>
                           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
@@ -489,6 +572,43 @@ export default function PublicLinkPage() {
           </DialogContent>
         </Box>
       </Dialog>
+
+      <Menu
+        open={contextMenu !== null}
+        onClose={handleContextClose}
+        anchorReference="anchorPosition"
+        anchorPosition={
+          contextMenu !== null
+            ? { top: contextMenu.mouseY, left: contextMenu.mouseX }
+            : undefined
+        }
+      >
+        {contextFile?.type === 'DIRECTORY' ? (
+          <MenuItem onClick={handleContextOpen}>
+            <ListItemIcon>
+              <ChevronRight size={18} />
+            </ListItemIcon>
+            <ListItemText>Open Folder</ListItemText>
+          </MenuItem>
+        ) : (
+          <>
+            <MenuItem onClick={handleContextDownload}>
+              <ListItemIcon>
+                <Download size={18} />
+              </ListItemIcon>
+              <ListItemText>Download</ListItemText>
+            </MenuItem>
+            {contextFile && canPreview(contextFile) && (
+              <MenuItem onClick={handleContextPreview}>
+                <ListItemIcon>
+                  <Eye size={18} />
+                </ListItemIcon>
+                <ListItemText>Preview</ListItemText>
+              </MenuItem>
+            )}
+          </>
+        )}
+      </Menu>
     </Box>
   );
 }
