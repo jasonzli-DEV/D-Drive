@@ -16,6 +16,25 @@ function serializeFile(file: any) {
   };
 }
 
+router.post('/generate-slug', authenticate, async (req: Request, res: Response) => {
+  try {
+    let slug = generateSlug();
+    let attempts = 0;
+    while (attempts < 10) {
+      const existing = await prisma.publicLink.findUnique({
+        where: { slug },
+      });
+      if (!existing) break;
+      slug = generateSlug();
+      attempts++;
+    }
+    res.json({ slug });
+  } catch (err) {
+    logger.error('Error generating slug:', err);
+    res.status(500).json({ error: 'Failed to generate slug' });
+  }
+});
+
 router.post('/', authenticate, async (req: Request, res: Response) => {
   try {
     const userId = (req as any).user.userId;
@@ -47,7 +66,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
     let slug = customSlug;
     if (slug) {
       if (!isValidSlug(slug)) {
-        return res.status(400).json({ error: 'Invalid slug format. Use lowercase letters and hyphens only (e.g., "flying-truck")' });
+        return res.status(400).json({ error: 'Invalid slug format. Use 3-50 characters with lowercase letters, numbers, and hyphens only.' });
       }
       
       const slugExists = await prisma.publicLink.findUnique({
@@ -173,7 +192,7 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
 
     if (slug !== undefined) {
       if (!isValidSlug(slug)) {
-        return res.status(400).json({ error: 'Invalid slug format. Use lowercase letters and hyphens only (e.g., "flying-truck")' });
+        return res.status(400).json({ error: 'Invalid slug format. Use 3-50 characters with lowercase letters, numbers, and hyphens only.' });
       }
       
       if (slug !== link.slug) {

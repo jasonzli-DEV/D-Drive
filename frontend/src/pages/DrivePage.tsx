@@ -1246,7 +1246,9 @@ export default function DrivePage() {
             const existingLink = response.data.find((link: any) => link.fileId === menuFile.id);
             setExistingPublicLink(existingLink || null);
             setSelectedFile(menuFile);
-            setPublicLinkSlug('');
+            
+            const slugResponse = await api.post('/public-links/generate-slug');
+            setPublicLinkSlug(slugResponse.data.slug);
             setPublicLinkExpiresAt('');
             setPublicLinkDialogOpen(true);
           } catch (err) {
@@ -2166,8 +2168,8 @@ export default function DrivePage() {
                 label="Custom Slug (Optional)"
                 value={publicLinkSlug}
                 onChange={(e) => setPublicLinkSlug(e.target.value.toLowerCase())}
-                placeholder="flying-truck"
-                helperText="Leave empty for auto-generated slug. Format: word-word (lowercase, hyphens only)"
+                placeholder="e.g., my-file-123"
+                helperText="Leave empty to use generated slug. Use lowercase letters, numbers, and hyphens (3-50 characters)"
                 sx={{ mb: 2 }}
               />
               <TextField

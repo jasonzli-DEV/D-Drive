@@ -123,9 +123,9 @@ export default function PublicLinkPage() {
       let downloadUrl: string;
       
       if (linkData?.file.type === 'DIRECTORY') {
-        downloadUrl = `/api/link/${slug}/file/${file.id}/download`;
+        downloadUrl = `/link/${slug}/file/${file.id}/download`;
       } else {
-        downloadUrl = `/api/link/${slug}/download`;
+        downloadUrl = `/link/${slug}/download`;
       }
 
       const response = await api.get(downloadUrl, {
@@ -198,9 +198,9 @@ export default function PublicLinkPage() {
       let downloadUrl: string;
       
       if (linkData?.file.type === 'DIRECTORY') {
-        downloadUrl = `/api/link/${slug}/file/${file.id}/download`;
+        downloadUrl = `/link/${slug}/file/${file.id}/download`;
       } else {
-        downloadUrl = `/api/link/${slug}/download`;
+        downloadUrl = `/link/${slug}/download`;
       }
 
       const response = await api.get(downloadUrl, {

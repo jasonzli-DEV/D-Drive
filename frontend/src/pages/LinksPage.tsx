@@ -122,10 +122,26 @@ export default function LinksPage() {
     },
   });
 
-  const handleCopyLink = (slug: string) => {
+  const handleCopyLink = async (slug: string) => {
     const fullUrl = `${window.location.origin}/link/${slug}`;
-    navigator.clipboard.writeText(fullUrl);
-    toast.success('Link copied to clipboard');
+    try {
+      await navigator.clipboard.writeText(fullUrl);
+      toast.success('Link copied to clipboard');
+    } catch (err) {
+      const textArea = document.createElement('textarea');
+      textArea.value = fullUrl;
+      textArea.style.position = 'fixed';
+      textArea.style.left = '-999999px';
+      document.body.appendChild(textArea);
+      textArea.select();
+      try {
+        document.execCommand('copy');
+        toast.success('Link copied to clipboard');
+      } catch (e) {
+        toast.error('Failed to copy link');
+      }
+      document.body.removeChild(textArea);
+    }
   };
 
   const handleOpenLink = (slug: string) => {
@@ -148,8 +164,8 @@ export default function LinksPage() {
         toast.error('Slug cannot be empty');
         return;
       }
-      if (!/^[a-z]+-[a-z]+$/.test(newSlug)) {
-        toast.error('Slug must be in format: word-word (lowercase letters and hyphens only)');
+      if (!/^[a-z0-9]+(-[a-z0-9]+)*$/.test(newSlug) || newSlug.length < 3 || newSlug.length > 50) {
+        toast.error('Slug must be 3-50 characters with lowercase letters, numbers, and hyphens only');
         return;
       }
       updates.slug = newSlug;
@@ -349,7 +365,7 @@ export default function LinksPage() {
             label="Link Slug"
             value={newSlug}
             onChange={(e) => setNewSlug(e.target.value.toLowerCase())}
-            helperText="Format: word-word (e.g., flying-truck). Lowercase letters and hyphens only."
+            helperText="Use 3-50 characters with lowercase letters, numbers, and hyphens only."
             sx={{ mb: 2 }}
             InputProps={{
               startAdornment: (

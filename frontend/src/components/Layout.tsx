@@ -199,7 +199,6 @@ export default function Layout({ children }: LayoutProps) {
         <ListItemText primary={"Recycle Bin"} />
       </ListItemButton>
       
-      
       <Divider sx={{ my: 1 }} />
       
       <ListItemButton 

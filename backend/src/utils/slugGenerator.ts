@@ -27,5 +27,5 @@ export function generateSlug(): string {
 }
 
 export function isValidSlug(slug: string): boolean {
-  return /^[a-z]+-[a-z]+$/.test(slug);
+  return /^[a-z0-9]+(-[a-z0-9]+)*$/.test(slug) && slug.length >= 3 && slug.length <= 50;
 }

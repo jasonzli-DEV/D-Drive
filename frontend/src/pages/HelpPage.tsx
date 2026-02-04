@@ -31,6 +31,10 @@ export default function HelpPage() {
       answer: 'Navigate to a file or folder, right-click and select "Share". You can grant VIEW (read-only) or EDIT (full access) permissions. Shared files appear in the "Shared" tab for recipients.',
     },
     {
+      question: 'How do public links work?',
+      answer: 'Public links allow you to share files and folders with anyone without requiring authentication. Create a link from the context menu, customize the URL slug if desired, and optionally set an expiration date. Manage all your public links from the Links page in the sidebar.',
+    },
+    {
       question: 'What is the Recycle Bin?',
       answer: 'The Recycle Bin stores deleted files for 30 days before permanent deletion. You can restore or permanently delete items from the recycle bin. When you delete a parent folder, all children are grouped together with a single restore/delete action.',
     },
