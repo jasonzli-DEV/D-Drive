@@ -18,10 +18,8 @@ import {
   Dialog,
   DialogContent,
   useTheme,
-  Chip,  Menu,
-  MenuItem,
-  ListItemIcon,
-  ListItemText,  Menu,
+  Chip,
+  Menu,
   MenuItem,
   ListItemIcon,
   ListItemText,
@@ -83,8 +81,6 @@ export default function PublicLinkPage() {
   const [previewLoading, setPreviewLoading] = useState(false);
   const [imageList, setImageList] = useState<PublicFile[]>([]);
   const [currentImageIndex, setCurrentImageIndex] = useState(0);
-  const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
-  const [contextFile, setContextFile] = useState<PublicFile | null>(null);
   const [contextMenu, setContextMenu] = useState<{ mouseX: number; mouseY: number } | null>(null);
   const [contextFile, setContextFile] = useState<PublicFile | null>(null);
 
@@ -250,42 +246,6 @@ export default function PublicLinkPage() {
     const prevFile = imageList[currentImageIndex - 1];
     if (previewUrl) window.URL.revokeObjectURL(previewUrl);
     await openPreview(prevFile, imageList);
-  };
-
-  const handleContextMenu = (event: React.MouseEvent, file: PublicFile) => {
-    event.preventDefault();
-    setContextFile(file);
-    setContextMenu(
-      contextMenu === null
-        ? { mouseX: event.clientX - 2, mouseY: event.clientY - 4 }
-        : null
-    );
-  };
-
-  const handleContextClose = () => {
-    setContextMenu(null);
-    setContextFile(null);
-  };
-
-  const handleContextDownload = () => {
-    if (contextFile) {
-      handleDownload(contextFile);
-    }
-    handleContextClose();
-  };
-
-  const handleContextPreview = () => {
-    if (contextFile && canPreview(contextFile)) {
-      openPreview(contextFile, files);
-    }
-    handleContextClose();
-  };
-
-  const handleContextOpen = () => {
-    if (contextFile && contextFile.type === 'DIRECTORY') {
-      navigateToFolder(contextFile);
-    }
-    handleContextClose();
   };
 
   const handleContextMenu = (event: React.MouseEvent, file: PublicFile) => {
