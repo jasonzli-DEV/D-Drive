@@ -17,7 +17,7 @@ import {
   useMediaQuery,
   useTheme,
 } from '@mui/material';
-import { Settings, LogOut, Menu as MenuIcon, X, FileText, BarChart3, HelpCircle } from 'lucide-react';
+import { Settings, LogOut, Menu as MenuIcon, X, FileText, BarChart3, HelpCircle, Link as LinkIcon } from 'lucide-react';
 import { Home, Play, Plus, Trash2, Share2, Star } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
@@ -165,6 +165,22 @@ export default function Layout({ children }: LayoutProps) {
           <Share2 size={18} />
         </ListItemIcon>
         <ListItemText primary={"Shared"} />
+      </ListItemButton>
+      <ListItemButton 
+        onClick={() => handleNavigation('/links')} 
+        selected={location.pathname === '/links'}
+        sx={{
+          '&.Mui-selected': {
+            bgcolor: 'action.selected',
+            boxShadow: 'inset 3px 0 0 0 ' + theme.palette.primary.main,
+            '&:hover': { bgcolor: 'action.selected' },
+          },
+        }}
+      >
+        <ListItemIcon>
+          <LinkIcon size={18} />
+        </ListItemIcon>
+        <ListItemText primary={"Links"} />
       </ListItemButton>
       <ListItemButton 
         onClick={() => handleNavigation('/recycle-bin')} 

@@ -15,6 +15,8 @@ import StarredPage from './pages/StarredPage';
 import SetupPage from './pages/SetupPage';
 import MetricsPage from './pages/MetricsPage';
 import HelpPage from './pages/HelpPage';
+import LinksPage from './pages/LinksPage';
+import PublicLinkPage from './pages/PublicLinkPage';
 import { useState, useEffect } from 'react';
 import api from './lib/api';
 
@@ -173,6 +175,18 @@ function App() {
         }
       />
       <Route
+        path="/links"
+        element={
+          isAuthenticated ? (
+            <Layout>
+              <LinksPage />
+            </Layout>
+          ) : (
+            <Navigate to="/login" replace />
+          )
+        }
+      />
+      <Route
         path="/metrics"
         element={
           isAuthenticated ? (
@@ -197,7 +211,8 @@ function App() {
         }
       />
       
-      {/* Catch-all route for invalid URLs - redirect to home */}
+      <Route path="/link/:slug" element={<PublicLinkPage />} />
+      
       <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </ErrorBoundary>

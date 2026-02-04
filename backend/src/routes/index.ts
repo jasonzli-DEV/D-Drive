@@ -9,10 +9,10 @@ import logsRoutes from './logs';
 import sharesRoutes from './shares';
 import setupRoutes from './setup';
 import metricsRoutes from './metrics';
+import publicLinksRoutes from './publicLinks';
 
 const router = Router();
 
-// Setup routes (no auth required, but protected by setup-complete check)
 router.use('/setup', setupRoutes);
 
 router.use('/auth', authRoutes);
@@ -24,5 +24,8 @@ router.use('/tasks', tasksRoutes);
 router.use('/logs', logsRoutes);
 router.use('/shares', sharesRoutes);
 router.use('/metrics', metricsRoutes);
+router.use('/public-links', publicLinksRoutes);
+
+router.use('/link', publicLinksRoutes);
 
 export default router;

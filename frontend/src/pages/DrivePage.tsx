@@ -139,6 +139,11 @@ export default function DrivePage() {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   const [shareUsername, setShareUsername] = useState('');
   const [sharePermission, setSharePermission] = useState<'VIEW' | 'EDIT'>('VIEW');
+  // Public link dialog state
+  const [publicLinkDialogOpen, setPublicLinkDialogOpen] = useState(false);
+  const [publicLinkSlug, setPublicLinkSlug] = useState('');
+  const [publicLinkExpiresAt, setPublicLinkExpiresAt] = useState('');
+  const [existingPublicLink, setExistingPublicLink] = useState<{id: string; slug: string} | null>(null);
   // Track which file ID we've loaded to prevent redundant fetches
   const loadedImageIdRef = useRef<string | null>(null);
 
@@ -382,6 +387,47 @@ export default function DrivePage() {
     },
     onError: (err: any) => {
       toast.error(err?.response?.data?.error || 'Failed to share file');
+    },
+  });
+
+  // Public link mutations
+  const createPublicLinkMutation = useMutation({
+    mutationFn: async (vars: { fileId: string; slug?: string; expiresAt?: string }) => {
+      const data: any = { fileId: vars.fileId };
+      if (vars.slug) data.slug = vars.slug;
+      if (vars.expiresAt) data.expiresAt = vars.expiresAt;
+      const resp = await api.post('/public-links', data);
+      return resp.data;
+    },
+    onSuccess: (data) => {
+      toast.success('Public link created successfully');
+      setPublicLinkDialogOpen(false);
+      setPublicLinkSlug('');
+      setPublicLinkExpiresAt('');
+      setSelectedFile(null);
+      setExistingPublicLink(null);
+      const fullUrl = `${window.location.origin}/link/${data.slug}`;
+      navigator.clipboard.writeText(fullUrl);
+      toast.success('Link copied to clipboard', { duration: 3000 });
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to create public link');
+    },
+  });
+
+  const deletePublicLinkMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const resp = await api.delete(`/public-links/${id}`);
+      return resp.data;
+    },
+    onSuccess: () => {
+      toast.success('Public link deactivated successfully');
+      setPublicLinkDialogOpen(false);
+      setSelectedFile(null);
+      setExistingPublicLink(null);
+    },
+    onError: (err: any) => {
+      toast.error(err?.response?.data?.error || 'Failed to deactivate public link');
     },
   });
 
@@ -1193,6 +1239,21 @@ export default function DrivePage() {
         setSharePermission('VIEW');
         setShareDialogOpen(true);
         break;
+      case 'publicLink':
+        (async () => {
+          try {
+            const response = await api.get('/public-links');
+            const existingLink = response.data.find((link: any) => link.fileId === menuFile.id);
+            setExistingPublicLink(existingLink || null);
+            setSelectedFile(menuFile);
+            setPublicLinkSlug('');
+            setPublicLinkExpiresAt('');
+            setPublicLinkDialogOpen(true);
+          } catch (err) {
+            toast.error('Failed to check existing link');
+          }
+        })();
+        break;
       case 'delete':
         (async () => {
           try {
@@ -1671,6 +1732,12 @@ export default function DrivePage() {
               </ListItemIcon>
               <ListItemText>Share</ListItemText>
             </MenuItem>
+            <MenuItem onClick={() => handleMenuAction('publicLink')}>
+              <ListItemIcon>
+                <Share2 size={18} />
+              </ListItemIcon>
+              <ListItemText>Create public link</ListItemText>
+            </MenuItem>
             <MenuItem onClick={() => handleMenuAction('delete')} sx={{ color: 'error.main' }}>
               <ListItemIcon sx={{ color: 'inherit' }}>
                 <Trash2 size={18} />
@@ -2034,6 +2101,120 @@ export default function DrivePage() {
           >
             {shareMutation.isPending ? 'Sharing...' : 'Share'}
           </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Public Link Dialog */}
+      <Dialog open={publicLinkDialogOpen} onClose={() => setPublicLinkDialogOpen(false)} maxWidth="sm" fullWidth>
+        <DialogTitle>
+          {existingPublicLink ? 'Manage Public Link' : 'Create Public Link'}
+        </DialogTitle>
+        <DialogContent>
+          {existingPublicLink ? (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                A public link already exists for "{selectedFile?.name}"
+              </Typography>
+              <TextField
+                fullWidth
+                label="Current Link"
+                value={`${window.location.origin}/link/${existingPublicLink.slug}`}
+                InputProps={{
+                  readOnly: true,
+                  endAdornment: (
+                    <IconButton
+                      onClick={() => {
+                        navigator.clipboard.writeText(`${window.location.origin}/link/${existingPublicLink.slug}`);
+                        toast.success('Link copied to clipboard');
+                      }}
+                      size="small"
+                    >
+                      <Copy size={18} />
+                    </IconButton>
+                  ),
+                }}
+                sx={{ mb: 2 }}
+              />
+              <Typography variant="body2" color="warning.main">
+                To create a new link, first deactivate the existing one.
+              </Typography>
+            </>
+          ) : (
+            <>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Create a public link to share "{selectedFile?.name}" with anyone
+              </Typography>
+              <Box sx={{ mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+                  Link Preview:
+                </Typography>
+                <Box
+                  sx={{
+                    p: 1.5,
+                    bgcolor: 'action.hover',
+                    borderRadius: 1,
+                    fontFamily: 'monospace',
+                    fontSize: '0.9rem',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {window.location.origin}/link/{publicLinkSlug || 'random-word'}
+                </Box>
+              </Box>
+              <TextField
+                fullWidth
+                label="Custom Slug (Optional)"
+                value={publicLinkSlug}
+                onChange={(e) => setPublicLinkSlug(e.target.value.toLowerCase())}
+                placeholder="flying-truck"
+                helperText="Leave empty for auto-generated slug. Format: word-word (lowercase, hyphens only)"
+                sx={{ mb: 2 }}
+              />
+              <TextField
+                fullWidth
+                type="datetime-local"
+                label="Expiration Date (Optional)"
+                value={publicLinkExpiresAt}
+                onChange={(e) => setPublicLinkExpiresAt(e.target.value)}
+                helperText="Leave empty for no expiration"
+                InputLabelProps={{ shrink: true }}
+              />
+            </>
+          )}
+        </DialogContent>
+        <DialogActions>
+          {existingPublicLink ? (
+            <>
+              <Button onClick={() => setPublicLinkDialogOpen(false)}>Cancel</Button>
+              <Button
+                color="error"
+                variant="contained"
+                onClick={() => deletePublicLinkMutation.mutate(existingPublicLink.id)}
+                disabled={deletePublicLinkMutation.isPending}
+              >
+                {deletePublicLinkMutation.isPending ? 'Deactivating...' : 'Deactivate Link'}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button onClick={() => setPublicLinkDialogOpen(false)}>Cancel</Button>
+              <Button
+                onClick={() => {
+                  if (selectedFile) {
+                    const data: any = { fileId: selectedFile.id };
+                    if (publicLinkSlug) data.slug = publicLinkSlug;
+                    if (publicLinkExpiresAt) data.expiresAt = new Date(publicLinkExpiresAt).toISOString();
+                    createPublicLinkMutation.mutate(data);
+                  }
+                }}
+                variant="contained"
+                disabled={createPublicLinkMutation.isPending}
+                startIcon={<Share2 size={18} />}
+              >
+                {createPublicLinkMutation.isPending ? 'Creating...' : 'Create Link'}
+              </Button>
+            </>
+          )}
         </DialogActions>
       </Dialog>
 

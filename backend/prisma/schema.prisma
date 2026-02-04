@@ -31,6 +31,7 @@ model User {
   logs        Log[]
   shares      Share[]    @relation("ShareOwner")
   sharedWithMe Share[]   @relation("ShareRecipient")
+  publicLinks PublicLink[]
 }
 
 model ApiKey {
@@ -81,7 +82,8 @@ model File {
   chunks    FileChunk[]
   
   // Sharing
-  shares    Share[]
+  shares      Share[]
+  publicLinks PublicLink[]
   
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -202,4 +204,20 @@ model Share {
   @@index([ownerId])
   @@index([sharedWithId])
   @@index([fileId])
+}
+
+model PublicLink {
+  id        String    @id @default(uuid())
+  slug      String    @unique           // Unique URL slug (e.g., "flying-truck")
+  fileId    String
+  file      File      @relation(fields: [fileId], references: [id])
+  userId    String
+  user      User      @relation(fields: [userId], references: [id])
+  expiresAt DateTime?                  // Optional expiration date
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@index([userId])
+  @@index([fileId])
+  @@index([slug])
 }
