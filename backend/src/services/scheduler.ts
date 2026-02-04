@@ -10,6 +10,62 @@ const prisma = new PrismaClient();
 const jobs: Map<string, any> = new Map();
 const running: Map<string, boolean> = new Map();
 
+// Global task queue to serialize backup tasks and prevent bandwidth competition
+const taskQueue: { taskId: string; addedAt: Date }[] = [];
+let queueProcessing = false;
+
+// Process the task queue one task at a time
+async function processTaskQueue() {
+  if (queueProcessing) return;
+  queueProcessing = true;
+  
+  while (taskQueue.length > 0) {
+    const item = taskQueue.shift()!;
+    const { taskId, addedAt } = item;
+    
+    // Skip if this task is already running (shouldn't happen but be safe)
+    if (running.get(taskId)) {
+      logger.info('Skipping queued task; already running', { taskId });
+      continue;
+    }
+    
+    running.set(taskId, true);
+    const waitTime = Date.now() - addedAt.getTime();
+    logger.info('Processing queued task', { taskId, queueWaitMs: waitTime, remainingInQueue: taskQueue.length });
+    
+    try {
+      await runTaskNow(taskId);
+    } catch (err) {
+      logger.error('Scheduled task run failed', { taskId, err });
+    } finally {
+      running.set(taskId, false);
+    }
+  }
+  
+  queueProcessing = false;
+}
+
+// Add a task to the queue (called by cron scheduler)
+function queueTask(taskId: string) {
+  // Check if task is already in queue
+  if (taskQueue.some(t => t.taskId === taskId)) {
+    logger.info('Task already in queue, skipping', { taskId });
+    return;
+  }
+  
+  // Check if task is currently running
+  if (running.get(taskId)) {
+    logger.info('Task already running, not adding to queue', { taskId });
+    return;
+  }
+  
+  taskQueue.push({ taskId, addedAt: new Date() });
+  logger.info('Task added to queue', { taskId, queuePosition: taskQueue.length });
+  
+  // Start processing if not already
+  processTaskQueue();
+}
+
 export async function initScheduler() {
   try {
     const tasks = await prisma.task.findMany({ where: { enabled: true } });
@@ -65,19 +121,10 @@ export function scheduleTask(taskId: string, expression: string) {
     }
 
     const job = cron.schedule(expression, async () => {
-      if (running.get(taskId)) {
-        logger.info('Skipping scheduled run; previous run still in progress', { taskId });
-        return;
-      }
-      running.set(taskId, true);
-      try {
-        logger.info('Scheduled task triggered', { taskId });
-        await runTaskNow(taskId);
-      } catch (err) {
-        logger.error('Scheduled task run failed', { taskId, err });
-      } finally {
-        running.set(taskId, false);
-      }
+      // Use global queue instead of running directly
+      // This serializes all backup tasks to prevent bandwidth competition
+      logger.info('Scheduled task triggered, adding to queue', { taskId });
+      queueTask(taskId);
     });
 
     jobs.set(taskId, job);

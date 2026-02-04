@@ -1,4 +1,5 @@
 import { Client, GatewayIntentBits, TextChannel, Message, AttachmentBuilder } from 'discord.js';
+import { REST } from '@discordjs/rest';
 import { logger } from '../utils/logger';
 
 let discordClient: Client;
@@ -7,11 +8,17 @@ let storageChannelId: string;
 export const DISCORD_MAX = 8 * 1024 * 1024; // 8MB (conservative)
 
 export async function initDiscordBot(): Promise<Client> {
+  // Configure REST with longer timeout for slow connections (5 minutes instead of default 60s)
+  // This prevents AbortError on Pi's slow 20 Mbps upload when uploading 8MB chunks
+  const rest = new REST({ timeout: 300_000 }); // 5 minutes timeout
+  rest.setToken(process.env.DISCORD_BOT_TOKEN!);
+  
   const client = new Client({
     intents: [
       GatewayIntentBits.Guilds,
       GatewayIntentBits.GuildMessages,
-    ]
+    ],
+    rest: { timeout: 300_000 }, // Also set on client options
   });
 
   storageChannelId = process.env.DISCORD_CHANNEL_ID || '';
