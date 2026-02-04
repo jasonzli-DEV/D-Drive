@@ -1,0 +1,45 @@
+# Page snapshot
+
+```yaml
+- generic [ref=e7]:
+  - generic [ref=e9]:
+    - img "D-Drive" [ref=e11]
+    - heading "Discord-powered cloud storage with unlimited space. Simple, fast, and developer-friendly." [level=5] [ref=e12]:
+      - text: Discord-powered cloud storage with
+      - strong [ref=e13]: unlimited space
+      - text: . Simple, fast, and developer-friendly.
+    - generic [ref=e14]:
+      - generic [ref=e16]: Self-hosted
+      - generic [ref=e18]: Open Source
+      - generic [ref=e20]: No Limits
+    - button "Continue with Discord" [ref=e21] [cursor=pointer]:
+      - img [ref=e23]
+      - text: Continue with Discord
+  - generic [ref=e26]:
+    - heading "Why D-Drive?" [level=6] [ref=e27]
+    - generic [ref=e28]:
+      - generic [ref=e30]:
+        - img [ref=e31]
+        - heading "Unlimited Storage" [level=6] [ref=e33]
+        - generic [ref=e34]: Store files using Discord as backend
+      - generic [ref=e36]:
+        - img [ref=e37]
+        - heading "Encrypted" [level=6] [ref=e39]
+        - generic [ref=e40]: AES-256 encryption for your files
+      - generic [ref=e42]:
+        - img [ref=e43]
+        - heading "Fast Transfers" [level=6] [ref=e45]
+        - generic [ref=e46]: Parallel chunk uploads & downloads
+      - generic [ref=e48]:
+        - img [ref=e49]
+        - heading "SFTP Backups" [level=6] [ref=e52]
+        - generic [ref=e53]: Automated server backup tasks
+      - generic [ref=e55]:
+        - img [ref=e56]
+        - heading "CLI Support" [level=6] [ref=e58]
+        - generic [ref=e59]: Developer-friendly command line
+      - generic [ref=e61]:
+        - img [ref=e62]
+        - heading "30GB+ Files" [level=6] [ref=e64]
+        - generic [ref=e65]: No file size limitations
+```
