@@ -315,9 +315,19 @@ export default function DrivePage() {
       const response = await api.get(`/files${params}`);
       return response.data as FileItem[];
     },
-    staleTime: 30000, // Consider data fresh for 30 seconds
-    gcTime: 5 * 60 * 1000, // Keep in cache for 5 minutes (formerly cacheTime)
+    staleTime: 30000,
+    gcTime: 5 * 60 * 1000,
   });
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const response = await api.get('/public-links');
+        const fileIds = new Set<string>(response.data.map((link: any) => link.fileId));
+        setExistingPublicLinks(fileIds);
+      } catch (err) {}
+    })();
+  }, []);
 
   const copyMutation = useMutation({
     mutationFn: async (vars: string | { id: string; encrypt?: boolean }) => {
