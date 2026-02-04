@@ -182,6 +182,9 @@ export default function Layout({ children }: LayoutProps) {
         </ListItemIcon>
         <ListItemText primary={"Links"} />
       </ListItemButton>
+      
+      <Divider sx={{ my: 1 }} />
+      
       <ListItemButton 
         onClick={() => handleNavigation('/recycle-bin')} 
         selected={location.pathname === '/recycle-bin'}
@@ -198,8 +201,6 @@ export default function Layout({ children }: LayoutProps) {
         </ListItemIcon>
         <ListItemText primary={"Recycle Bin"} />
       </ListItemButton>
-      
-      <Divider sx={{ my: 1 }} />
       
       <ListItemButton 
         onClick={() => handleNavigation('/metrics')} 
