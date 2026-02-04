@@ -2132,6 +2132,21 @@ router.post('/upload/stream', authenticate, async (req: Request, res: Response) 
 
                 fileProcessed = true;
                 logger.info(`Streaming upload complete for file ${fileRecord.id}, chunks=${chunks.length}`);
+                
+                // Create UPLOAD log
+                try {
+                  const { createLog } = require('./logs');
+                  await createLog(userId, 'UPLOAD', `Uploaded file: ${fileRecord.name}`, true, undefined, {
+                    fileId: fileRecord.id,
+                    fileName: fileRecord.name,
+                    fileSize: totalBytes,
+                    encrypted: shouldEncrypt,
+                    chunks: chunks.length,
+                  });
+                } catch (logErr) {
+                  logger.warn('Failed to create upload log:', logErr);
+                }
+                
                 // respond now (but busboy 'finish' will also fire)
                 if (!res.headersSent) {
                   res.json({ file: serializeFile(await prisma.file.findUnique({ where: { id: fileRecord.id } })), chunks: chunks.length, storedName: fileRecord.name });
