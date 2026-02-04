@@ -55,7 +55,8 @@ export default function HelpPage() {
   ];
 
   return (
-    <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
+    <Box sx={{ maxWidth: 1800, mx: 'auto', width: '100%' }}>
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 3 }}>
         <HelpCircle size={32} />
         <Typography variant="h4">Help & Documentation</Typography>
@@ -157,5 +158,6 @@ export default function HelpPage() {
           </Card>
         </Box>
       </Paper>
+    </Box>
   );
 }

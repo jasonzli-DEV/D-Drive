@@ -98,7 +98,8 @@ export default function LogsPage() {
   };
 
   return (
-    <Box sx={{ maxWidth: 1800, mx: 'auto', width: '100%', py: 4 }}>
+    <Box sx={{ maxWidth: 1800, mx: 'auto', width: '100%' }}>
+      <Paper sx={{ p: 3, minHeight: 'calc(100vh - 140px)' }}>
       <Box sx={{ mb: 4 }}>
         <Typography variant="h4" gutterBottom>
           Activity Logs
@@ -108,7 +109,7 @@ export default function LogsPage() {
         </Typography>
       </Box>
 
-      <Paper sx={{ mb: 3, p: 2 }}>
+      <Paper variant="outlined" sx={{ mb: 3, p: 2 }}>
         <ToggleButtonGroup
           value={filter}
           exclusive
@@ -202,6 +203,7 @@ export default function LogsPage() {
           </Table>
         </TableContainer>
       )}
+      </Paper>
     </Box>
   );
 }

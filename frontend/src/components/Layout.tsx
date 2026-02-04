@@ -23,7 +23,7 @@ import { useNavigate } from 'react-router-dom';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth';
 
-const DRAWER_WIDTH = 220;
+const DRAWER_WIDTH = 240;
 
 interface LayoutProps {
   children: React.ReactNode;
