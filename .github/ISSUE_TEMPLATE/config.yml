@@ -1,0 +1,14 @@
+blank_issues_enabled: false
+contact_links: []
+
+issue_template:
+  - name: Bug report
+    about: Create a report to help us improve
+    title: "[BUG] "
+    labels: ["bug"]
+  - name: Suggestion
+    about: Suggest a new feature or improvement
+    labels: ["enhancement"]
+  - name: Something else
+    about: For questions or issues not covered by other templates
+    labels: ["question"]
