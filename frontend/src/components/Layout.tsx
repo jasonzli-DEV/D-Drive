@@ -328,6 +328,8 @@ export default function Layout({ children }: LayoutProps) {
             sx={{
               display: { xs: 'none', md: 'block' },
               width: DRAWER_WIDTH,
+              minWidth: DRAWER_WIDTH,
+              flexShrink: 0,
               bgcolor: 'background.paper',
               borderRight: 1,
               borderColor: 'divider',
