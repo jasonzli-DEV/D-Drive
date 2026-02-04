@@ -158,5 +158,3 @@ test.describe('Public Links Feature', () => {
     expect(hasBody).toBe(true);
   });
 });
-  });
-});
