@@ -416,8 +416,6 @@ export default function DrivePage() {
       return { ...resp.data, fileId: vars.fileId };
     },
     onSuccess: (data) => {
-      const fullUrl = `${window.location.origin}/link/${data.slug}`;
-      navigator.clipboard.writeText(fullUrl);
       setPublicLinkDialogOpen(false);
       setPublicLinkSlug('');
       setPublicLinkExpiresAt('');
@@ -426,6 +424,8 @@ export default function DrivePage() {
       }
       setSelectedFile(null);
       setExistingPublicLink(null);
+      const fullUrl = `${window.location.origin}/link/${data.slug}`;
+      navigator.clipboard.writeText(fullUrl);
       toast.success('Public link created and copied to clipboard');
     },
   });
