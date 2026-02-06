@@ -145,6 +145,26 @@ export default function DrivePage() {
   const [existingPublicLink, setExistingPublicLink] = useState<{id: string; slug: string} | null>(null);
   const [existingPublicLinks, setExistingPublicLinks] = useState<Set<string>>(new Set());
   const loadedImageIdRef = useRef<string | null>(null);
+  
+  // Confirm dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+
+  // Confirm dialog helper
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmTitle(title);
+    setConfirmMessage(message);
+    setConfirmAction(() => onConfirm);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = () => {
+    if (confirmAction) confirmAction();
+    setConfirmOpen(false);
+    setConfirmAction(null);
+  };
 
   const isImageFile = (f: FileItem) => {
     if (f.mimeType && f.mimeType.startsWith('image/')) return true;
@@ -886,23 +906,26 @@ export default function DrivePage() {
 
   const handleBulkDelete = async () => {
     if (selectedIds.length === 0) return;
-    if (!window.confirm(`Delete ${selectedIds.length} selected items? This is irreversible.`)) return;
-    setBulkProcessing(true);
-    // Build a work list at chunk granularity. For files we count chunks; for directories we
-    // collect nested files and count their chunks, then schedule directory deletions after.
-    const workFiles: Array<{ id: string; name?: string; chunks: number }> = [];
-    const workDirs: string[] = [];
-    const seen = new Set<string>();
+    showConfirm(
+      'Delete Items',
+      `Are you sure you want to delete ${selectedIds.length} selected item${selectedIds.length > 1 ? 's' : ''}? This is irreversible.`,
+      async () => {
+        setBulkProcessing(true);
+        // Build a work list at chunk granularity. For files we count chunks; for directories we
+        // collect nested files and count their chunks, then schedule directory deletions after.
+        const workFiles: Array<{ id: string; name?: string; chunks: number }> = [];
+        const workDirs: string[] = [];
+        const seen = new Set<string>();
 
-    // helper to fetch chunk count safely
-    const fetchChunkCount = async (fid: string) => {
-      try {
-        const m = await api.get(`/files/${fid}`);
-        return Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 1);
-      } catch (err) {
-        return 1;
-      }
-    };
+        // helper to fetch chunk count safely
+        const fetchChunkCount = async (fid: string) => {
+          try {
+            const m = await api.get(`/files/${fid}`);
+            return Array.isArray(m.data.chunks) ? m.data.chunks.length : (m.data.chunkCount || 1);
+          } catch (err) {
+            return 1;
+          }
+        };
 
     for (const id of selectedIds) {
       if (seen.has(id)) continue;
@@ -966,6 +989,8 @@ export default function DrivePage() {
       setBulkProgress(null);
     }, 1500);
     queryClient.invalidateQueries({ queryKey: ['files'] });
+      }
+    );
   };
 
   const handleOpenBulkMove = () => {
@@ -1292,19 +1317,32 @@ export default function DrivePage() {
               const resp = await api.get(`/files?parentId=${menuFile.id}`);
               const children = resp.data as FileItem[];
               if (children && children.length > 0) {
-                if (!window.confirm(
-                  `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`
-                )) return;
-                await performRecursiveDelete(menuFile);
+                showConfirm(
+                  'Delete Folder',
+                  `"${menuFile.name}" is not empty and contains ${children.length} item${children.length > 1 ? 's' : ''}. Deleting it will permanently remove all contents. Continue?`,
+                  async () => {
+                    await performRecursiveDelete(menuFile);
+                  }
+                );
                 return;
               }
 
               // empty directory: single confirm, then delete with progress bar
-              if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
-              await performSingleDelete(menuFile);
+              showConfirm(
+                'Delete Folder',
+                `Are you sure you want to delete ${menuFile.name}?`,
+                async () => {
+                  await performSingleDelete(menuFile);
+                }
+              );
             } else {
-              if (!window.confirm(`Are you sure you want to delete ${menuFile.name}?`)) return;
-              await performSingleDelete(menuFile);
+              showConfirm(
+                'Delete File',
+                `Are you sure you want to delete ${menuFile.name}?`,
+                async () => {
+                  await performSingleDelete(menuFile);
+                }
+              );
             }
           } catch (err) {
             toast.error('Failed to verify folder contents');
@@ -2470,6 +2508,20 @@ export default function DrivePage() {
       )}
       
       <FolderSelectDialog open={bulkMoveOpen} onClose={() => setBulkMoveOpen(false)} onSelect={(id) => handleBulkMoveSelect(id)} title="Move selected items" />
+      
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>{confirmTitle}</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirm} color="error" variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
       
     </Box>
   );

@@ -8,7 +8,7 @@ import {
   DialogActions,
   TextField,
   FormControlLabel,
-  Checkbox,
+  Switch,
   Select,
   MenuItem,
   InputLabel,
@@ -287,8 +287,28 @@ export default function TasksPage() {
   const [taskMenuAnchor, setTaskMenuAnchor] = useState<null | HTMLElement>(null);
   const [taskMenuPosition, setTaskMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [selectedTask, setSelectedTask] = useState<any | null>(null);
+  
+  // Confirm dialog state
+  const [confirmOpen, setConfirmOpen] = useState(false);
+  const [confirmTitle, setConfirmTitle] = useState('');
+  const [confirmMessage, setConfirmMessage] = useState('');
+  const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
 
   useEffect(() => { if (!open) setForm(defaultForm); }, [open]);
+
+  // Confirm dialog helper
+  const showConfirm = (title: string, message: string, onConfirm: () => void) => {
+    setConfirmTitle(title);
+    setConfirmMessage(message);
+    setConfirmAction(() => onConfirm);
+    setConfirmOpen(true);
+  };
+
+  const handleConfirm = () => {
+    if (confirmAction) confirmAction();
+    setConfirmOpen(false);
+    setConfirmAction(null);
+  };
 
   function openForEdit(t: any) {
     setForm({
@@ -356,14 +376,17 @@ export default function TasksPage() {
         })();
         break;
       case 'delete':
-        (async () => {
-          if (!window.confirm(`Delete task "${selectedTask.name}"?`)) return;
-          try {
-            await deleteMutation.mutateAsync(selectedTask.id);
-          } catch (e: any) {
-            toast.error(e?.response?.data?.error || 'Failed to delete task');
+        showConfirm(
+          'Delete Task',
+          `Are you sure you want to delete task "${selectedTask.name}"?`,
+          async () => {
+            try {
+              await deleteMutation.mutateAsync(selectedTask.id);
+            } catch (e: any) {
+              toast.error(e?.response?.data?.error || 'Failed to delete task');
+            }
           }
-        })();
+        );
         break;
       case 'new':
         setOpen(true);
@@ -798,15 +821,20 @@ export default function TasksPage() {
                     </IconButton>
                   ) : isRunning ? (
                     <IconButton 
-                      onClick={async () => { 
-                        if (!window.confirm(`Stop running task "${t.name}"?`)) return;
-                        try { 
-                          await api.post(`/tasks/${t.id}/stop`);
-                          toast.success('Task stopped');
-                          queryClient.invalidateQueries({ queryKey: ['tasks'] });
-                        } catch (e:any) { 
-                          toast.error(e?.response?.data?.error || 'Failed to stop task'); 
-                        } 
+                      onClick={() => {
+                        showConfirm(
+                          'Stop Task',
+                          `Are you sure you want to stop running task "${t.name}"?`,
+                          async () => {
+                            try { 
+                              await api.post(`/tasks/${t.id}/stop`);
+                              toast.success('Task stopped');
+                              queryClient.invalidateQueries({ queryKey: ['tasks'] });
+                            } catch (e:any) { 
+                              toast.error(e?.response?.data?.error || 'Failed to stop task'); 
+                            }
+                          }
+                        );
                       }} 
                       title="Stop task"
                       color="error"
@@ -830,9 +858,14 @@ export default function TasksPage() {
                     <Edit size={18} />
                   </IconButton>
                   <IconButton 
-                    onClick={async () => { 
-                      if (!window.confirm(`Delete task "${t.name}"?`)) return;
-                      try { await deleteMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to delete task'); } 
+                    onClick={() => {
+                      showConfirm(
+                        'Delete Task',
+                        `Are you sure you want to delete task "${t.name}"?`,
+                        async () => {
+                          try { await deleteMutation.mutateAsync(t.id); } catch (e:any) { toast.error(e?.response?.data?.error || 'Failed to delete task'); }
+                        }
+                      );
                     }} 
                     title="Delete"
                     color="error"
@@ -854,7 +887,7 @@ export default function TasksPage() {
         <DialogContent>
           <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} error={!!errors.name} helperText={errors.name || ''} />
           <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText={errors.cron || describeCron(form.cron)} error={!!errors.cron} />
-          <FormControlLabel control={<Checkbox checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
+          <FormControlLabel control={<Switch checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
 
             <Box sx={{ display: 'flex', gap: 2 }}>
             <TextField label="SFTP Host" value={form.sftpHost} onChange={(e) => setForm({ ...form, sftpHost: e.target.value })} fullWidth error={!!errors.sftpHost} helperText={errors.sftpHost || ''} />
@@ -889,8 +922,8 @@ export default function TasksPage() {
 
             <Box sx={{ mt: 2 }}>
             <Typography variant="subtitle2">Authentication methods</Typography>
-            <FormControlLabel control={<Checkbox checked={form.authPassword} onChange={(e) => setForm({ ...form, authPassword: e.target.checked })} />} label="Attempt password" />
-            <FormControlLabel control={<Checkbox checked={form.authPrivateKey} onChange={(e) => setForm({ ...form, authPrivateKey: e.target.checked })} />} label="Attempt private key" />
+            <FormControlLabel control={<Switch checked={form.authPassword} onChange={(e) => setForm({ ...form, authPassword: e.target.checked })} />} label="Attempt password" />
+            <FormControlLabel control={<Switch checked={form.authPrivateKey} onChange={(e) => setForm({ ...form, authPrivateKey: e.target.checked })} />} label="Attempt private key" />
             {form.authPassword && (
               <TextField label="SFTP Password" type="password" fullWidth margin="normal" value={form.sftpPassword} onChange={(e) => setForm({ ...form, sftpPassword: e.target.value })} error={!!errors.auth} />
             )}
@@ -907,12 +940,12 @@ export default function TasksPage() {
           </Box>
           
           <FormControlLabel 
-            control={<Checkbox checked={form.skipPrescan} onChange={(e) => setForm({ ...form, skipPrescan: e.target.checked })} />} 
+            control={<Switch checked={form.skipPrescan} onChange={(e) => setForm({ ...form, skipPrescan: e.target.checked })} />} 
             label="Skip file scan (faster start, no progress percentage)" 
           />
           
           <FormControlLabel 
-            control={<Checkbox checked={form.cacheScanSize} onChange={(e) => setForm({ ...form, cacheScanSize: e.target.checked })} disabled={!form.skipPrescan} />} 
+            control={<Switch checked={form.cacheScanSize} onChange={(e) => setForm({ ...form, cacheScanSize: e.target.checked })} disabled={!form.skipPrescan} />} 
             label="Cache scan size (saves last known size when scan is disabled)" 
           />
           
@@ -927,7 +960,7 @@ export default function TasksPage() {
           />
           
           <FormControlLabel 
-            control={<Checkbox checked={form.useSwap} onChange={(e) => setForm({ ...form, useSwap: e.target.checked })} />} 
+            control={<Switch checked={form.useSwap} onChange={(e) => setForm({ ...form, useSwap: e.target.checked })} />} 
             label="Use swap memory (larger batches, slower disk I/O)" 
           />
 
@@ -985,6 +1018,20 @@ export default function TasksPage() {
           </MenuItem>
         )}
       </Menu>
+
+      {/* Confirmation Dialog */}
+      <Dialog open={confirmOpen} onClose={() => setConfirmOpen(false)}>
+        <DialogTitle>{confirmTitle}</DialogTitle>
+        <DialogContent>
+          <Typography>{confirmMessage}</Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleConfirm} color="error" variant="contained">
+            Confirm
+          </Button>
+        </DialogActions>
+      </Dialog>
       </Paper>
     </Box>
   );
