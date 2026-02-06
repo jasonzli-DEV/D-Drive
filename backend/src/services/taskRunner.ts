@@ -891,7 +891,7 @@ export async function runTaskNow(taskId: string) {
             
             // Only include swap if task.useSwap is enabled (default: false)
             let swapFree = 0;
-            if (task.useSwap) {
+            if ((task as any)?.useSwap) {
               // Try to read swap info from /proc/meminfo (Linux)
               try {
                 const fs = require('fs');
