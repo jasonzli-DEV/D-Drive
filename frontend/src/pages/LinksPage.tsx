@@ -22,6 +22,10 @@ import {
   useTheme,
   InputAdornment,
   Tooltip,
+  Menu,
+  MenuItem,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Link as LinkIcon,
@@ -77,6 +81,9 @@ export default function LinksPage() {
   const [deleteDialog, setDeleteDialog] = useState<PublicLink | null>(null);
   const [newSlug, setNewSlug] = useState('');
   const [newExpiresAt, setNewExpiresAt] = useState('');
+  const [linkMenuAnchor, setLinkMenuAnchor] = useState<null | HTMLElement>(null);
+  const [linkMenuPosition, setLinkMenuPosition] = useState<{ top: number; left: number } | null>(null);
+  const [selectedLink, setSelectedLink] = useState<PublicLink | null>(null);
 
   const { data: links, isLoading } = useQuery({
     queryKey: ['public-links'],
@@ -213,6 +220,47 @@ export default function LinksPage() {
     return file.mimeType === 'application/pdf' || file.name.endsWith('.pdf');
   };
 
+  const handleLinkContextMenu = (e: React.MouseEvent, link: PublicLink) => {
+    e.preventDefault();
+    setSelectedLink(link);
+    const clientX = e.clientX;
+    const clientY = e.clientY;
+    const approxMenuWidth = 180;
+    const approxMenuHeight = 170;
+    const margin = 8;
+    const maxLeft = Math.max(margin, window.innerWidth - approxMenuWidth - margin);
+    const maxTop = Math.max(margin, window.innerHeight - approxMenuHeight - margin);
+    const left = Math.min(clientX, maxLeft);
+    const top = Math.min(clientY, maxTop);
+    setLinkMenuAnchor(null);
+    setLinkMenuPosition({ top, left });
+  };
+
+  const handleCloseLinkMenu = () => {
+    setLinkMenuAnchor(null);
+    setLinkMenuPosition(null);
+    setSelectedLink(null);
+  };
+
+  const handleLinkMenuAction = (action: string) => {
+    if (!selectedLink) return;
+    switch (action) {
+      case 'open':
+        handleOpenLink(selectedLink.slug);
+        break;
+      case 'copy':
+        handleCopyLink(selectedLink.slug);
+        break;
+      case 'edit':
+        handleEditOpen(selectedLink);
+        break;
+      case 'delete':
+        setDeleteDialog(selectedLink);
+        break;
+    }
+    handleCloseLinkMenu();
+  };
+
   return (
     <Box sx={{ maxWidth: 1800, mx: 'auto', width: '100%' }}>
       <Paper sx={{ p: { xs: 2, sm: 3 }, minHeight: 'calc(100vh - 140px)' }}>
@@ -259,7 +307,12 @@ export default function LinksPage() {
               </TableHead>
               <TableBody>
                 {links.map((link) => (
-                  <TableRow key={link.id} hover>
+                  <TableRow
+                    key={link.id}
+                    hover
+                    onContextMenu={(e) => handleLinkContextMenu(e, link)}
+                    sx={{ cursor: 'context-menu' }}
+                  >
                     <TableCell>
                       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                         {link.file.type === 'DIRECTORY' ? (
@@ -431,6 +484,47 @@ export default function LinksPage() {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Context Menu for Links */}
+      <Menu
+        anchorEl={linkMenuAnchor}
+        anchorReference={linkMenuPosition ? 'anchorPosition' : 'anchorEl'}
+        anchorPosition={linkMenuPosition ? { top: linkMenuPosition.top, left: linkMenuPosition.left } : undefined}
+        open={Boolean(linkMenuAnchor) || Boolean(linkMenuPosition)}
+        onClose={handleCloseLinkMenu}
+        sx={{
+          '& .MuiPaper-root': {
+            borderRadius: 2,
+            boxShadow: '0 4px 20px rgba(0,0,0,0.15)',
+            minWidth: 180,
+          },
+        }}
+      >
+        <MenuItem onClick={() => handleLinkMenuAction('open')}>
+          <ListItemIcon>
+            <ExternalLink size={18} />
+          </ListItemIcon>
+          <ListItemText>Open link</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleLinkMenuAction('copy')}>
+          <ListItemIcon>
+            <Copy size={18} />
+          </ListItemIcon>
+          <ListItemText>Copy link</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleLinkMenuAction('edit')}>
+          <ListItemIcon>
+            <Edit size={18} />
+          </ListItemIcon>
+          <ListItemText>Edit link</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={() => handleLinkMenuAction('delete')} sx={{ color: 'error.main' }}>
+          <ListItemIcon sx={{ color: 'inherit' }}>
+            <Trash2 size={18} />
+          </ListItemIcon>
+          <ListItemText>Deactivate link</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 }
