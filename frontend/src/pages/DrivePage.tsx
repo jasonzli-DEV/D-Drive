@@ -425,15 +425,17 @@ export default function DrivePage() {
       setSelectedFile(null);
       setExistingPublicLink(null);
       
-      toast.success('Public link created!');
-      
       const fullUrl = `${window.location.origin}/link/${data.slug}`;
       if (navigator.clipboard && navigator.clipboard.writeText) {
         navigator.clipboard.writeText(fullUrl).then(() => {
-          toast.success('Link copied to clipboard!');
+          toast.success('Public link created and copied to clipboard!');
         }).catch((err) => {
           console.error('Failed to copy:', err);
+          toast.success('Public link created!');
+          toast.error('Failed to copy link to clipboard');
         });
+      } else {
+        toast.success('Public link created!');
       }
     },
   });
