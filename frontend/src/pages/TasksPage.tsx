@@ -25,6 +25,8 @@ import {
   ListItemIcon,
   ListItemText,
   Paper,
+  Tabs,
+  Tab,
 } from '@mui/material';
 import { Plus, Play, Trash, Edit, GripVertical, Square } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -293,8 +295,11 @@ export default function TasksPage() {
   const [confirmTitle, setConfirmTitle] = useState('');
   const [confirmMessage, setConfirmMessage] = useState('');
   const [confirmAction, setConfirmAction] = useState<(() => void) | null>(null);
+  
+  // Dialog tab state
+  const [dialogTab, setDialogTab] = useState(0);
 
-  useEffect(() => { if (!open) setForm(defaultForm); }, [open]);
+  useEffect(() => { if (!open) { setForm(defaultForm); setDialogTab(0); } }, [open]);
 
   // Confirm dialog helper
   const showConfirm = (title: string, message: string, onConfirm: () => void) => {
@@ -883,88 +888,115 @@ export default function TasksPage() {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
-        <DialogContent>
-          <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} error={!!errors.name} helperText={errors.name || ''} />
-          <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText={errors.cron || describeCron(form.cron)} error={!!errors.cron} />
-          <FormControlLabel control={<Switch checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
+        <DialogTitle sx={{ pb: 0 }}>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
+        <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
+          <Tabs value={dialogTab} onChange={(_, v) => setDialogTab(v)} variant="scrollable" scrollButtons="auto">
+            <Tab label="General" />
+            <Tab label="Connection" />
+            <Tab label="Authentication" />
+            <Tab label="Advanced" />
+          </Tabs>
+        </Box>
+        <DialogContent sx={{ minHeight: 320 }}>
+          {/* General Tab */}
+          {dialogTab === 0 && (
+            <Box>
+              <TextField label="Name" fullWidth margin="normal" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} error={!!errors.name} helperText={errors.name || ''} />
+              <TextField label="Cron (cron expression)" fullWidth margin="normal" value={form.cron} onChange={(e) => setForm({ ...form, cron: e.target.value })} helperText={errors.cron || describeCron(form.cron)} error={!!errors.cron} />
+              <FormControlLabel control={<Switch checked={form.enabled} onChange={(e) => setForm({ ...form, enabled: e.target.checked })} />} label="Enabled" />
+              
+              <Box sx={{ mt: 2 }}>
+                <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
+                <Button variant="outlined" onClick={() => setDestDialogOpen(true)} sx={{ mb: 1 }}>
+                  {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || (form.id && (tasks as any[])?.find((t:any)=>t.id===form.id)?.destinationPath) || 'Selected folder') : '/'}
+                </Button>
+              </Box>
+              
+              <FormControl fullWidth margin="normal">
+                <InputLabel id="compress-label">Compress</InputLabel>
+                <Select labelId="compress-label" value={form.compress} label="Compress" onChange={(e) => setForm({ ...form, compress: e.target.value as string })}>
+                  <MenuItem value={'NONE'}>None</MenuItem>
+                  <MenuItem value={'ZIP'}>ZIP</MenuItem>
+                  <MenuItem value={'TAR_GZ'}>TAR.GZ</MenuItem>
+                </Select>
+              </FormControl>
+              
+              <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} error={!!errors.maxFiles} helperText={errors.maxFiles || ''} />
+            </Box>
+          )}
 
-            <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="SFTP Host" value={form.sftpHost} onChange={(e) => setForm({ ...form, sftpHost: e.target.value })} fullWidth error={!!errors.sftpHost} helperText={errors.sftpHost || ''} />
-            <TextField label="Port" type="number" value={form.sftpPort} onChange={(e) => setForm({ ...form, sftpPort: Number(e.target.value) })} sx={{ width: 120 }} />
-          </Box>
+          {/* Connection Tab */}
+          {dialogTab === 1 && (
+            <Box>
+              <Box sx={{ display: 'flex', gap: 2, mt: 1 }}>
+                <TextField label="SFTP Host" value={form.sftpHost} onChange={(e) => setForm({ ...form, sftpHost: e.target.value })} fullWidth error={!!errors.sftpHost} helperText={errors.sftpHost || ''} />
+                <TextField label="Port" type="number" value={form.sftpPort} onChange={(e) => setForm({ ...form, sftpPort: Number(e.target.value) })} sx={{ width: 120 }} />
+              </Box>
+              
+              <Box sx={{ display: 'flex', gap: 2, mt: 2 }}>
+                <TextField label="SFTP User" value={form.sftpUser} onChange={(e) => setForm({ ...form, sftpUser: e.target.value })} fullWidth error={!!errors.sftpUser} helperText={errors.sftpUser || ''} />
+                <TextField label="Remote Path" value={form.sftpPath} onChange={(e) => setForm({ ...form, sftpPath: e.target.value })} fullWidth error={!!errors.sftpPath} helperText={errors.sftpPath || ''} />
+              </Box>
+            </Box>
+          )}
 
-          <Box sx={{ display: 'flex', gap: 2 }}>
-            <TextField label="SFTP User" value={form.sftpUser} onChange={(e) => setForm({ ...form, sftpUser: e.target.value })} fullWidth error={!!errors.sftpUser} helperText={errors.sftpUser || ''} />
-            <TextField label="Remote Path" value={form.sftpPath} onChange={(e) => setForm({ ...form, sftpPath: e.target.value })} fullWidth error={!!errors.sftpPath} helperText={errors.sftpPath || ''} />
-          </Box>
+          {/* Authentication Tab */}
+          {dialogTab === 2 && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Select which authentication methods to use when connecting to the SFTP server.
+              </Typography>
+              <FormControlLabel control={<Switch checked={form.authPassword} onChange={(e) => setForm({ ...form, authPassword: e.target.checked })} />} label="Use password authentication" />
+              {form.authPassword && (
+                <TextField label="SFTP Password" type="password" fullWidth margin="normal" value={form.sftpPassword} onChange={(e) => setForm({ ...form, sftpPassword: e.target.value })} error={!!errors.auth} />
+              )}
+              
+              <FormControlLabel control={<Switch checked={form.authPrivateKey} onChange={(e) => setForm({ ...form, authPrivateKey: e.target.checked })} />} label="Use private key authentication" sx={{ mt: form.authPassword ? 2 : 0 }} />
+              {form.authPrivateKey && (
+                <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} error={!!errors.auth} placeholder="Paste your private key here..." />
+              )}
+              {errors.auth && <Typography color="error" variant="body2" sx={{ mt: 1 }}>{errors.auth}</Typography>}
+            </Box>
+          )}
 
-          {/* SFTP private key input moved into authentication section below */}
-
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2" sx={{ mb: 1 }}>Destination Folder</Typography>
-            <Button variant="outlined" onClick={() => setDestDialogOpen(true)} sx={{ mb: 1 }}>
-              {form.destinationId ? (allFolders?.find((f:any)=>f.id===form.destinationId)?.path || (form.id && (tasks as any[])?.find((t:any)=>t.id===form.id)?.destinationPath) || 'Selected folder') : '/'}
-            </Button>
-          </Box>
+          {/* Advanced Tab */}
+          {dialogTab === 3 && (
+            <Box sx={{ mt: 1 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Fine-tune backup behavior and performance settings.
+              </Typography>
+              
+              <FormControlLabel 
+                control={<Switch checked={form.skipPrescan} onChange={(e) => setForm({ ...form, skipPrescan: e.target.checked })} />} 
+                label="Skip file scan (faster start, no progress percentage)" 
+              />
+              
+              <FormControlLabel 
+                control={<Switch checked={form.cacheScanSize} onChange={(e) => setForm({ ...form, cacheScanSize: e.target.checked })} disabled={!form.skipPrescan} />} 
+                label="Cache scan size (saves last known size when scan is disabled)" 
+                sx={{ display: 'block', mt: 1 }}
+              />
+              
+              <TextField 
+                label="Exclude paths (comma-separated)" 
+                fullWidth 
+                margin="normal" 
+                value={form.excludePaths} 
+                onChange={(e) => setForm({ ...form, excludePaths: e.target.value })}
+                helperText="Paths to skip, e.g.: bluemap, dynmap, logs"
+                placeholder="bluemap, dynmap, logs"
+              />
+              
+              <FormControlLabel 
+                control={<Switch checked={form.useSwap} onChange={(e) => setForm({ ...form, useSwap: e.target.checked })} />} 
+                label="Use swap memory (larger batches, slower disk I/O)" 
+                sx={{ display: 'block', mt: 1 }}
+              />
+            </Box>
+          )}
 
           {/* Destination folder selector dialog (reuses Move dialog style) */}
           <FolderSelectDialog open={destDialogOpen} onClose={() => setDestDialogOpen(false)} onSelect={(id) => setForm({ ...form, destinationId: id })} title="Select destination folder" />
-
-          <FormControl fullWidth margin="normal">
-            <InputLabel id="compress-label">Compress</InputLabel>
-            <Select labelId="compress-label" value={form.compress} label="Compress" onChange={(e) => setForm({ ...form, compress: e.target.value as string })}>
-              <MenuItem value={'NONE'}>None</MenuItem>
-              <MenuItem value={'ZIP'}>ZIP</MenuItem>
-              <MenuItem value={'TAR_GZ'}>TAR.GZ</MenuItem>
-            </Select>
-          </FormControl>
-
-            <Box sx={{ mt: 2 }}>
-            <Typography variant="subtitle2">Authentication methods</Typography>
-            <FormControlLabel control={<Switch checked={form.authPassword} onChange={(e) => setForm({ ...form, authPassword: e.target.checked })} />} label="Attempt password" />
-            <FormControlLabel control={<Switch checked={form.authPrivateKey} onChange={(e) => setForm({ ...form, authPrivateKey: e.target.checked })} />} label="Attempt private key" />
-            {form.authPassword && (
-              <TextField label="SFTP Password" type="password" fullWidth margin="normal" value={form.sftpPassword} onChange={(e) => setForm({ ...form, sftpPassword: e.target.value })} error={!!errors.auth} />
-            )}
-            {form.authPrivateKey && (
-              <TextField label="SFTP Private Key" multiline minRows={4} fullWidth margin="normal" value={form.sftpPrivateKey} onChange={(e) => setForm({ ...form, sftpPrivateKey: e.target.value })} error={!!errors.auth} />
-            )}
-            {errors.auth && <Typography color="error" variant="body2">{errors.auth}</Typography>}
-          </Box>
-
-          <TextField label="Max files (0 = unlimited)" type="number" fullWidth margin="normal" value={form.maxFiles} onChange={(e) => setForm({ ...form, maxFiles: Number(e.target.value) })} error={!!errors.maxFiles} helperText={errors.maxFiles || ''} />
-
-          <Box sx={{ mt: 2, mb: 1 }}>
-            <Typography variant="subtitle2">Advanced Options</Typography>
-          </Box>
-          
-          <FormControlLabel 
-            control={<Switch checked={form.skipPrescan} onChange={(e) => setForm({ ...form, skipPrescan: e.target.checked })} />} 
-            label="Skip file scan (faster start, no progress percentage)" 
-          />
-          
-          <FormControlLabel 
-            control={<Switch checked={form.cacheScanSize} onChange={(e) => setForm({ ...form, cacheScanSize: e.target.checked })} disabled={!form.skipPrescan} />} 
-            label="Cache scan size (saves last known size when scan is disabled)" 
-          />
-          
-          <TextField 
-            label="Exclude paths (comma-separated)" 
-            fullWidth 
-            margin="normal" 
-            value={form.excludePaths} 
-            onChange={(e) => setForm({ ...form, excludePaths: e.target.value })}
-            helperText="Paths to skip, e.g.: bluemap, dynmap, logs"
-            placeholder="bluemap, dynmap, logs"
-          />
-          
-          <FormControlLabel 
-            control={<Switch checked={form.useSwap} onChange={(e) => setForm({ ...form, useSwap: e.target.checked })} />} 
-            label="Use swap memory (larger batches, slower disk I/O)" 
-          />
-
-          {/* Encrypt override removed: tasks will follow user's default encryption setting */}
         </DialogContent>
         <DialogActions>
           <Button onClick={() => setOpen(false)}>Cancel</Button>
