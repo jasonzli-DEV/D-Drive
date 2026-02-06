@@ -52,6 +52,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
       enabled,
       skipPrescan,
       excludePaths,
+      useSwap,
     } = req.body;
 
     // Required fields validation
@@ -119,6 +120,7 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
         enabled: enabled === undefined ? true : !!enabled,
         skipPrescan: !!skipPrescan,
         excludePaths: Array.isArray(excludePaths) ? excludePaths.filter((p: any) => typeof p === 'string' && p.trim()) : [],
+        useSwap: !!useSwap,
       },
     });
 
