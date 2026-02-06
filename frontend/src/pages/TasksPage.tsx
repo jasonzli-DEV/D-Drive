@@ -888,7 +888,7 @@ export default function TasksPage() {
       )}
 
       <Dialog open={open} onClose={() => setOpen(false)} maxWidth="md" fullWidth>
-        <DialogTitle sx={{ pb: 0 }}>{form.id ? 'Edit Task' : 'New Task'}</DialogTitle>
+        <DialogTitle sx={{ pb: 0 }}>{form.id ? `Edit Task: ${form.name}` : 'New Task'}</DialogTitle>
         <Box sx={{ borderBottom: 1, borderColor: 'divider', px: 3 }}>
           <Tabs value={dialogTab} onChange={(_, v) => setDialogTab(v)} variant="scrollable" scrollButtons="auto">
             <Tab label="General" />
