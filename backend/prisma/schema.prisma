@@ -149,6 +149,7 @@ model Task {
   skipPrescan    Boolean  @default(false) // skip pre-scan phase for faster start (no progress %)
   cacheScanSize  Boolean  @default(false) // cache/save scan size when skipPrescan is enabled
   excludePaths   String[] @default([]) // paths to exclude from backup (e.g., ["bluemap", "dynmap"])
+  useSwap        Boolean  @default(false) // whether to use swap for batch size calculations (default off)
   lastScanSize   BigInt?  // last known scan size (cached when cacheScanSize is enabled)
   lastRun        DateTime? // when task last completed
   lastStarted    DateTime? // when task last started running

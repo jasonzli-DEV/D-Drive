@@ -53,6 +53,7 @@ import cronValidate from 'cron-validate';
   skipPrescan: false,
   cacheScanSize: false,
   excludePaths: '',
+  useSwap: false,
   // encrypt override removed; tasks use user's default encrypt setting
 };
 
@@ -311,6 +312,7 @@ export default function TasksPage() {
       skipPrescan: !!t.skipPrescan,
       cacheScanSize: !!t.cacheScanSize,
       excludePaths: Array.isArray(t.excludePaths) ? t.excludePaths.join(', ') : '',
+      useSwap: !!t.useSwap,
       
     });
     setOpen(true);
@@ -922,6 +924,11 @@ export default function TasksPage() {
             onChange={(e) => setForm({ ...form, excludePaths: e.target.value })}
             helperText="Paths to skip, e.g.: bluemap, dynmap, logs"
             placeholder="bluemap, dynmap, logs"
+          />
+          
+          <FormControlLabel 
+            control={<Checkbox checked={form.useSwap} onChange={(e) => setForm({ ...form, useSwap: e.target.checked })} />} 
+            label="Use swap memory (larger batches, slower disk I/O)" 
           />
 
           {/* Encrypt override removed: tasks will follow user's default encryption setting */}

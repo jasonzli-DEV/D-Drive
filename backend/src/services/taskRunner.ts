@@ -876,30 +876,33 @@ export async function runTaskNow(taskId: string) {
           }
           
           // Process files in batches for better throughput
-          // ADAPTIVE BATCHING: Use RAM + SWAP to dynamically adjust batch size
+          // ADAPTIVE BATCHING: Use RAM (+ SWAP if enabled) to dynamically adjust batch size
           const TINY_FILE_THRESHOLD = 100 * 1024;    // 100KB - batch many of these
           const SMALL_FILE_THRESHOLD = 1024 * 1024;  // 1MB - batch fewer of these
-          const MIN_AVAILABLE_MEMORY_MB = 512;       // Keep at least 512MB available (RAM + swap)
+          const MIN_AVAILABLE_MEMORY_MB = 512;       // Keep at least 512MB available
           const MIN_BATCH_SIZE = 5;
           const MAX_BATCH_SIZE = 150;
           
-          // Get available memory including swap
+          // Get available memory (optionally including swap based on task.useSwap)
           const getAvailableMemoryMB = () => {
             const os = require('os');
             const freeMem = os.freemem();
             const totalMem = os.totalmem();
             
-            // Try to read swap info from /proc/meminfo (Linux)
+            // Only include swap if task.useSwap is enabled (default: false)
             let swapFree = 0;
-            try {
-              const fs = require('fs');
-              const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
-              const swapFreeMatch = meminfo.match(/SwapFree:\s+(\d+)\s+kB/);
-              if (swapFreeMatch) {
-                swapFree = parseInt(swapFreeMatch[1]) * 1024; // Convert KB to bytes
+            if (task.useSwap) {
+              // Try to read swap info from /proc/meminfo (Linux)
+              try {
+                const fs = require('fs');
+                const meminfo = fs.readFileSync('/proc/meminfo', 'utf8');
+                const swapFreeMatch = meminfo.match(/SwapFree:\s+(\d+)\s+kB/);
+                if (swapFreeMatch) {
+                  swapFree = parseInt(swapFreeMatch[1]) * 1024; // Convert KB to bytes
+                }
+              } catch (err) {
+                // Swap info not available (non-Linux or no swap configured)
               }
-            } catch (err) {
-              // Swap info not available (non-Linux or no swap configured)
             }
             
             const totalAvailable = freeMem + swapFree;
