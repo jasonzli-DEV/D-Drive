@@ -1,10 +1,10 @@
-# D-Drive CLI v2.2.0
+# D-Drive CLI v2.2.1
 
 Command-line tool for D-Drive cloud storage.
 
 ```
 ╔═══════════════════════════════════════╗
-║  D-Drive CLI v2.2.0                   ║
+║  D-Drive CLI v2.2.1                   ║
 ║  Discord-based cloud storage          ║
 ╚═══════════════════════════════════════╝
 ```
@@ -248,6 +248,10 @@ export DDRIVE_API_URL=https://your-server/api
 - Check file/folder permissions in D-Drive
 
 ## Changelog
+
+### v2.2.1
+- Fixed double output issue when running CLI with no arguments
+- Added proper exit after displaying help to prevent duplicate output
 
 ### v2.2.0
 - Added `drive` command alias for easier use

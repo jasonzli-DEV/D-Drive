@@ -314,6 +314,7 @@ async function interactiveConfig() {
 if (process.argv.length === 2 && !process.argv.includes('-v') && !process.argv.includes('--version') && !process.argv.includes('-h') && !process.argv.includes('--help')) {
   console.log(banner);
   program.outputHelp();
+  process.exit(0);
 }
 
 program.parse();
