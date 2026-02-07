@@ -1,10 +1,10 @@
-# D-Drive CLI v2.2.1
+# D-Drive CLI v2.2.2
 
 Command-line tool for D-Drive cloud storage.
 
 ```
 ╔═══════════════════════════════════════╗
-║  D-Drive CLI v2.2.1                   ║
+║  D-Drive CLI v2.2.2                   ║
 ║  Discord-based cloud storage          ║
 ╚═══════════════════════════════════════╝
 ```
@@ -249,9 +249,13 @@ export DDRIVE_API_URL=https://your-server/api
 
 ## Changelog
 
-### v2.2.1
-- Fixed double output issue when running CLI with no arguments
-- Added proper exit after displaying help to prevent duplicate output
+### v2.2.2
+- **ACTUALLY** fixed double output issue (previous v2.2.1 had wrong fix)
+- Added `process.exit(0)` after help display to prevent Commander.js duplicate
+- Both `d-drive` and `drive` aliases work correctly
+
+### v2.2.1 (deprecated)
+- Incorrectly removed `drive` alias thinking it caused double output
 
 ### v2.2.0
 - Added `drive` command alias for easier use
