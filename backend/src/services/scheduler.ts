@@ -13,6 +13,7 @@ const running: Map<string, boolean> = new Map();
 // Global task queue to serialize backup tasks and prevent bandwidth competition
 const taskQueue: { taskId: string; addedAt: Date; priority: number }[] = [];
 let queueProcessing = false;
+let queueProcessingTimeout: NodeJS.Timeout | null = null;
 
 // Process the task queue one task at a time
 async function processTaskQueue() {
@@ -89,8 +90,16 @@ export async function queueTask(taskId: string) {
   
   logger.info('Task added to queue', { taskId, priority, queuePosition: taskQueue.findIndex(t => t.taskId === taskId) + 1, queueLength: taskQueue.length });
   
-  // Start processing if not already
-  processTaskQueue();
+  // Debounce queue processing to allow multiple simultaneously-scheduled tasks
+  // to all be added to the queue before any processing begins.
+  // This ensures tasks run in priority order when they share the same cron schedule.
+  if (queueProcessingTimeout) {
+    clearTimeout(queueProcessingTimeout);
+  }
+  queueProcessingTimeout = setTimeout(() => {
+    queueProcessingTimeout = null;
+    processTaskQueue();
+  }, 100); // 100ms debounce window
 }
 
 // Queue a task and wait for it to complete (for manual runs)
@@ -114,7 +123,12 @@ export async function queueTaskAndWait(taskId: string): Promise<void> {
     
     // Add to pending completions
     pendingCompletions.set(taskId, { resolve, reject });
-    
+    For manual runs, start processing immediately without debounce
+    // since the user is waiting for the task to complete
+    if (queueProcessingTimeout) {
+      clearTimeout(queueProcessingTimeout);
+      queueProcessingTimeout = null;
+    }
     taskQueue.push({ taskId, addedAt: new Date(), priority });
     
     // Sort queue by priority (lower number = higher priority)
