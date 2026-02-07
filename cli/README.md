@@ -1,10 +1,10 @@
-# D-Drive CLI v2.2.1
+# D-Drive CLI v2.2.0
 
 Command-line tool for D-Drive cloud storage.
 
 ```
 ╔═══════════════════════════════════════╗
-║  D-Drive CLI v2.2.1                   ║
+║  D-Drive CLI v2.2.0                   ║
 ║  Discord-based cloud storage          ║
 ╚═══════════════════════════════════════╝
 ```
@@ -19,28 +19,30 @@ npm install -g d-drive-cli
 npx d-drive-cli
 ```
 
-After installation, use the `d-drive` command:
+After installation, you can use either command:
+- `d-drive` - Full command name
+- `drive` - Short alias
 
 ## Quick Start
 
 ```bash
 # Interactive configuration (recommended)
-d-drive config
+drive config
 
 # Or set API key directly
-d-drive config --key YOUR_API_KEY --url https://your-server/api
+drive config --key YOUR_API_KEY --url https://your-server/api
 
 # Check connection
-d-drive info
+drive info
 
 # Upload a file
-d-drive upload ./backup.zip
+drive upload ./backup.zip
 
 # List files
-d-drive ls
+drive ls
 
 # Download a file
-d-drive download /backup.zip ./local-backup.zip
+drive download /backup.zip ./local-backup.zip
 ```
 
 ## Commands
@@ -49,18 +51,18 @@ d-drive download /backup.zip ./local-backup.zip
 
 ```bash
 # Interactive setup
-d-drive config
+drive config
 
 # Set API key
-d-drive config --key dd_your_api_key
+drive config --key dd_your_api_key
 
 # Set API URL
-d-drive config --url https://your-server/api
+drive config --url https://your-server/api
 
 # View current config
-d-drive config --list
+drive config --list
 # or
-d-drive config -l
+drive config -l
 ```
 
 ### File Operations
@@ -69,60 +71,60 @@ d-drive config -l
 
 ```bash
 # Upload single file
-d-drive upload ./file.txt
+drive upload ./file.txt
 
 # Upload to specific folder
-d-drive upload ./file.txt /backups/
+drive upload ./file.txt /backups/
 
 # Upload directory recursively
-d-drive upload ./myproject /backups/ -r
+drive upload ./myproject /backups/ -r
 
 # Upload with encryption
-d-drive upload ./sensitive.txt -e
+drive upload ./sensitive.txt -e
 ```
 
 #### Download
 
 ```bash
 # Download file
-d-drive download /backups/file.txt
+drive download /backups/file.txt
 
 # Download to specific location
-d-drive download /backups/file.txt ./local-file.txt
+drive download /backups/file.txt ./local-file.txt
 ```
 
 #### List
 
 ```bash
 # List root directory
-d-drive ls
+drive ls
 
 # List specific directory
-d-drive ls /backups
+drive ls /backups
 
 # Long format with details
-d-drive ls -l
-d-drive ls /backups -l
+drive ls -l
+drive ls /backups -l
 ```
 
 #### Delete
 
 ```bash
 # Delete file (with confirmation)
-d-drive rm /old-file.txt
+drive rm /old-file.txt
 
 # Force delete without confirmation
-d-drive rm /old-file.txt -f
+drive rm /old-file.txt -f
 
 # Delete directory recursively
-d-drive rm /old-folder -r
+drive rm /old-folder -r
 ```
 
 #### Copy
 
 ```bash
 # Create a copy of a file
-d-drive cp /backups/file.txt
+drive cp /backups/file.txt
 # Creates: /backups/file (1).txt
 ```
 
@@ -132,28 +134,28 @@ D-Drive supports SFTP backup tasks that can be managed via CLI.
 
 ```bash
 # List all tasks
-d-drive tasks ls
+drive tasks ls
 
 # Run a task immediately
-d-drive tasks run <task-id>
+drive tasks run <task-id>
 
 # Stop a running task
-d-drive tasks stop <task-id>
+drive tasks stop <task-id>
 
 # Enable/disable a task
-d-drive tasks enable <task-id>
-d-drive tasks disable <task-id>
+drive tasks enable <task-id>
+drive tasks disable <task-id>
 
 # Delete a task
-d-drive tasks rm <task-id>
-d-drive tasks rm <task-id> -f  # Force delete
+drive tasks rm <task-id>
+drive tasks rm <task-id> -f  # Force delete
 ```
 
 ### Info & Status
 
 ```bash
 # Show connection status and user info
-d-drive info
+drive info
 ```
 
 Output:
@@ -171,9 +173,9 @@ User:      YourUsername
 
 ```bash
 # Start interactive mode
-d-drive interactive
+drive interactive
 # or
-d-drive i
+drive i
 ```
 
 Interactive mode provides a menu-driven interface for all operations.
@@ -185,7 +187,7 @@ Interactive mode provides a menu-driven interface for all operations.
 3. Scroll to **API Keys** section
 4. Click **Create API Key**
 5. Copy the key (starts with `dd_`)
-6. Use in CLI: `d-drive config --key dd_your_key`
+6. Use in CLI: `drive config --key dd_your_key`
 
 ## Examples
 
@@ -193,10 +195,10 @@ Interactive mode provides a menu-driven interface for all operations.
 
 ```bash
 # Create a backup of your project
-d-drive upload ./my-project /backups/my-project/ -r
+drive upload ./my-project /backups/my-project/ -r
 
 # List backups
-d-drive ls /backups/my-project -l
+drive ls /backups/my-project -l
 ```
 
 ### Automated Backup Script
@@ -206,7 +208,7 @@ d-drive ls /backups/my-project -l
 # backup.sh
 
 DATE=$(date +%Y-%m-%d)
-d-drive upload ./data "/backups/$DATE/"
+drive upload ./data "/backups/$DATE/"
 echo "Backup completed: $DATE"
 ```
 
@@ -214,7 +216,7 @@ echo "Backup completed: $DATE"
 
 ```bash
 # Download latest backup
-d-drive download /backups/2026-01-24/data.tar.gz ./restore/
+drive download /backups/2026-01-24/data.tar.gz ./restore/
 
 # Extract
 tar -xzf ./restore/data.tar.gz
@@ -247,14 +249,10 @@ export DDRIVE_API_URL=https://your-server/api
 
 ## Changelog
 
-### v2.2.1
-- Fixed double output issue by removing `drive` alias
-- Use `d-drive` as the single command name
-- Improved consistency across documentation
-
 ### v2.2.0
+- Added `drive` command alias for easier use
 - Interactive mode with menu-driven interface
-- `info` command for connection status
+- `drive info` command for connection status
 - Interactive configuration wizard
 - Better error messages
 - Colorized output
