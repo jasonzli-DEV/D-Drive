@@ -123,7 +123,7 @@ export async function queueTaskAndWait(taskId: string): Promise<void> {
     
     // Add to pending completions
     pendingCompletions.set(taskId, { resolve, reject });
-    For manual runs, start processing immediately without debounce
+    // For manual runs, start processing immediately without debounce
     // since the user is waiting for the task to complete
     if (queueProcessingTimeout) {
       clearTimeout(queueProcessingTimeout);
