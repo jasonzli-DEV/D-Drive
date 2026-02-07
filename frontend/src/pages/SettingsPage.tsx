@@ -22,12 +22,16 @@ import {
   TextField,
   ToggleButtonGroup,
   ToggleButton,
+  Select,
+  MenuItem,
+  FormControl,
 } from '@mui/material';
 import { Trash2, Copy, Plus, Sun, Moon, Monitor } from 'lucide-react';
 import { formatDistance } from 'date-fns';
 import toast from 'react-hot-toast';
 import api from '../lib/api';
 import { useThemeMode } from '../contexts/ThemeContext';
+import { TIMEZONE_OPTIONS, getTimezoneAbbreviation } from '../utils/timezone';
 
 interface ApiKey {
   id: string;
@@ -87,6 +91,7 @@ export default function SettingsPage() {
   const [encryptByDefault, setEncryptByDefault] = useState<boolean>(true);
   const [recycleBinEnabled, setRecycleBinEnabled] = useState<boolean>(true);
   const [allowSharedWithMe, setAllowSharedWithMe] = useState<boolean>(true);
+  const [timezone, setTimezone] = useState<string>('');
 
   // Fetch current user preferences
   useEffect(() => {
@@ -103,6 +108,9 @@ export default function SettingsPage() {
         }
         if (typeof resp.data?.allowSharedWithMe === 'boolean') {
           setAllowSharedWithMe(resp.data.allowSharedWithMe);
+        }
+        if (resp.data?.timezone !== undefined) {
+          setTimezone(resp.data.timezone || '');
         }
         // Theme is already synced by ThemeContext, no need to call setMode here
       } catch (err) {
@@ -131,7 +139,15 @@ export default function SettingsPage() {
     toast.success('Theme updated');
   };
 
-  
+  const handleTimezoneChange = async (newTimezone: string) => {
+    try {
+      await api.patch('/me', { timezone: newTimezone || null });
+      setTimezone(newTimezone);
+      toast.success('Timezone updated');
+    } catch (err) {
+      toast.error('Failed to update timezone');
+    }
+  };
 
   // Server returns masked keys in the list; display as-provided
 
@@ -201,6 +217,37 @@ export default function SettingsPage() {
               Auto
             </ToggleButton>
           </ToggleButtonGroup>
+        </Box>
+
+        <Box sx={{ mb: 3 }}>
+          <Typography variant="subtitle2" sx={{ mb: 1 }}>
+            Timezone {timezone && `(${getTimezoneAbbreviation(timezone)})`}
+          </Typography>
+          <FormControl fullWidth size="small" sx={{ maxWidth: 400 }}>
+            <Select
+              value={timezone}
+              onChange={(e) => handleTimezoneChange(e.target.value)}
+              displayEmpty
+            >
+              <MenuItem value="">
+                <em>UTC (Default)</em>
+              </MenuItem>
+              {TIMEZONE_OPTIONS.map((tz) =>
+                tz.disabled ? (
+                  <MenuItem key={tz.value} disabled sx={{ fontWeight: 'bold', opacity: 0.6 }}>
+                    {tz.label}
+                  </MenuItem>
+                ) : tz.value ? (
+                  <MenuItem key={tz.value} value={tz.value}>
+                    {tz.label}
+                  </MenuItem>
+                ) : null
+              )}
+            </Select>
+          </FormControl>
+          <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
+            Task schedules and timestamps will be displayed in your selected timezone
+          </Typography>
         </Box>
 
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>

@@ -35,6 +35,8 @@ import toast from 'react-hot-toast';
 import FolderSelectDialog from '../components/FolderSelectDialog';
 import cronParser from 'cron-parser';
 import cronValidate from 'cron-validate';
+import { useCurrentUser } from '../hooks/useCurrentUser';
+import { formatDateWithTimezone, getUserTimezone } from '../utils/timezone';
 
   const defaultForm = {
   id: undefined as string | undefined,
@@ -60,6 +62,9 @@ import cronValidate from 'cron-validate';
 };
 
 export default function TasksPage() {
+  const { data: currentUser } = useCurrentUser();
+  const userTimezone = getUserTimezone(currentUser);
+
   function describeCron(expr: string) {
     if (!expr) return 'Enter a cron expression (5 fields)';
     try {
@@ -74,7 +79,7 @@ export default function TasksPage() {
       const interval = (cronParser as any).parseExpression(expr);
       const next = interval.next().toDate();
       const parts = expr.trim().split(/\s+/);
-      if (parts.length !== 5) return `Next run: ${next.toLocaleString()}`;
+      if (parts.length !== 5) return `Next run: ${formatDateWithTimezone(next, userTimezone)}`;
       
       const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
       
@@ -178,7 +183,7 @@ export default function TasksPage() {
       let desc = descriptions.length > 0 ? descriptions.join(' ') : 'Custom schedule';
       
       // Add next run time
-      return `${desc} — next: ${next.toLocaleString()}`;
+      return `${desc} — next: ${formatDateWithTimezone(next, userTimezone)}`;
     } catch (e) {
       return 'Invalid cron expression';
     }
@@ -793,7 +798,9 @@ export default function TasksPage() {
                 </TableCell>
                 <TableCell>{(t as any).destinationPath || '/'}</TableCell>
                 <TableCell>
-                  {t.lastStarted ? new Date(t.lastStarted).toLocaleString() : (t.lastRun ? new Date(t.lastRun).toLocaleString() : '-')}
+                  {t.lastStarted 
+                    ? formatDateWithTimezone(t.lastStarted, userTimezone) 
+                    : (t.lastRun ? formatDateWithTimezone(t.lastRun, userTimezone) : '-')}
                 </TableCell>
                 <TableCell>{formatRuntime(t.lastRuntime)}</TableCell>
                 <TableCell>

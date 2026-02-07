@@ -21,6 +21,7 @@ model User {
   recycleBinEnabled Boolean @default(true)  // Enable/disable recycle bin
   allowSharedWithMe Boolean @default(true)  // Allow others to share files with this user
   theme         String   @default("auto")  // Theme preference: light, dark, auto
+  timezone      String?  // User's preferred timezone (IANA format, e.g., "America/New_York"). Null = UTC
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
