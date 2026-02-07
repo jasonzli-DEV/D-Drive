@@ -88,8 +88,3 @@ export function decryptString(encryptedText: string, key?: string): string {
   
   return Buffer.concat([decipher.update(encrypted), decipher.final()]).toString('utf8');
 }
-
-// Generate a new encryption key for a user
-export function generateEncryptionKey(): string {
-  return crypto.randomBytes(32).toString('base64');
-}
