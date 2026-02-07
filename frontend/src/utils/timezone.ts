@@ -6,7 +6,6 @@
  * List of common timezones grouped by region
  */
 export const TIMEZONE_OPTIONS = [
-  { label: 'UTC (Coordinated Universal Time)', value: 'UTC' },
   { label: '--- Americas ---', value: '', disabled: true },
   { label: 'Eastern Time - New York', value: 'America/New_York' },
   { label: 'Central Time - Chicago', value: 'America/Chicago' },
