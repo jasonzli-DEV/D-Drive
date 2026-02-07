@@ -31,8 +31,8 @@ export async function configCommand(options: ConfigOptions) {
       const rawKey = options.key.replace(/^Bearer\s+/i, '').trim();
       const normalizedKey = rawKey.startsWith('dd_') ? rawKey : `dd_${rawKey}`;
 
-      // Validate API key by calling a protected endpoint that accepts API keys (authenticate middleware)
-      const validateUrl = apiUrl.replace(/\/$/, '') + '/api-keys';
+      // Validate API key by calling /auth/me endpoint (simpler and more reliable)
+      const validateUrl = apiUrl.replace(/\/$/, '') + '/auth/me';
       const response = await axios.get(validateUrl, {
         headers: {
           Authorization: `Bearer ${normalizedKey}`,

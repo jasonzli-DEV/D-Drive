@@ -126,6 +126,43 @@ GET /auth/me
 Authorization: Bearer <token>
 ```
 
+**Response:**
+```json
+{
+  "id": "user-id",
+  "discordId": "123456789",
+  "discordUsername": "username#1234",
+  "email": "user@example.com",
+  "timezone": "America/New_York",
+  "theme": "dark"
+}
+```
+
+### Update User Settings
+```http
+PATCH /me
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Body:
+```json
+{
+  "timezone": "America/New_York",
+  "theme": "dark"
+}
+```
+
+Response:
+```json
+{
+  "id": "user-id",
+  "timezone": "America/New_York",
+  "theme": "dark",
+  "updatedAt": "2026-02-07T12:00:00.000Z"
+}
+```
+
 ### Logout
 ```http
 POST /auth/logout
@@ -356,9 +393,18 @@ Body:
 
 ### Update Task
 ```http
-PUT /tasks/:id
+PATCH /tasks/:id
 Authorization: Bearer <token>
 Content-Type: application/json
+```
+
+Body:
+```json
+{
+  "name": "Updated Name",
+  "enabled": true,
+  "cron": "0 3 * * *"
+}
 ```
 
 ### Delete Task
@@ -464,6 +510,100 @@ Response:
 DELETE /api-keys/:id
 Authorization: Bearer <token>
 ```
+
+---
+
+## Public Links Endpoints
+
+### Create Public Link
+```http
+POST /public-links
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+Body:
+```json
+{
+  "fileId": "file_id",
+  "expiresAt": "2026-12-31T23:59:59.000Z"
+}
+```
+
+Response:
+```json
+{
+  "id": "link_id",
+  "slug": "abc123xyz",
+  "fileId": "file_id",
+  "expiresAt": "2026-12-31T23:59:59.000Z",
+  "url": "https://your-server/share/abc123xyz"
+}
+```
+
+### List Public Links
+```http
+GET /public-links
+Authorization: Bearer <token>
+```
+
+### Get Public Link (No Auth Required)
+```http
+GET /public-links/:slug
+```
+
+### Download via Public Link (No Auth Required)
+```http
+GET /public-links/:slug/download
+```
+
+### Delete Public Link
+```http
+DELETE /public-links/:id
+Authorization: Bearer <token>
+```
+
+---
+
+## Metrics Endpoints
+
+### Get System Metrics
+```http
+GET /metrics
+Authorization: Bearer <token>
+```
+
+Response:
+```json
+{
+  "storageUsed": 5368709120,
+  "storageUsedFormatted": "5.0 GB",
+  "fileCount": 1234,
+  "folderCount": 56,
+  "encryptedFileCount": 890
+}
+```
+
+---
+
+## Avatar Endpoints
+
+### Upload Avatar
+```http
+POST /avatars/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+Form fields:
+- `avatar`: Image file (PNG, JPG, GIF, max 5MB)
+
+### Get Avatar
+```http
+GET /avatars/:userId
+```
+
+Returns image file (no authentication required).
 
 ---
 
@@ -582,7 +722,7 @@ async function download(fileId) {
 ### cURL
 
 ```bash
-# Upload file
+# Upload file (encrypted by default when using CLI)
 curl -X POST https://your-server/api/files/upload/stream \
   -H "Authorization: Bearer dd_your_api_key" \
   -F "file=@backup.zip" \
@@ -601,9 +741,69 @@ curl https://your-server/api/files/FILE_ID/download \
 curl -X POST https://your-server/api/files/directory \
   -H "Authorization: Bearer dd_your_api_key" \
   -H "Content-Type: application/json" \
-  -d '{"name": "backups"}'
+  -d '{"name": "backups", "path": "/backups"}'
 
-# Delete file
+# Delete file (moves to recycle bin)
 curl -X DELETE https://your-server/api/files/FILE_ID \
   -H "Authorization: Bearer dd_your_api_key"
+
+# Update user timezone
+curl -X PATCH https://your-server/api/me \
+  -H "Authorization: Bearer dd_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"timezone": "America/New_York"}'
+
+# Create public link
+curl -X POST https://your-server/api/public-links \
+  -H "Authorization: Bearer dd_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{"fileId": "FILE_ID", "expiresAt": "2026-12-31T23:59:59.000Z"}'
+
+# Run SFTP backup task
+curl -X POST https://your-server/api/tasks/TASK_ID/run \
+  -H "Authorization: Bearer dd_your_api_key"
+```
+
+---
+
+## CLI Usage
+
+D-Drive CLI v2.2.2 provides command-line access:
+
+```bash
+# Install
+npm install -g d-drive-cli
+
+# Configure
+drive config --key dd_your_api_key
+drive config --url https://your-server/api
+
+# File operations (encrypted by default)
+drive upload ./file.txt /backups/
+drive upload ./myproject /backups/ -r    # Recursive
+drive download /backups/file.txt ./restored.txt
+drive ls /backups -l                     # Long format
+drive rm /backups/old.txt -f             # Force delete
+drive cp /backups/file.txt               # Create copy
+
+# Tasks
+drive tasks ls
+drive tasks run <task-id>
+drive tasks stop <task-id>
+drive tasks enable <task-id>
+drive tasks disable <task-id>
+
+# Interactive mode
+drive interactive
+
+# Connection status
+drive info
+```
+
+**Aliases:** `d-drive` = `drive`, and command shortcuts (`ls`, `rm`, `cp`, `up`, `dl`, `i`)
+
+**Environment Variables:**
+```bash
+export DDRIVE_API_KEY=dd_your_key
+export DDRIVE_API_URL=https://your-server/api
 ```

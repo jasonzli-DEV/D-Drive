@@ -28,6 +28,11 @@ export async function deleteCommand(remotePath: string, options: DeleteOptions) 
     const file = files[0];
     spinner.stop();
 
+    // Warn if trying to delete a directory
+    if (file.type === 'DIRECTORY') {
+      console.log(chalk.yellow('Warning: This is a directory. All contents will be moved to recycle bin.'));
+    }
+
     // Confirm deletion
     if (!options.force) {
       const answers = await inquirer.prompt([

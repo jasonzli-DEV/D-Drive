@@ -71,14 +71,25 @@ export async function listCommand(remotePath: string = '/', options: ListOptions
 }
 
 function findFolderByPath(files: any[], targetPath: string): any | null {
-  // Simple path matching - looks for folder by name in the path
-  const pathParts = targetPath.split('/').filter(p => p);
+  // Build full path for each file and match against target
+  const normalizedTarget = targetPath.startsWith('/') ? targetPath : '/' + targetPath;
   
   for (const file of files) {
-    if (file.type === 'DIRECTORY' && file.name === pathParts[0]) {
+    if (file.type === 'DIRECTORY' && file.path === normalizedTarget) {
       return file;
     }
   }
+  
+  // Fallback: try matching by name only (for root-level folders)
+  const pathParts = targetPath.split('/').filter(p => p);
+  if (pathParts.length === 1) {
+    for (const file of files) {
+      if (file.type === 'DIRECTORY' && file.name === pathParts[0]) {
+        return file;
+      }
+    }
+  }
+  
   return null;
 }
 

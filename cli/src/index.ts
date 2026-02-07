@@ -18,8 +18,8 @@ const program = new Command();
 // ASCII art banner
 const banner = `
 ${chalk.cyan('╔═══════════════════════════════════════╗')}
-${chalk.cyan('║')}  ${chalk.bold.white('D-Drive CLI')} ${chalk.gray('v' + (pkg.version || '2.2.0'))}              ${chalk.cyan('║')}
-${chalk.cyan('║')}  ${chalk.gray('Discord-based cloud storage')}         ${chalk.cyan('║')}
+${chalk.cyan('║')}  ${chalk.bold.white('D-Drive CLI')} ${chalk.gray('v' + (pkg.version || '2.2.0'))}              ${chalk.cyan('    ║')}
+${chalk.cyan('║')}  ${chalk.gray('Discord-based cloud storage')}         ${chalk.cyan(' ║')}
 ${chalk.cyan('╚═══════════════════════════════════════╝')}
 `;
 

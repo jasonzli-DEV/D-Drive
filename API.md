@@ -54,10 +54,43 @@ Authorization: Bearer <token>
     "id": "user-id",
     "discordId": "123456789",
     "discordUsername": "username#1234",
-    "email": "user@example.com"
+    "email": "user@example.com",
+    "timezone": "America/New_York",
+    "theme": "dark"
   }
 }
 ```
+
+#### Update User Settings
+Update user preferences (timezone, theme, etc.).
+
+```http
+PATCH /me
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "timezone": "America/New_York",
+  "theme": "dark"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "user-id",
+  "timezone": "America/New_York",
+  "theme": "dark",
+  "updatedAt": "2026-02-07T12:00:00.000Z"
+}
+```
+
+**Available Timezones:** America/New_York, America/Los_Angeles, America/Chicago, Europe/London, Europe/Paris, Asia/Tokyo, etc.
+
+**Available Themes:** `light`, `dark`
 
 #### Logout
 Invalidate the current session.
@@ -374,6 +407,109 @@ Authorization: Bearer <token>
 {
   "message": "Recycle bin emptied",
   "filesDeleted": 5
+}
+```
+
+---
+
+### Public Links
+
+Share files publicly with anyone via a secure link (no authentication required).
+
+#### Create Public Link
+Generate a public shareable link for a file.
+
+```http
+POST /public-links
+Authorization: Bearer <token>
+Content-Type: application/json
+```
+
+**Request Body:**
+```json
+{
+  "fileId": "file-id",
+  "expiresAt": "2026-12-31T23:59:59.000Z"
+}
+```
+
+**Response:**
+```json
+{
+  "id": "link-id",
+  "slug": "abc123xyz",
+  "fileId": "file-id",
+  "expiresAt": "2026-12-31T23:59:59.000Z",
+  "createdAt": "2026-02-07T12:00:00.000Z",
+  "url": "https://your-server/share/abc123xyz"
+}
+```
+
+#### List Public Links
+Get all your public links.
+
+```http
+GET /public-links
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+[
+  {
+    "id": "link-id",
+    "slug": "abc123xyz",
+    "file": {
+      "id": "file-id",
+      "name": "document.pdf",
+      "size": "1024000"
+    },
+    "expiresAt": "2026-12-31T23:59:59.000Z",
+    "createdAt": "2026-02-07T12:00:00.000Z"
+  }
+]
+```
+
+#### Access Public Link
+Access a file via public link (no authentication).
+
+```http
+GET /public-links/:slug
+```
+
+**Response:**
+```json
+{
+  "file": {
+    "name": "document.pdf",
+    "size": "1024000",
+    "mimeType": "application/pdf"
+  },
+  "downloadUrl": "/api/public-links/:slug/download"
+}
+```
+
+#### Download via Public Link
+Download file via public link (no authentication).
+
+```http
+GET /public-links/:slug/download
+```
+
+**Response:** Binary file content
+
+#### Delete Public Link
+Revoke a public link.
+
+```http
+DELETE /public-links/:id
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "message": "Public link deleted successfully"
 }
 ```
 
@@ -750,6 +886,70 @@ Authorization: Bearer <token>
 
 ---
 
+### Metrics & Monitoring
+
+#### Get System Metrics
+Get storage usage and system statistics.
+
+```http
+GET /metrics
+Authorization: Bearer <token>
+```
+
+**Response:**
+```json
+{
+  "storageUsed": 5368709120,
+  "storageUsedFormatted": "5.0 GB",
+  "fileCount": 1234,
+  "folderCount": 56,
+  "encryptedFileCount": 890,
+  "recentActivity": [
+    {
+      "action": "FILE_UPLOADED",
+      "fileName": "document.pdf",
+      "timestamp": "2026-02-07T12:00:00.000Z"
+    }
+  ]
+}
+```
+
+---
+
+### User Avatars
+
+#### Upload Avatar
+Upload or update user avatar.
+
+```http
+POST /avatars/upload
+Authorization: Bearer <token>
+Content-Type: multipart/form-data
+```
+
+**Form Data:**
+- `avatar` (required): Image file (PNG, JPG, GIF)
+  - Max size: 5MB
+  - Recommended: 256x256px or larger
+
+**Response:**
+```json
+{
+  "avatarUrl": "/api/avatars/user-id.png"
+}
+```
+
+#### Get Avatar
+Retrieve user avatar.
+
+```http
+GET /avatars/:userId
+```
+
+**Response:** Image file (no authentication required)
+
+---
+
 ## Error Responses
 
 All errors follow this format:
@@ -905,28 +1105,53 @@ async function stopTask(taskId) {
 
 ## CLI Examples
 
-The D-Drive CLI (v2.1.0 LTS) provides easy command-line access:
+The D-Drive CLI (v2.2.2) provides easy command-line access with both `d-drive` and `drive` commands:
 
 ```bash
 # Configure
-d-drive config --key YOUR_API_KEY
+drive config --key YOUR_API_KEY
+drive config --url https://your-server/api
 
-# File operations
-d-drive upload ./file.txt /backups/
-d-drive download /backups/file.txt ./restored.txt
-d-drive list /backups
-d-drive delete /backups/old-file.txt
+# View configuration
+drive config --list
+
+# Check connection status
+drive info
+
+# File operations (all uploads encrypted by default)
+drive upload ./file.txt /backups/
+drive upload ./myproject /backups/ -r    # Recursive directory upload
+drive download /backups/file.txt ./restored.txt
+drive ls /backups
+drive ls /backups -l                     # Long format with details
+drive rm /backups/old-file.txt
+drive cp /backups/file.txt               # Create copy
 
 # Task management
-d-drive tasks list              # List all backup tasks
-d-drive tasks run <taskId>      # Run task immediately
-d-drive tasks stop <taskId>     # Stop running task
-d-drive tasks enable <taskId>   # Enable a task
-d-drive tasks disable <taskId>  # Disable a task
-d-drive tasks delete <taskId>   # Delete a task
+drive tasks ls                           # List all SFTP backup tasks
+drive tasks run <taskId>                 # Run task immediately
+drive tasks stop <taskId>                # Stop running task
+drive tasks enable <taskId>              # Enable scheduled runs
+drive tasks disable <taskId>             # Disable scheduled runs
+drive tasks rm <taskId>                  # Delete task (with confirmation)
+drive tasks rm <taskId> -f               # Force delete
+
+# Interactive mode
+drive interactive
+# or
+drive i
 ```
 
 Install CLI: `npm install -g d-drive-cli`
+
+**Aliases:**
+- `drive` = `d-drive`
+- `ls` = `list`
+- `rm` = `delete`
+- `cp` = `copy`
+- `up` = `upload`
+- `dl` = `download`
+- `i` = `interactive`
 
 ---
 

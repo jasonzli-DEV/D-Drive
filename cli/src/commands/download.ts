@@ -34,6 +34,8 @@ export async function downloadCommand(
 
     if (file.type === 'DIRECTORY') {
       spinner.fail(chalk.red('Cannot download directories yet'));
+      console.log(chalk.gray('Tip: Download individual files from the directory instead.'));
+      console.log(chalk.gray('Use: drive ls ' + source + ' -l'));
       return;
     }
 
