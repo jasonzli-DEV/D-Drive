@@ -190,7 +190,7 @@ export default function MetricsPage() {
           <Card variant="outlined">
             <CardContent>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                <Chip label={`Version: 2.1.0`} variant="outlined" />
+                <Chip label={`Version: 3.0.0`} variant="outlined" />
                 <Chip 
                   label={`Total Users: ${metrics?.globalUsers.toLocaleString() || 0}`}
                   variant="outlined" 

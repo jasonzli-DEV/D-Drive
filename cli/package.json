@@ -1,6 +1,6 @@
 {
   "name": "d-drive-cli",
-  "version": "2.2.3",
+  "version": "3.0.0",
   "description": "D-Drive CLI tool for developers - Discord cloud storage",
   "main": "dist/index.js",
   "bin": {
@@ -21,23 +21,23 @@
   "author": "jasonzli-DEV",
   "license": "MIT",
   "dependencies": {
-    "commander": "^11.1.0",
     "axios": "^1.6.5",
     "chalk": "^4.1.2",
-    "ora": "^5.4.1",
+    "commander": "^11.1.0",
     "conf": "^10.2.0",
-    "inquirer": "^8.2.6",
     "form-data": "^4.0.0",
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
+    "inquirer": "^8.2.6",
+    "ora": "^5.4.1",
     "progress": "^2.0.3"
   },
   "devDependencies": {
-    "@types/node": "^20.10.7",
-    "@types/inquirer": "^8.2.10",
     "@types/fs-extra": "^11.0.4",
+    "@types/inquirer": "^8.2.10",
+    "@types/node": "^20.10.7",
     "@types/progress": "^2.0.7",
-    "typescript": "^5.3.3",
-    "ts-node": "^10.9.2"
+    "ts-node": "^10.9.2",
+    "typescript": "^5.9.3"
   }
 }

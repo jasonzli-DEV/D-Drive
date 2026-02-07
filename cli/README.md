@@ -1,10 +1,10 @@
-# D-Drive CLI v2.2.2
+# D-Drive CLI v3.0.0
 
 Command-line tool for D-Drive cloud storage.
 
 ```
 ╔═══════════════════════════════════════╗
-║  D-Drive CLI v2.2.2                   ║
+║  D-Drive CLI v3.0.0                   ║
 ║  Discord-based cloud storage          ║
 ╚═══════════════════════════════════════╝
 ```

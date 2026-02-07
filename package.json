@@ -1,6 +1,6 @@
 {
   "name": "d-drive",
-  "version": "2.1.0",
+  "version": "3.0.0",
   "description": "Discord-based cloud storage system with Google Drive-like interface",
   "main": "index.js",
   "scripts": {
@@ -31,6 +31,6 @@
     "concurrently": "^8.2.2"
   },
   "dependencies": {
-    "d-drive-cli": "^2.2.2"
+    "d-drive-cli": "^3.0.0"
   }
 }

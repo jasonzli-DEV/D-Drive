@@ -154,7 +154,7 @@ export default function HelpPage() {
           <Card variant="outlined" sx={{ mt: 2 }}>
             <CardContent>
               <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-                <Chip label="Version 2.1.0" color="primary" />
+                <Chip label="Version 3.0.0" color="primary" />
                 <Chip label="Build: Production" variant="outlined" />
                 <Chip label="License: MIT" variant="outlined" />
               </Box>

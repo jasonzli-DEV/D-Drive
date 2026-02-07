@@ -18,7 +18,7 @@ const program = new Command();
 // ASCII art banner
 const banner = `
 ${chalk.cyan('╔═══════════════════════════════════════╗')}
-${chalk.cyan('║')}  ${chalk.bold.white('D-Drive CLI')} ${chalk.gray('v' + (pkg.version || '2.2.0'))}              ${chalk.cyan('    ║')}
+${chalk.cyan('║')}  ${chalk.bold.white('D-Drive CLI')} ${chalk.gray('v' + (pkg.version || '3.0.0'))}              ${chalk.cyan('     ║')}
 ${chalk.cyan('║')}  ${chalk.gray('Discord-based cloud storage')}         ${chalk.cyan(' ║')}
 ${chalk.cyan('╚═══════════════════════════════════════╝')}
 `;
@@ -26,7 +26,7 @@ ${chalk.cyan('╚═════════════════════
 program
   .name('d-drive')
   .description('D-Drive CLI - Discord-based cloud storage')
-  .version(pkg.version || '2.2.0')
+  .version(pkg.version || '3.0.0')
   .hook('preAction', (thisCommand) => {
     // Show banner only for main commands, not subcommands
     if (thisCommand.name() === 'd-drive' && !process.argv.includes('--help') && !process.argv.includes('-h')) {

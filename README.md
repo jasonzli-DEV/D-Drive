@@ -2,7 +2,7 @@
 
 **Discord-powered cloud storage with unlimited space.** Store files using Discord's infrastructure with a Google Drive-like interface.
 
-![D-Drive](https://img.shields.io/badge/version-2.2.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Docker](https://img.shields.io/badge/docker-ready-blue)
+![D-Drive](https://img.shields.io/badge/version-3.0.0-blue) ![License](https://img.shields.io/badge/license-MIT-green) ![Docker](https://img.shields.io/badge/docker-ready-blue)
 
 ## Quick Install
 
