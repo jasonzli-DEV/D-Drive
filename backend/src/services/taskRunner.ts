@@ -81,9 +81,10 @@ export async function stopTask(taskId: string) {
       throw new Error('Task not found');
     }
     
-    // If DB shows task as running (lastStarted > lastRun), update it
+    // If DB shows task as running (lastStarted > lastRun, or lastRun is null meaning
+    // it was reset at run start), update it
     // Don't update lastRuntime since the task was stopped, not completed
-    if (task.lastStarted && task.lastRun && task.lastStarted > task.lastRun) {
+    if (task.lastStarted && (!task.lastRun || task.lastStarted > task.lastRun)) {
       await prisma.task.update({
         where: { id: taskId },
         data: { lastRun: new Date() }
@@ -386,12 +387,6 @@ export async function runTaskNow(taskId: string) {
       startTime,
     }
   });
-  
-  // Reset task state if it was previously stopped during connecting phase
-  await prisma.task.update({
-    where: { id: taskId },
-    data: { lastRun: null }
-  }).catch(() => {});
   
   // Helper to update progress
   const updateProgress = (updates?: Partial<TaskRunInfo['progress']>) => {
