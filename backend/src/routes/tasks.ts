@@ -126,7 +126,10 @@ router.post('/', authenticate, async (req: Request, res: Response) => {
 
     // Schedule the task immediately if enabled
     if (task.enabled) {
-      try { scheduler.scheduleTask(task.id, task.cron); } catch (e) { logger.warn('Failed to schedule new task', { err: e }); }
+      try {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+        scheduler.scheduleTask(task.id, task.cron, user?.timezone);
+      } catch (e) { logger.warn('Failed to schedule new task', { err: e }); }
     }
 
     res.status(201).json(task);
@@ -197,8 +200,12 @@ router.patch('/:id', authenticate, async (req: Request, res: Response) => {
 
     // Reschedule or unschedule based on enabled flag
     try {
-      if (updated.enabled) scheduler.rescheduleTask(updated.id, updated.cron);
-      else scheduler.unscheduleTask(updated.id);
+      if (updated.enabled) {
+        const user = await prisma.user.findUnique({ where: { id: userId }, select: { timezone: true } });
+        scheduler.rescheduleTask(updated.id, updated.cron, user?.timezone);
+      } else {
+        scheduler.unscheduleTask(updated.id);
+      }
     } catch (e) { logger.warn('Failed to (re)schedule task after update', { err: e }); }
 
     res.json(updated);

@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import { prisma } from '../lib/prisma';
 import { authenticate } from '../middleware/auth';
 import { logger } from '../utils/logger';
+import scheduler from '../services/scheduler';
 
 const router = Router();
 
@@ -51,6 +52,17 @@ router.patch('/', authenticate, async (req: Request, res: Response) => {
       data: updates,
       select: { id: true, encryptByDefault: true, recycleBinEnabled: true, allowSharedWithMe: true, theme: true, timezone: true },
     });
+
+    if ('timezone' in updates) {
+      const tasks = await prisma.task.findMany({ where: { userId, enabled: true }, select: { id: true, cron: true } });
+      for (const task of tasks) {
+        try {
+          scheduler.rescheduleTask(task.id, task.cron, user.timezone);
+        } catch (e) {
+          logger.warn('Failed to reschedule task after timezone change', { taskId: task.id, err: e });
+        }
+      }
+    }
 
     res.json(user);
   } catch (error) {

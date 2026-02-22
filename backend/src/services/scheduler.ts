@@ -146,9 +146,12 @@ const pendingCompletions = new Map<string, { resolve: () => void; reject: (err: 
 
 export async function initScheduler() {
   try {
-    const tasks = await prisma.task.findMany({ where: { enabled: true } });
+    const tasks = await prisma.task.findMany({
+      where: { enabled: true },
+      include: { user: { select: { timezone: true } } },
+    });
     for (const t of tasks) {
-      scheduleTask(t.id, t.cron);
+      scheduleTask(t.id, t.cron, t.user?.timezone);
     }
     
     // Schedule hourly cleanup task for orphaned Discord files and temp files
@@ -242,7 +245,7 @@ async function checkStaleRunningTasks() {
   }
 }
 
-export function scheduleTask(taskId: string, expression: string) {
+export function scheduleTask(taskId: string, expression: string, timezone?: string | null) {
   try {
     // Cancel existing if present
     if (jobs.has(taskId)) {
@@ -251,15 +254,20 @@ export function scheduleTask(taskId: string, expression: string) {
       jobs.delete(taskId);
     }
 
+    const options: any = {};
+    if (timezone) {
+      options.timezone = timezone;
+    }
+
     const job = cron.schedule(expression, async () => {
       // Use global queue instead of running directly
       // This serializes all backup tasks to prevent bandwidth competition
       logger.info('Scheduled task triggered, adding to queue', { taskId });
       queueTask(taskId);
-    });
+    }, options);
 
     jobs.set(taskId, job);
-    logger.info('Scheduled task', { taskId, expression });
+    logger.info('Scheduled task', { taskId, expression, timezone: timezone || 'UTC' });
     return true;
   } catch (err) {
     logger.error('Failed to schedule task', { taskId, expression, err });
@@ -277,9 +285,9 @@ export function unscheduleTask(taskId: string) {
   }
 }
 
-export function rescheduleTask(taskId: string, expression: string) {
+export function rescheduleTask(taskId: string, expression: string, timezone?: string | null) {
   unscheduleTask(taskId);
-  scheduleTask(taskId, expression);
+  scheduleTask(taskId, expression, timezone);
 }
 
 // Remove a task from the queue (cancel a queued task)
