@@ -49,6 +49,15 @@ export function getTaskProgress(taskId: string) {
   };
 }
 
+// Get all tmpDirs currently in use by running tasks
+export function getActiveTmpDirs(): Set<string> {
+  const active = new Set<string>();
+  runningTasks.forEach((info) => {
+    if (info.tmpDir) active.add(info.tmpDir);
+  });
+  return active;
+}
+
 // Get all running tasks with their progress
 export function getAllRunningTasksProgress() {
   const result: { taskId: string; progress: any }[] = [];
@@ -775,7 +784,13 @@ export async function runTaskNow(taskId: string) {
                                         err.code === 'ECONNRESET' || 
                                         err.code === 'ERR_GENERIC_CLIENT';
               
-              if (isConnectionError && attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
+              // Permanent errors (bad path, permissions, file not found) — don't retry
+              if (!isConnectionError) {
+                logger.warn('Failed to download file (permanent error), skipping', { remotePath, err: err.code || err.message, taskId });
+                return false;
+              }
+              
+              if (attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
                 logger.warn('Connection lost during download, reconnecting...', { remotePath, attempt, taskId });
                 reconnectAttempts++;
                 const reconnected = await ensureConnected();
@@ -805,7 +820,13 @@ export async function runTaskNow(taskId: string) {
                                         err.code === 'ECONNRESET' || 
                                         err.code === 'ERR_GENERIC_CLIENT';
               
-              if (isConnectionError && attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
+              // Permanent errors — don't retry
+              if (!isConnectionError) {
+                logger.warn('Failed to download file to buffer (permanent error), skipping', { remotePath, err: err.code || err.message, taskId });
+                return null;
+              }
+              
+              if (attempt < retries && reconnectAttempts < MAX_RECONNECTS) {
                 logger.warn('Connection lost during buffer download, reconnecting...', { remotePath, attempt, taskId });
                 reconnectAttempts++;
                 const reconnected = await ensureConnected();

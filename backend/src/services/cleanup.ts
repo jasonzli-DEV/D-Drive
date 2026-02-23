@@ -132,8 +132,14 @@ export async function cleanupTempFiles() {
     const tmpDir = '/tmp';
     const oneHourAgo = Date.now() - (60 * 60 * 1000);
     
+    // Get tmpDirs that are currently in use by running tasks — never delete these
+    // Use lazy require to avoid circular dependency (taskRunner → scheduler → cleanup → taskRunner)
+    const { getActiveTmpDirs } = require('./taskRunner');
+    const activeTmpDirs: Set<string> = getActiveTmpDirs();
+    
     const files = await fs.readdir(tmpDir);
     let deletedCount = 0;
+    let skippedCount = 0;
     let errorCount = 0;
     
     for (const file of files) {
@@ -141,6 +147,13 @@ export async function cleanupTempFiles() {
       if (!file.startsWith('ddrive-task-')) continue;
       
       const filePath = path.join(tmpDir, file);
+      
+      // Never delete a tmpDir that belongs to a currently-running task
+      if (activeTmpDirs.has(filePath)) {
+        skippedCount++;
+        logger.info(`Skipping active task tmpDir: ${file}`);
+        continue;
+      }
       
       try {
         const stats = await fs.stat(filePath);
@@ -157,7 +170,7 @@ export async function cleanupTempFiles() {
       }
     }
     
-    logger.info(`Temp cleanup complete: deleted ${deletedCount} old files/dirs (${errorCount} errors)`);
+    logger.info(`Temp cleanup complete: deleted ${deletedCount} old files/dirs, skipped ${skippedCount} active (${errorCount} errors)`);
     
   } catch (err) {
     logger.error('Temp file cleanup failed:', err);
