@@ -1052,7 +1052,13 @@ export async function runTaskNow(taskId: string) {
         output.on('close', () => {
           if (!resolved) {
             resolved = true;
-            resolve();
+            // Re-check archiveError: an error may have fired during finalization
+            // and close still fires even after stream destruction
+            if (archiveError) {
+              reject(archiveError);
+            } else {
+              resolve();
+            }
           }
         });
         
@@ -1078,16 +1084,42 @@ export async function runTaskNow(taskId: string) {
           }
         });
       });
-      
-      // Verify the archive file exists and has content
-      let archiveStat;
-      try {
-        archiveStat = await fs.promises.stat(archivePath);
-      } catch (statErr) {
-        throw new Error(`Archive file not found after creation: ${archivePath}`);
+
+      // Re-check archiveError one final time — it may have been set during finalize
+      // but after the close-event check above (extremely rare race condition)
+      if (archiveError) {
+        throw new Error(`Archive creation failed during finalization: ${(archiveError as Error).message}`);
       }
       
-      if (archiveStat.size === 0) {
+      // Verify the archive file exists and has content.
+      // Retry up to 3 times with delays — on memory-pressured systems (tmpfs, overlay filesystems)
+      // the OS may not have fully committed the file by the time the close event fires.
+      let archiveStat;
+      const STAT_RETRIES = 3;
+      const STAT_RETRY_DELAYS = [500, 1000, 2000]; // ms
+      for (let attempt = 0; attempt <= STAT_RETRIES; attempt++) {
+        try {
+          archiveStat = await fs.promises.stat(archivePath);
+          break; // success
+        } catch (statErr) {
+          if (attempt < STAT_RETRIES) {
+            const delay = STAT_RETRY_DELAYS[attempt] ?? 2000;
+            logger.warn('Archive stat failed, retrying', { taskId, archivePath, attempt: attempt + 1, retryIn: delay });
+            await new Promise(r => setTimeout(r, delay));
+          } else {
+            // All retries exhausted — collect diagnostics for the error message
+            let diagnostics = '';
+            try {
+              const tmpDirExists = await fs.promises.stat(tmpDir!).then(() => true).catch(() => false);
+              diagnostics += ` tmpDir=${tmpDirExists ? 'exists' : 'MISSING'}`;
+              if (archiveError) diagnostics += ` archiveError="${(archiveError as Error).message}"`;
+            } catch (_) { /* ignore */ }
+            throw new Error(`Archive file not found after creation (tried ${STAT_RETRIES + 1}x): ${archivePath}.${diagnostics}`);
+          }
+        }
+      }
+      
+      if (!archiveStat || archiveStat.size === 0) {
         throw new Error(`Archive file is empty: ${archivePath}`);
       }
       
