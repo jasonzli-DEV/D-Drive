@@ -459,9 +459,9 @@ export async function runTaskNow(taskId: string) {
     
     let sftp = new SftpClient();
     
-    // Increase max listeners to prevent warnings during parallel downloads
-    // Each parallel download adds listeners, so we need more than the default 10
-    sftp.client.setMaxListeners(200);
+    // Increase max listeners to prevent warnings during parallel downloads.
+    // Set to 100 (was 200) since MAX_BATCH_SIZE is now 50.
+    sftp.client.setMaxListeners(100);
 
     // Attempt connections based on task auth preferences. If both methods are allowed,
     // try password first then private key (password may be desired by some servers).
@@ -496,7 +496,7 @@ export async function runTaskNow(taskId: string) {
           try { await sftp.end(); } catch (endErr) { /* ignore */ }
           // Create new client and connect
           sftp = new SftpClient();
-          sftp.client.setMaxListeners(200); // Increase for parallel downloads
+          sftp.client.setMaxListeners(100); // Increase for parallel downloads (MAX_BATCH_SIZE=50)
           await sftp.connect(workingConfig);
           logger.info('SFTP reconnected successfully', { taskId });
           return true;
@@ -620,7 +620,7 @@ export async function runTaskNow(taskId: string) {
     // Fallback: parallel SFTP directory listing (for SFTP-only servers)
     if (!execWorked) {
       const dirsToScan: string[] = [task.sftpPath];
-      const PARALLEL_SCANS = 20; // Scan up to 20 directories in parallel (increased from 10)
+      const PARALLEL_SCANS = 10; // Scan up to 10 directories in parallel
       
       // Increase max listeners to prevent warnings during parallel scans
       const sshClient = (sftp as any).client;
@@ -897,7 +897,9 @@ export async function runTaskNow(taskId: string) {
           const SMALL_FILE_THRESHOLD = 1024 * 1024;  // 1MB - batch fewer of these
           const MIN_AVAILABLE_MEMORY_MB = 512;       // Keep at least 512MB available
           const MIN_BATCH_SIZE = 5;
-          const MAX_BATCH_SIZE = 150;
+          // Capped at 50 (was 150). 150 concurrent SFTP downloads caused Node heap spikes
+          // to 2GB+ on Pi 5 (3.9GB RAM) making SSH unresponsive and forcing reboots.
+          const MAX_BATCH_SIZE = 50;
           
           // Get available memory (optionally including swap based on task.useSwap)
           const getAvailableMemoryMB = () => {
@@ -925,26 +927,40 @@ export async function runTaskNow(taskId: string) {
             return Math.floor(totalAvailable / (1024 * 1024));
           };
           
-          // Calculate batch size based on available memory (RAM + swap)
+          // Calculate batch size based on available memory (RAM + swap) AND current Node heap.
+          // Two-factor check: system free memory AND Node.js own RSS/heap.
+          // Historically, system showed 2.5GB free while Node heap was already at 1.5GB,
+          // causing the adaptive logic to fire 150 concurrent downloads into a saturated heap.
           const calculateBatchSize = (avgFileSize: number): number => {
             if (global.gc) global.gc();
             
+            // Factor 1: Node.js process memory (most direct signal of memory pressure)
+            const nodeMem = process.memoryUsage();
+            const nodeRssMB = nodeMem.rss / (1024 * 1024);
+            const heapUsedMB = nodeMem.heapUsed / (1024 * 1024);
+            
+            // If Node itself is already large, be very conservative regardless of system RAM
+            if (nodeRssMB > 900 || heapUsedMB > 700) return MIN_BATCH_SIZE;
+            if (nodeRssMB > 600 || heapUsedMB > 450) return 10;
+            if (nodeRssMB > 400 || heapUsedMB > 300) return 20;
+            
+            // Factor 2: System available memory
             const availableMB = getAvailableMemoryMB();
             const excessMB = Math.max(0, availableMB - MIN_AVAILABLE_MEMORY_MB);
             
-            // Adjust batching based on total available memory (including swap)
+            // Capped at MAX_BATCH_SIZE=50 (reduced from 150 to prevent heap saturation)
             if (excessMB > 2500) {
-              return MAX_BATCH_SIZE; // 3GB+ available: max speed
+              return MAX_BATCH_SIZE; // 3GB+ available: max speed (50)
             } else if (excessMB > 2000) {
-              return 100; // 2.5-3GB: fast
+              return 40; // 2.5-3GB: fast
             } else if (excessMB > 1500) {
-              return 75; // 2-2.5GB: moderate
+              return 30; // 2-2.5GB: moderate
             } else if (excessMB > 1000) {
-              return 50; // 1.5-2GB: conservative
+              return 20; // 1.5-2GB: conservative
             } else if (excessMB > 500) {
-              return 30; // 1-1.5GB: very conservative
+              return 15; // 1-1.5GB: very conservative
             } else if (excessMB > 200) {
-              return 15; // 700MB-1GB: minimal
+              return 10; // 700MB-1GB: minimal
             } else {
               return MIN_BATCH_SIZE; // <700MB: slowest
             }
