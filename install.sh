@@ -6,6 +6,9 @@ set -e
 
 REPO_URL="https://github.com/jasonzli-DEV/D-Drive.git"
 INSTALL_DIR="${DDRIVE_INSTALL_DIR:-$HOME/d-drive}"
+USE_SUDO_DOCKER=0
+COMPOSE_VARIANT=""
+COMPOSE_DISPLAY_CMD=""
 
 # Colors for output
 RED='\033[0;31m'
@@ -43,6 +46,26 @@ log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
 }
 
+docker_cli() {
+    if [ "$USE_SUDO_DOCKER" -eq 1 ]; then
+        sudo docker "$@"
+    else
+        docker "$@"
+    fi
+}
+
+compose_cli() {
+    if [ "$COMPOSE_VARIANT" = "v2" ]; then
+        docker_cli compose "$@"
+    else
+        if [ "$USE_SUDO_DOCKER" -eq 1 ]; then
+            sudo docker-compose "$@"
+        else
+            docker-compose "$@"
+        fi
+    fi
+}
+
 check_docker() {
     log_info "Checking for Docker..."
     
@@ -63,13 +86,13 @@ check_docker() {
 
 check_docker_compose() {
     log_info "Checking for Docker Compose..."
-    
+
     # Check for docker compose (v2) or docker-compose (v1)
     if docker compose version &> /dev/null; then
-        COMPOSE_CMD="docker compose"
+        COMPOSE_VARIANT="v2"
         log_info "Docker Compose found: $(docker compose version)"
     elif command -v docker-compose &> /dev/null; then
-        COMPOSE_CMD="docker-compose"
+        COMPOSE_VARIANT="v1"
         log_info "Docker Compose found: $(docker-compose --version)"
     else
         log_error "Docker Compose is not installed."
@@ -77,6 +100,12 @@ check_docker_compose() {
         echo "Docker Compose is usually included with Docker Desktop."
         echo "If using Linux, install with: sudo apt install docker-compose-plugin"
         exit 1
+    fi
+
+    if [ "$COMPOSE_VARIANT" = "v2" ]; then
+        COMPOSE_DISPLAY_CMD="docker compose"
+    else
+        COMPOSE_DISPLAY_CMD="docker-compose"
     fi
 }
 
@@ -91,6 +120,24 @@ check_docker_running() {
         esac
     fi
     if ! docker info &> /dev/null; then
+        # On Linux/Raspberry Pi, Docker may be running but current user lacks socket permissions.
+        docker_error="$(docker info 2>&1 || true)"
+        if [ "$OSTYPE" = "linux" ] && [ "$USE_SUDO_DOCKER" -eq 0 ] && echo "$docker_error" | grep -Eiq "permission denied|got permission denied while trying to connect"; then
+            if command -v sudo &>/dev/null; then
+                log_warn "Docker requires elevated permissions for this user. Retrying with sudo..."
+                if sudo docker info &>/dev/null; then
+                    USE_SUDO_DOCKER=1
+                    if [ "$COMPOSE_VARIANT" = "v2" ]; then
+                        COMPOSE_DISPLAY_CMD="sudo docker compose"
+                    else
+                        COMPOSE_DISPLAY_CMD="sudo docker-compose"
+                    fi
+                    log_info "Docker daemon is running (using sudo for Docker commands)."
+                    return
+                fi
+            fi
+        fi
+
         log_warn "Docker daemon is not running. Attempting to start Docker..."
         # Try to start Docker Desktop (macOS)
         if [[ "$OSTYPE" == "darwin"* ]]; then
@@ -99,7 +146,7 @@ check_docker_running() {
                 open -a Docker || open /Applications/Docker.app
                 # Wait for Docker to start (max 90s)
                 for i in {1..90}; do
-                    if docker info &>/dev/null; then
+                    if docker_cli info &>/dev/null; then
                         log_info "Docker daemon started successfully."
                         break
                     fi
@@ -119,12 +166,22 @@ check_docker_running() {
                         log_info "Docker daemon started successfully."
                         break
                     fi
+                    if [ "$USE_SUDO_DOCKER" -eq 0 ] && command -v sudo &>/dev/null && sudo docker info &>/dev/null; then
+                        USE_SUDO_DOCKER=1
+                        if [ "$COMPOSE_VARIANT" = "v2" ]; then
+                            COMPOSE_DISPLAY_CMD="sudo docker compose"
+                        else
+                            COMPOSE_DISPLAY_CMD="sudo docker-compose"
+                        fi
+                        log_info "Docker daemon started successfully."
+                        break
+                    fi
                     sleep 1
                 done
             fi
         fi
         # Final check
-        if ! docker info &> /dev/null; then
+        if ! docker_cli info &> /dev/null; then
             log_error "Docker daemon is still not running."
             echo ""
             echo "Please start Docker Desktop or the Docker service manually."
@@ -198,23 +255,23 @@ EOF
 
 start_services() {
     log_info "Building and starting D-Drive services..."
-    
-    $COMPOSE_CMD build 2>/dev/null
+
+    compose_cli build 2>/dev/null
     
     # Start only postgres first
     log_info "Starting database..."
-    $COMPOSE_CMD up -d postgres
+    compose_cli up -d postgres
     
     # Wait for postgres to be healthy
     log_info "Waiting for database to be ready..."
     for i in {1..30}; do
-        if $COMPOSE_CMD exec -T postgres pg_isready -U ddrive &>/dev/null; then
+        if compose_cli exec -T postgres pg_isready -U ddrive &>/dev/null; then
             log_info "Database is ready!"
             break
         fi
         if [ $i -eq 30 ]; then
             log_error "Database failed to start within 30 seconds"
-            $COMPOSE_CMD logs postgres
+            compose_cli logs postgres
             exit 1
         fi
         sleep 1
@@ -222,20 +279,20 @@ start_services() {
     
     # Start backend (which runs migrations)
     log_info "Starting backend (running database migrations)..."
-    $COMPOSE_CMD up -d backend
+    compose_cli up -d backend
     
     # Wait for backend to be healthy (longer timeout for migrations)
     log_info "Waiting for backend to be ready (this may take a minute on first run)..."
     for i in {1..120}; do
-        if $COMPOSE_CMD ps backend 2>/dev/null | grep -q "healthy"; then
+        if compose_cli ps backend 2>/dev/null | grep -q "healthy"; then
             log_info "Backend is ready!"
             break
         fi
-        if $COMPOSE_CMD ps backend 2>/dev/null | grep -q "unhealthy"; then
+        if compose_cli ps backend 2>/dev/null | grep -q "unhealthy"; then
             log_error "Backend failed to start"
             echo ""
             log_warn "Backend logs:"
-            $COMPOSE_CMD logs --tail=50 backend
+            compose_cli logs --tail=50 backend
             echo ""
             log_info "This usually means Discord configuration is incomplete."
             log_info "The backend will run in 'setup mode' - continue to configure via web UI."
@@ -243,20 +300,20 @@ start_services() {
         fi
         if [ $i -eq 120 ]; then
             log_warn "Backend still starting after 2 minutes..."
-            $COMPOSE_CMD logs --tail=20 backend
+            compose_cli logs --tail=20 backend
         fi
         sleep 1
     done
     
     # Start frontend regardless of backend health (it will redirect to setup)
     log_info "Starting frontend..."
-    $COMPOSE_CMD up -d frontend
+    compose_cli up -d frontend
     
     sleep 3
     
     # Show final status
     log_info "Service status:"
-    $COMPOSE_CMD ps
+    compose_cli ps
 }
 
 print_success() {
@@ -275,10 +332,10 @@ print_success() {
     echo ""
     echo -e "${YELLOW}Useful commands:${NC}"
     echo "  cd $INSTALL_DIR"
-    echo "  $COMPOSE_CMD logs -f        # View logs"
-    echo "  $COMPOSE_CMD down           # Stop services"
-    echo "  $COMPOSE_CMD up -d          # Start services"
-    echo "  $COMPOSE_CMD pull && $COMPOSE_CMD up -d --build  # Update"
+    echo "  $COMPOSE_DISPLAY_CMD logs -f        # View logs"
+    echo "  $COMPOSE_DISPLAY_CMD down           # Stop services"
+    echo "  $COMPOSE_DISPLAY_CMD up -d          # Start services"
+    echo "  $COMPOSE_DISPLAY_CMD pull && $COMPOSE_DISPLAY_CMD up -d --build  # Update"
     echo ""
 }
 
